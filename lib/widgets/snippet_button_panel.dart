@@ -1,11 +1,26 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/ssh_provider.dart';
 import '../providers/snippet_provider.dart';
 import '../screens/snippet_config_screen.dart';
 
-class SnippetButtonPanel extends StatelessWidget {
+class SnippetButtonPanel extends StatefulWidget {
   const SnippetButtonPanel({super.key});
+
+  @override
+  State<SnippetButtonPanel> createState() => _SnippetButtonPanelState();
+}
+
+class _SnippetButtonPanelState extends State<SnippetButtonPanel> {
+  bool _isExpanded = true;
+
+  void _toggleExpanded() {
+    setState(() {
+      _isExpanded = !_isExpanded;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,45 +42,65 @@ class SnippetButtonPanel extends StatelessWidget {
                 .withAlpha(128),
             borderRadius: BorderRadius.circular(16),
           ),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.code, size: 18, color: Colors.grey),
-                const SizedBox(width: 8),
-                ...displaySnippets.map((s) => Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: ActionChip(
-                        label: Text(
-                          s.name,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        padding: EdgeInsets.zero,
-                        onPressed: () {
-                          final active = ssh.activeSession;
-                          if (active != null && active.isConnected) {
-                            active.terminal.write('${s.content}\n');
-                          }
-                        },
-                        backgroundColor:
-                            Theme.of(context).colorScheme.secondaryContainer,
-                        labelStyle: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSecondaryContainer,
-                        ),
-                      ),
-                    )),
-                IconButton(
-                  icon: const Icon(Icons.more_horiz, size: 20),
-                  onPressed: () => _showSnippetSelection(context),
-                  tooltip: 'More Snippets',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      _isExpanded ? Icons.expand_more : Icons.chevron_right,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _toggleExpanded,
+                    tooltip: _isExpanded ? 'Hide snippets' : 'Show snippets',
+                  ),
+                  const SizedBox(width: 4),
+                  if (_isExpanded) ...[
+                    const Icon(Icons.code, size: 18, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    ...displaySnippets.map((s) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: ActionChip(
+                            label: Text(
+                              s.name,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            padding: EdgeInsets.zero,
+                            onPressed: () {
+                              final active = ssh.activeSession;
+                              if (active != null &&
+                                  active.isConnected &&
+                                  active.shellSession != null) {
+                                active.shellSession!.stdin
+                                    .add(utf8.encode('${s.content}\r'));
+                              }
+                            },
+                            backgroundColor: Theme.of(context)
+                                .colorScheme
+                                .secondaryContainer,
+                            labelStyle: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSecondaryContainer,
+                            ),
+                          ),
+                        )),
+                    IconButton(
+                      icon: const Icon(Icons.more_horiz, size: 20),
+                      onPressed: () => _showSnippetSelection(context),
+                      tooltip: 'More Snippets',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ],
+              ),
+            ],
           ),
         );
       },
@@ -158,8 +193,11 @@ class _SnippetSelectionSheet extends StatelessWidget {
                         ),
                         onTap: () {
                           final active = ssh.activeSession;
-                          if (active != null && active.isConnected) {
-                            active.terminal.write('${snippet.content}\n');
+                          if (active != null &&
+                              active.isConnected &&
+                              active.shellSession != null) {
+                            active.shellSession!.stdin
+                                .add(utf8.encode('${snippet.content}\r'));
                           }
                           Navigator.pop(context);
                         },

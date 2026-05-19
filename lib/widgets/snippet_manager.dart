@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/snippet.dart';
@@ -172,8 +174,8 @@ class SnippetManager extends StatelessWidget {
   void _useSnippet(BuildContext context, Snippet snippet) {
     final ssh = Provider.of<SSHProvider>(context, listen: false);
     final active = ssh.activeSession;
-    if (active != null && active.isConnected) {
-      active.terminal.write('${snippet.content}\n');
+    if (active != null && active.isConnected && active.shellSession != null) {
+      active.shellSession!.stdin.add(utf8.encode('${snippet.content}\r'));
       Navigator.pop(context);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
