@@ -138,6 +138,10 @@ class SSHProvider extends ChangeNotifier {
         shell.stdin.add(utf8.encode(data));
       };
 
+      entry.terminal.onResize = (width, height, pixelWidth, pixelHeight) {
+        entry.shellSession?.resizeTerminal(width, height, pixelWidth, pixelHeight);
+      };
+
       unawaited(shell.done.then((_) async {
         addLog('Session ${entry.name} closed');
         entry.isConnected = false;
