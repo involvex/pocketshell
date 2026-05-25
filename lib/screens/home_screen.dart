@@ -400,7 +400,7 @@ class ClientTab extends StatelessWidget {
                       fontSize: settings.terminalFontSize,
                       fontFamily: 'monospace',
                     ),
-                    autoResize: false,
+                    autoResize: true,
                   ),
                 );
               }),
