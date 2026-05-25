@@ -139,7 +139,8 @@ class SSHProvider extends ChangeNotifier {
       };
 
       entry.terminal.onResize = (width, height, pixelWidth, pixelHeight) {
-        entry.shellSession?.resizeTerminal(width, height, pixelWidth, pixelHeight);
+        entry.shellSession
+            ?.resizeTerminal(width, height, pixelWidth, pixelHeight);
       };
 
       unawaited(shell.done.then((_) async {
