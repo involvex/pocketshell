@@ -68,21 +68,24 @@ class _ShortcutRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       decoration: BoxDecoration(
         color: const Color(0xFF16213E),
         border: Border(
           bottom: BorderSide(color: Colors.grey.shade800),
         ),
       ),
-      child: Row(
-        children: [
-          ...shortcuts.map((s) => _ShortcutChip(
-                shortcut: s,
-                isConnected: isConnected,
-              )),
-          const Spacer(),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            ...shortcuts.map((s) => _ShortcutChip(
+                  shortcut: s,
+                  isConnected: isConnected,
+                )),
+            const SizedBox(width: 8),
+          ],
+        ),
       ),
     );
   }
@@ -100,34 +103,42 @@ class _ShortcutChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.only(right: 4, left: 0),
       child: InkWell(
         onTap: () => _handleTap(context),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(0.5),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
           decoration: BoxDecoration(
             color: Colors.grey[700],
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(0.25),
             border: Border.all(color: Colors.grey.shade600),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                shortcut.label,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  fontWeight: FontWeight.bold,
+              Flexible(
+                child: Text(
+                  shortcut.label,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 7,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              const SizedBox(width: 4),
-              Text(
-                shortcut.description,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade400,
+              const SizedBox(width: 2),
+              Flexible(
+                child: Text(
+                  shortcut.description,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 7,
+                    color: Colors.grey.shade400,
+                  ),
                 ),
               ),
             ],

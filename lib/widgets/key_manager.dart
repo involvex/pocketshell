@@ -185,11 +185,9 @@ class _KeyManagerState extends State<KeyManager> {
       maxChildSize: 0.9,
       expand: false,
       builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF1A1A2E),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          ),
+        return Material(
+          color: const Color(0xFF1A1A2E),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           child: Column(
             children: <Widget>[
               Container(

@@ -123,11 +123,12 @@ class _SftpBrowserState extends State<SftpBrowser> {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.7,
-      child: Column(
-        children: [
-          ListTile(
+    return Material(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: Column(
+          children: [
+            ListTile(
             title: Text('SFTP — $currentPath'),
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
               IconButton(
@@ -204,6 +205,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }

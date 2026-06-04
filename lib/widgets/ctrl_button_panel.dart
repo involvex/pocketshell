@@ -22,9 +22,11 @@ class CtrlButtonPanel extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: Colors.grey.shade700),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
               const Text(
                 'Nav',
                 style: TextStyle(
@@ -113,9 +115,9 @@ class CtrlButtonPanel extends StatelessWidget {
               ),
             ],
           ),
-        );
-      },
-    );
+        ),
+      );
+    });
   }
 }
 
@@ -132,21 +134,22 @@ class _NavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: InkWell(
-        onTap: onTap,
+      child: Material(
+        color: Colors.grey[800],
         borderRadius: BorderRadius.circular(4),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.grey[700],
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.bold,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(4),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
           ),
         ),

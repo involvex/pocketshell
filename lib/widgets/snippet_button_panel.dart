@@ -34,70 +34,80 @@ class _SnippetButtonPanelState extends State<SnippetButtonPanel> {
         final displaySnippets = snippets.snippets.take(5).toList();
 
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          margin: const EdgeInsets.symmetric(vertical: 4),
           decoration: BoxDecoration(
             color: Theme.of(context)
                 .colorScheme
                 .surfaceContainerHighest
                 .withAlpha(128),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
                     icon: Icon(
                       _isExpanded ? Icons.expand_more : Icons.chevron_right,
-                      size: 18,
+                      size: 20,
                       color: Colors.grey,
                     ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
                     onPressed: _toggleExpanded,
+                    visualDensity: VisualDensity.compact,
                     tooltip: _isExpanded ? 'Hide snippets' : 'Show snippets',
                   ),
-                  const SizedBox(width: 4),
-                  if (_isExpanded) ...[
-                    const Icon(Icons.code, size: 18, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    ...displaySnippets.map((s) => Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: ActionChip(
-                            label: Text(
-                              s.name,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            padding: EdgeInsets.zero,
-                            onPressed: () {
-                              final active = ssh.activeSession;
-                              if (active != null &&
-                                  active.isConnected &&
-                                  active.shellSession != null) {
-                                active.shellSession!.stdin
-                                    .add(utf8.encode('${s.content}\r'));
-                              }
-                            },
-                            backgroundColor: Theme.of(context)
-                                .colorScheme
-                                .secondaryContainer,
-                            labelStyle: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSecondaryContainer,
-                            ),
-                          ),
-                        )),
-                    IconButton(
-                      icon: const Icon(Icons.more_horiz, size: 20),
-                      onPressed: () => _showSnippetSelection(context),
-                      tooltip: 'More Snippets',
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
+                  if (!_isExpanded)
+                    const Text(
+                      'Snippets',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
-                  ],
+                  if (_isExpanded)
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            ...displaySnippets.map((s) => Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 4),
+                                  child: ActionChip(
+                                    label: Text(
+                                      s.name,
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.compact,
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    onPressed: () {
+                                      final active = ssh.activeSession;
+                                      if (active != null &&
+                                          active.isConnected &&
+                                          active.shellSession != null) {
+                                        active.shellSession!.stdin
+                                            .add(utf8.encode('${s.content}\r'));
+                                      }
+                                    },
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .secondaryContainer,
+                                    labelStyle: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSecondaryContainer,
+                                    ),
+                                  ),
+                                )),
+                            IconButton(
+                              icon: const Icon(Icons.more_horiz, size: 20),
+                              onPressed: () => _showSnippetSelection(context),
+                              tooltip: 'More Snippets',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -128,17 +138,20 @@ class _SnippetSelectionSheet extends StatelessWidget {
       maxChildSize: 0.8,
       expand: false,
       builder: (context, scrollController) {
-        return Column(
-          children: <Widget>[
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
+        return Material(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          child: Column(
+            children: <Widget>[
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
@@ -208,8 +221,9 @@ class _SnippetSelectionSheet extends StatelessWidget {
               ),
             ),
           ],
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
 }

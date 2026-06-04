@@ -27,6 +27,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  bool _isFullScreen = false;
 
   @override
   void initState() {
@@ -151,96 +152,126 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return KeyboardListener(
-      focusNode: FocusNode()
-        ..requestFocus(), // Request focus so keyboard listener receives events
-      onKeyEvent: _handleKeyEvent,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('SSH App'),
-          actions: <Widget>[
-            IconButton(
-              icon: const Icon(Icons.code),
-              tooltip: 'Manage Snippets',
-              onPressed: _showSnippetConfig,
+    return Consumer<SSHProvider>(
+      builder: (context, ssh, child) {
+        // Automatically exit full screen if no sessions are connected
+        if (_isFullScreen && !ssh.sessions.any((s) => s.isConnected)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _isFullScreen = false);
+          });
+        }
+
+        return KeyboardListener(
+          focusNode: FocusNode()
+            ..requestFocus(), // Request focus so keyboard listener receives events
+          onKeyEvent: _handleKeyEvent,
+          child: Scaffold(
+            appBar: AppBar(
+              title: const Text('SSH App'),
+              actions: <Widget>[
+                Consumer<SSHProvider>(
+                  builder: (context, ssh, child) {
+                    if (ssh.sessions.any((s) => s.isConnected) &&
+                        _selectedIndex == 0) {
+                      return IconButton(
+                        icon: Icon(_isFullScreen
+                            ? Icons.fullscreen_exit
+                            : Icons.fullscreen),
+                        tooltip:
+                            _isFullScreen ? 'Exit Full Screen' : 'Full Screen',
+                        onPressed: () => setState(() => _isFullScreen = !_isFullScreen),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.code),
+                  tooltip: 'Manage Snippets',
+                  onPressed: _showSnippetConfig,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.search),
+                  tooltip: 'Network Discovery',
+                  onPressed: _showNetworkDiscovery,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.key),
+                  tooltip: 'Keys',
+                  onPressed: _showKeyManager,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.person),
+                  tooltip: 'Profiles',
+                  onPressed: _showProfileManager,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Connect',
+                  onPressed: _showConnectionModal,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.settings),
+                  tooltip: 'Settings',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const SettingsScreen()),
+                    );
+                  },
+                ),
+              ],
             ),
-            IconButton(
-              icon: const Icon(Icons.search),
-              tooltip: 'Network Discovery',
-              onPressed: _showNetworkDiscovery,
+            bottomNavigationBar: _isFullScreen
+                ? null
+                : NavigationBar(
+                    selectedIndex: _selectedIndex,
+                    onDestinationSelected: (index) {
+                      setState(() {
+                        _selectedIndex = index;
+                      });
+                    },
+                    destinations: const <NavigationDestination>[
+                      NavigationDestination(
+                        icon: Icon(Icons.computer),
+                        label: 'Client',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.dns),
+                        label: 'Server',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.article),
+                        label: 'Logs',
+                      ),
+                    ],
+                  ),
+            body: Column(
+              children: [
+                if (!_isFullScreen) const KeyboardShortcutBar(),
+                Expanded(
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: <Widget>[
+                      ClientTab(isFullScreen: _isFullScreen),
+                      const ServerTab(),
+                      const LogViewer(),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            IconButton(
-              icon: const Icon(Icons.key),
-              tooltip: 'Keys',
-              onPressed: _showKeyManager,
-            ),
-            IconButton(
-              icon: const Icon(Icons.person),
-              tooltip: 'Profiles',
-              onPressed: _showProfileManager,
-            ),
-            IconButton(
-              icon: const Icon(Icons.add),
-              tooltip: 'Connect',
-              onPressed: _showConnectionModal,
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings),
-              tooltip: 'Settings',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const SettingsScreen()),
-                );
-              },
-            ),
-          ],
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: (index) {
-            setState(() {
-              _selectedIndex = index;
-            });
-          },
-          destinations: const <NavigationDestination>[
-            NavigationDestination(
-              icon: Icon(Icons.computer),
-              label: 'Client',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.dns),
-              label: 'Server',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.article),
-              label: 'Logs',
-            ),
-          ],
-        ),
-        body: Column(
-          children: [
-            const KeyboardShortcutBar(),
-            Expanded(
-              child: IndexedStack(
-                index: _selectedIndex,
-                children: const <Widget>[
-                  ClientTab(),
-                  ServerTab(),
-                  LogViewer(),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
 class ClientTab extends StatelessWidget {
-  const ClientTab({super.key});
+  final bool isFullScreen;
+  const ClientTab({required this.isFullScreen, super.key});
 
   Widget _buildSessionTabBar(BuildContext context) {
     return Consumer<SSHProvider>(builder: (context, ssh, child) {
@@ -338,7 +369,7 @@ class ClientTab extends StatelessWidget {
 
         return Column(
           children: <Widget>[
-            _buildSessionTabBar(context),
+            if (!isFullScreen) _buildSessionTabBar(context),
             Expanded(
               child: Consumer<SSHProvider>(builder: (context, ssh, child) {
                 final active = ssh.activeSession;
@@ -418,7 +449,7 @@ class ClientTab extends StatelessWidget {
                   ],
                 ),
               ),
-            if (ssh.sessions.any((s) => s.isConnected))
+            if (ssh.sessions.any((s) => s.isConnected) && !isFullScreen)
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: OutlinedButton.icon(
