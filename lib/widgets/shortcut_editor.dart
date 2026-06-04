@@ -13,23 +13,49 @@ class ShortcutEditor extends StatefulWidget {
 class _ShortcutEditorState extends State<ShortcutEditor> {
   late List<KeyboardShortcut> _shortcuts;
   int _selectedRow = 0;
+  VoidCallback? _settingsListener;
 
   @override
   void initState() {
     super.initState();
     final settings = context.read<SettingsProvider>();
+    _syncFromSettings(settings);
+
+    // Add listener to sync when settings finish loading
+    if (!settings.isLoaded) {
+      _settingsListener = () {
+        if (mounted) {
+          setState(() {
+            final currentSettings = context.read<SettingsProvider>();
+            _syncFromSettings(currentSettings);
+          });
+        }
+      };
+      settings.addListener(_settingsListener!);
+    }
+  }
+
+  void _syncFromSettings(SettingsProvider settings) {
     _shortcuts = List.from(settings.shortcuts);
     _selectedRow = settings.maxRow >= 2 ? 2 : settings.maxRow;
+  }
+
+  @override
+  void dispose() {
+    final settings = context.read<SettingsProvider>();
+    if (_settingsListener != null) {
+      settings.removeListener(_settingsListener!);
+    }
+    super.dispose();
   }
 
   List<KeyboardShortcut> get _currentRowShortcuts {
     return _shortcuts.where((s) => s.row == _selectedRow).toList();
   }
 
-  void _onReorder(int oldIndex, int newIndex) {
+  void _onReorderItem(int oldIndex, int newIndex) {
     setState(() {
       final rowShortcuts = _currentRowShortcuts;
-      if (newIndex > oldIndex) newIndex--;
       final item = rowShortcuts.removeAt(oldIndex);
       rowShortcuts.insert(newIndex, item);
 
@@ -118,7 +144,7 @@ class _ShortcutEditorState extends State<ShortcutEditor> {
           Expanded(
             child: ReorderableListView.builder(
               itemCount: _currentRowShortcuts.length,
-              onReorder: _onReorder,
+              onReorderItem: _onReorderItem,
               itemBuilder: (context, index) {
                 final shortcut = _currentRowShortcuts[index];
                 return _ShortcutTile(
