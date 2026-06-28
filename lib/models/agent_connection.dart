@@ -14,6 +14,8 @@ class AgentConnection {
     this.messages = const [],
     this.isLoadingMessages = false,
     this.isSending = false,
+    this.isLocal = false,
+    this.selectedDirectory,
   });
 
   final String id;
@@ -25,4 +27,6 @@ class AgentConnection {
   bool isConnected;
   bool isLoadingMessages;
   bool isSending;
+  bool isLocal;
+  String? selectedDirectory;
 }

@@ -109,6 +109,25 @@ class SSHProvider extends ChangeNotifier {
     }
   }
 
+  /// Finds a connected SSH client session matching [host] (localhost aliases).
+  SessionEntry? findConnectedSessionForHost(String host) {
+    for (final session in sessions) {
+      if (!session.isConnected || session.client == null) continue;
+      if (_hostsMatch(session.profile.host, host)) {
+        return session;
+      }
+    }
+    return null;
+  }
+
+  bool _hostsMatch(String a, String b) {
+    final na = a.toLowerCase();
+    final nb = b.toLowerCase();
+    if (na == nb) return true;
+    const localHosts = <String>{'localhost', '127.0.0.1', '::1'};
+    return localHosts.contains(na) && localHosts.contains(nb);
+  }
+
   Future<void> connectSession(String sessionId) async {
     final entry = sessions.firstWhere((s) => s.id == sessionId);
     final profile = entry.profile;

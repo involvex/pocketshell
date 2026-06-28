@@ -7,6 +7,7 @@ class ConfigService {
   static const String _settingsKey = 'app_settings';
   static const String _sshKeysKey = 'ssh_keys';
   static const String _snippetsKey = 'snippets';
+  static const String _agentLastDirectoryKey = 'agent_last_directory';
 
   static SharedPreferences? _prefs;
 
@@ -78,6 +79,14 @@ class ConfigService {
 
   static Future<void> saveSnippets(List<Map<String, dynamic>> snippets) async {
     await prefs.setString(_snippetsKey, json.encode(snippets));
+  }
+
+  static Future<String?> getAgentLastDirectory() async {
+    return prefs.getString(_agentLastDirectoryKey);
+  }
+
+  static Future<void> saveAgentLastDirectory(String path) async {
+    await prefs.setString(_agentLastDirectoryKey, path);
   }
 
   static Future<void> clearAll() async {

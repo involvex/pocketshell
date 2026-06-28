@@ -1,12 +1,18 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:opencode_api/opencode_api.dart' show MessageWithParts;
+import 'package:opencode_api/opencode_api.dart' show MessageWithParts, Session;
 import 'package:provider/provider.dart';
 
-import '../models/ssh_profile.dart';
 import '../models/agent_connection.dart';
+import '../models/ssh_profile.dart';
 import '../providers/agent_provider.dart';
+import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
+import '../utils/agent_session_utils.dart';
 import '../widgets/agent_permission_dialog.dart';
+import '../widgets/sftp_directory_picker.dart';
 
 class AgentsTab extends StatefulWidget {
   const AgentsTab({super.key});
@@ -20,14 +26,21 @@ class _AgentsTabState extends State<AgentsTab> {
   final TextEditingController _manualUrlController = TextEditingController();
   final TextEditingController _manualPasswordController =
       TextEditingController();
+  final TextEditingController _localPasswordController =
+      TextEditingController();
   bool _isConnecting = false;
   bool _permissionDialogVisible = false;
+
+  bool get _isDesktopPlatform =>
+      !kIsWeb &&
+      (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
 
   @override
   void dispose() {
     _promptController.dispose();
     _manualUrlController.dispose();
     _manualPasswordController.dispose();
+    _localPasswordController.dispose();
     super.dispose();
   }
 
@@ -41,6 +54,28 @@ class _AgentsTabState extends State<AgentsTab> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Connect failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isConnecting = false);
+    }
+  }
+
+  Future<void> _connectLocalDesktop(int port) async {
+    setState(() => _isConnecting = true);
+    try {
+      await Provider.of<AgentProvider>(context, listen: false)
+          .connectToLocalDesktop(
+        port: port,
+        password: _localPasswordController.text,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Local connect failed: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -74,10 +109,110 @@ class _AgentsTabState extends State<AgentsTab> {
     }
   }
 
+  Future<void> _pickDirectory(
+    AgentProvider agents,
+    AgentConnection connection,
+  ) async {
+    final ssh = Provider.of<SSHProvider>(context, listen: false);
+    final sshSession = ssh.findConnectedSessionForHost(connection.profile.host);
+
+    if (sshSession?.client == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Connect an SSH session to ${connection.profile.host} first, '
+            'then pick a directory via SFTP.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SftpDirectoryPicker(
+        client: sshSession!.client!,
+        initialPath: connection.selectedDirectory,
+      ),
+    );
+
+    if (picked == null || !mounted) return;
+    await agents.setDirectory(connection.id, picked);
+  }
+
+  Future<void> _createSession(
+    AgentProvider agents,
+    AgentConnection connection,
+  ) async {
+    if (connection.isLocal &&
+        (connection.selectedDirectory == null ||
+            connection.selectedDirectory!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Select a project directory via SFTP before creating a session',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final titleController = TextEditingController();
+    final title = await showDialog<String?>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('New Session'),
+        content: TextField(
+          controller: titleController,
+          decoration: const InputDecoration(
+            labelText: 'Title (optional)',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = titleController.text.trim();
+              Navigator.pop(dialogContext, value.isEmpty ? null : value);
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    titleController.dispose();
+
+    if (!mounted) return;
+    await agents.createSession(connection.id, title: title);
+  }
+
+  String _sessionSubtitle(Session session) {
+    final parts = <String>[];
+    final timestamp = formatSessionTimestamp(
+      session.time?.updated ?? session.time?.created,
+    );
+    if (timestamp.isNotEmpty) {
+      parts.add(timestamp);
+    }
+    if (session.directory != null && session.directory!.isNotEmpty) {
+      parts.add(session.directory!);
+    } else if (session.id != null) {
+      parts.add(session.id!);
+    }
+    return parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Consumer2<AgentProvider, SSHProvider>(
-      builder: (context, agents, ssh, child) {
+    return Consumer3<AgentProvider, SSHProvider, SettingsProvider>(
+      builder: (context, agents, ssh, settings, child) {
         if (agents.pendingPermission != null && !_permissionDialogVisible) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _showPermissionDialog(context, agents);
@@ -85,7 +220,7 @@ class _AgentsTabState extends State<AgentsTab> {
         }
 
         if (agents.connections.isEmpty) {
-          return _buildDisconnectedView(ssh.profiles);
+          return _buildDisconnectedView(ssh.profiles, settings.defaultAgentPort);
         }
 
         final active = agents.activeConnection;
@@ -108,7 +243,7 @@ class _AgentsTabState extends State<AgentsTab> {
               Expanded(
                 child: showingChat
                     ? _buildChatPane(agents, active)
-                    : _buildSessionList(agents, active.id),
+                    : _buildSessionList(agents, active),
               ),
               if (showingChat) _buildPromptInput(agents, active),
             ],
@@ -118,7 +253,7 @@ class _AgentsTabState extends State<AgentsTab> {
     );
   }
 
-  Widget _buildDisconnectedView(List<SSHProfile> profiles) {
+  Widget _buildDisconnectedView(List<SSHProfile> profiles, int agentPort) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -132,6 +267,38 @@ class _AgentsTabState extends State<AgentsTab> {
         ),
         const SizedBox(height: 16),
         if (_isConnecting) const LinearProgressIndicator(),
+        if (_isDesktopPlatform) ...[
+          Card(
+            color: Theme.of(context).colorScheme.primaryContainer,
+            child: ListTile(
+              leading: Icon(
+                Icons.computer,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+              title: const Text('Local OpenCode (Desktop)'),
+              subtitle: Text(
+                'Connect to opencode serve on 127.0.0.1:$agentPort',
+              ),
+              trailing: const Icon(Icons.link),
+              onTap: _isConnecting
+                  ? null
+                  : () => _connectLocalDesktop(agentPort),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+            child: TextField(
+              controller: _localPasswordController,
+              decoration: const InputDecoration(
+                labelText: 'Local password (optional)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              obscureText: true,
+            ),
+          ),
+          const Divider(height: 32),
+        ],
         if (profiles.isEmpty)
           const Card(
             child: ListTile(
@@ -216,13 +383,47 @@ class _AgentsTabState extends State<AgentsTab> {
     );
   }
 
-  Widget _buildSessionList(AgentProvider agents, String connectionId) {
-    final connection = agents.activeConnection;
-    if (connection == null) return const SizedBox.shrink();
+  Widget _buildDirectoryBar(AgentProvider agents, AgentConnection connection) {
+    final directory = connection.selectedDirectory;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Card(
+        child: ListTile(
+          dense: true,
+          leading: const Icon(Icons.folder_outlined),
+          title: Text(
+            directory ?? 'No directory selected',
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              color: directory == null
+                  ? Theme.of(context).colorScheme.outline
+                  : null,
+            ),
+          ),
+          subtitle: const Text(
+            'Browse via SFTP',
+            style: TextStyle(fontSize: 11),
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.folder_open),
+            tooltip: 'Select project directory via SFTP',
+            onPressed: () => _pickDirectory(agents, connection),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSessionList(AgentProvider agents, AgentConnection connection) {
+    final hasDirectory = connection.selectedDirectory != null &&
+        connection.selectedDirectory!.isNotEmpty;
+    final showDirectoryPrompt = connection.isLocal && !hasDirectory;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _buildDirectoryBar(agents, connection),
         Padding(
           padding: const EdgeInsets.all(8),
           child: Row(
@@ -236,48 +437,68 @@ class _AgentsTabState extends State<AgentsTab> {
               IconButton(
                 icon: const Icon(Icons.add),
                 tooltip: 'New session',
-                onPressed: () => agents.createSession(connectionId),
+                onPressed: () => _createSession(agents, connection),
               ),
               IconButton(
                 icon: const Icon(Icons.refresh),
                 tooltip: 'Refresh',
-                onPressed: () => agents.refreshSessions(connectionId),
+                onPressed: () => agents.refreshSessions(connection.id),
               ),
             ],
           ),
         ),
         Expanded(
-          child: ListView.builder(
-            itemCount: connection.sessions.length,
-            itemBuilder: (context, index) {
-              final session = connection.sessions[index];
-              final isActive = connection.activeSessionId == session.id;
-              return ListTile(
-                dense: true,
-                selected: isActive,
-                title: Text(
-                  session.title ?? session.id ?? 'Untitled',
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: session.id != null
-                    ? Text(
-                        session.id!,
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      )
-                    : null,
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  onPressed: session.id == null
-                      ? null
-                      : () => agents.deleteSession(connectionId, session.id!),
-                ),
-                onTap: session.id == null
-                    ? null
-                    : () => agents.selectSession(connectionId, session.id!),
-              );
-            },
-          ),
+          child: showDirectoryPrompt
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'Select a project directory via SFTP to view sessions.\n'
+                      'Connect an SSH session to the agent host first.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                )
+              : connection.sessions.isEmpty
+                  ? const Center(
+                      child: Text('No sessions yet. Create one to get started.'),
+                    )
+                  : ListView.builder(
+                      itemCount: connection.sessions.length,
+                      itemBuilder: (context, index) {
+                        final session = connection.sessions[index];
+                        final isActive =
+                            connection.activeSessionId == session.id;
+                        return ListTile(
+                          dense: true,
+                          selected: isActive,
+                          title: Text(
+                            session.title ?? session.id ?? 'Untitled',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            _sessionSubtitle(session),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 18),
+                            onPressed: session.id == null
+                                ? null
+                                : () => agents.deleteSession(
+                                      connection.id,
+                                      session.id!,
+                                    ),
+                          ),
+                          onTap: session.id == null
+                              ? null
+                              : () => agents.selectSession(
+                                    connection.id,
+                                    session.id!,
+                                  ),
+                        );
+                      },
+                    ),
         ),
       ],
     );
@@ -352,7 +573,8 @@ class _AgentsTabState extends State<AgentsTab> {
               minLines: 1,
               maxLines: 4,
               enabled: canSend,
-              onSubmitted: canSend ? (_) => _sendPrompt(agents, active.id) : null,
+              onSubmitted:
+                  canSend ? (_) => _sendPrompt(agents, active.id) : null,
             ),
           ),
           const SizedBox(width: 8),

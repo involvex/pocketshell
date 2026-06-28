@@ -15,6 +15,7 @@ class OpenCodeConnectionService {
   final String username;
   final String password;
 
+  late final Dio _dio;
   late final Opencode _client;
   final StreamController<Map<String, dynamic>> _eventController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -25,11 +26,12 @@ class OpenCodeConnectionService {
   Opencode get client => _client;
 
   Future<void> connect() async {
-    _client = await Opencode.connect(
+    _dio = Opencode.createDio(
       baseUrl: baseUrl,
       username: username,
       password: password,
     );
+    _client = Opencode(dio: _dio);
     await checkHealth();
     // ignore: unawaited_futures
     _listenToEvents();
@@ -39,12 +41,44 @@ class OpenCodeConnectionService {
     return _client.global.getHealth();
   }
 
-  Future<List<Session>> getSessions() => _client.session.getSessions();
+  Future<String?> getServerPath() async {
+    final pathResponse = await _client.path.getPath();
+    return pathResponse.path;
+  }
 
-  Future<Session> createSession({String? title}) {
-    return _client.session.createSession(
-      title != null ? {'title': title} : <String, dynamic>{},
+  Future<List<Session>> getSessions({String? directory}) async {
+    if (directory == null || directory.isEmpty) {
+      return _client.session.getSessions();
+    }
+
+    final response = await _dio.get<List<dynamic>>(
+      '/session',
+      queryParameters: <String, dynamic>{'directory': directory},
     );
+    final data = response.data ?? <dynamic>[];
+    return data
+        .map((dynamic item) => Session.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<Session> createSession({String? title, String? directory}) async {
+    if (directory == null || directory.isEmpty) {
+      return _client.session.createSession(
+        title != null ? <String, dynamic>{'title': title} : <String, dynamic>{},
+      );
+    }
+
+    final body = <String, dynamic>{'directory': directory};
+    if (title != null) {
+      body['title'] = title;
+    }
+
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/session',
+      data: body,
+      queryParameters: <String, dynamic>{'directory': directory},
+    );
+    return Session.fromJson(response.data!);
   }
 
   Future<void> deleteSession(String id) => _client.session.deleteSession(id);
@@ -82,18 +116,13 @@ class OpenCodeConnectionService {
 
   Future<void> _listenToEvents() async {
     try {
-      final response = await Dio(
-        BaseOptions(
-          baseUrl: baseUrl,
-          headers: <String, dynamic>{
-            if (password.isNotEmpty)
-              'authorization':
-                  'Basic ${base64Encode(utf8.encode('$username:$password'))}',
-          },
+      final response = await _dio.get<ResponseBody>(
+        '/event',
+        options: Options(
           responseType: ResponseType.stream,
           receiveTimeout: Duration.zero,
         ),
-      ).get<ResponseBody>('/event');
+      );
 
       final stream = response.data?.stream;
       if (stream == null || _disposed) return;

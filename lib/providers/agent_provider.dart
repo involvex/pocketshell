@@ -6,7 +6,9 @@ import 'package:uuid/uuid.dart';
 import '../models/agent_connection.dart';
 import '../models/agent_permission_request.dart';
 import '../models/ssh_profile.dart';
+import '../services/config_service.dart';
 import '../services/opencode_connection_service.dart';
+import '../utils/agent_session_utils.dart';
 
 class AgentProvider extends ChangeNotifier {
   final List<AgentConnection> _connections = [];
@@ -40,7 +42,7 @@ class AgentProvider extends ChangeNotifier {
 
     try {
       await service.connect();
-      final sessions = await service.getSessions();
+      final sessions = sortSessionsByUpdatedDesc(await service.getSessions());
       final connection = AgentConnection(
         id: const Uuid().v4(),
         profile: profile,
@@ -81,6 +83,74 @@ class AgentProvider extends ChangeNotifier {
     return connectFromProfile(profile);
   }
 
+  Future<AgentConnection> connectToLocalDesktop({
+    required int port,
+    String password = '',
+  }) async {
+    final profile = SSHProfile(
+      name: 'Local Desktop',
+      host: '127.0.0.1',
+      username: 'opencode',
+      password: password,
+      agentPort: port,
+    );
+
+    const username = 'opencode';
+    final service = OpenCodeConnectionService(
+      baseUrl: profile.agentBaseUrl,
+      username: username,
+      password: password,
+    );
+
+    try {
+      await service.connect();
+
+      String? directory = await ConfigService.getAgentLastDirectory();
+      if (directory == null || directory.isEmpty) {
+        directory = await service.getServerPath();
+      }
+
+      final sessions = sortSessionsByUpdatedDesc(
+        await service.getSessions(
+          directory: directory,
+        ),
+      );
+
+      final connection = AgentConnection(
+        id: const Uuid().v4(),
+        profile: profile,
+        service: service,
+        sessions: sessions,
+        isConnected: true,
+        isLocal: true,
+        selectedDirectory: directory,
+      );
+
+      service.events.listen((event) => _handleEvent(connection.id, event));
+
+      _connections.add(connection);
+      _activeConnectionId = connection.id;
+      onLog?.call(
+        'Agent connected locally (${profile.agentBaseUrl})',
+      );
+      notifyListeners();
+      return connection;
+    } catch (e) {
+      service.dispose();
+      rethrow;
+    }
+  }
+
+  Future<void> setDirectory(String connectionId, String path) async {
+    final connection = _findConnection(connectionId);
+    if (connection == null) return;
+
+    connection.selectedDirectory = path;
+    await ConfigService.saveAgentLastDirectory(path);
+    await refreshSessions(connectionId);
+    onLog?.call('Agent directory set: $path');
+  }
+
   Future<void> disconnect(String connectionId) async {
     final index = _connections.indexWhere((c) => c.id == connectionId);
     if (index == -1) return;
@@ -108,7 +178,11 @@ class AgentProvider extends ChangeNotifier {
   Future<void> refreshSessions(String connectionId) async {
     final connection = _findConnection(connectionId);
     if (connection == null) return;
-    connection.sessions = await connection.service.getSessions();
+
+    final directory = agentDirectoryScopeForConnection(connection);
+    connection.sessions = sortSessionsByUpdatedDesc(
+      await connection.service.getSessions(directory: directory),
+    );
     notifyListeners();
   }
 
@@ -140,8 +214,16 @@ class AgentProvider extends ChangeNotifier {
     final connection = _findConnection(connectionId);
     if (connection == null) return;
 
-    final session = await connection.service.createSession(title: title);
-    connection.sessions = await connection.service.getSessions();
+    final directory = agentDirectoryScopeForConnection(connection);
+    final session = await connection.service.createSession(
+      title: title,
+      directory: directory,
+    );
+
+    final refreshedDirectory = agentDirectoryScopeForConnection(connection);
+    connection.sessions = sortSessionsByUpdatedDesc(
+      await connection.service.getSessions(directory: refreshedDirectory),
+    );
     if (session.id != null) {
       await selectSession(connectionId, session.id!);
     }
@@ -154,7 +236,11 @@ class AgentProvider extends ChangeNotifier {
     if (connection == null) return;
 
     await connection.service.deleteSession(sessionId);
-    connection.sessions = await connection.service.getSessions();
+
+    final directory = agentDirectoryScopeForConnection(connection);
+    connection.sessions = sortSessionsByUpdatedDesc(
+      await connection.service.getSessions(directory: directory),
+    );
     if (connection.activeSessionId == sessionId) {
       connection.activeSessionId = null;
       connection.messages = [];
