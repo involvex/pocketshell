@@ -98,6 +98,28 @@ class OpenCodeConnectionService {
     );
   }
 
+  Future<List<Command>> getCommands() => _client.commands.getCommands();
+
+  Future<List<Agent>> getAgents() => _client.agents.getAgents();
+
+  Future<ProviderListResponse> getProviders() => _client.provider.getProviders();
+
+  Future<ConfigProvidersResponse> getConfigProviders() =>
+      _client.config.getConfigProviders();
+
+  Future<bool> setProviderAuth(
+    String providerId,
+    Map<String, dynamic> body,
+  ) =>
+      _client.auth.setAuth(providerId, body);
+
+  Future<void> executeCommand(String sessionId, String command) async {
+    await _client.session.executeCommand(
+      sessionId,
+      <String, dynamic>{'command': command},
+    );
+  }
+
   Future<bool> respondToPermission(
     String sessionId,
     String permissionId, {

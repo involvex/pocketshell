@@ -12,6 +12,8 @@ import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
 import '../utils/agent_session_utils.dart';
 import '../widgets/agent_permission_dialog.dart';
+import '../widgets/agent_model_provider_sheet.dart';
+import '../widgets/agent_prompt_input.dart';
 import '../widgets/sftp_directory_picker.dart';
 
 class AgentsTab extends StatefulWidget {
@@ -22,7 +24,6 @@ class AgentsTab extends StatefulWidget {
 }
 
 class _AgentsTabState extends State<AgentsTab> {
-  final TextEditingController _promptController = TextEditingController();
   final TextEditingController _manualUrlController = TextEditingController();
   final TextEditingController _manualPasswordController =
       TextEditingController();
@@ -36,7 +37,6 @@ class _AgentsTabState extends State<AgentsTab> {
 
   @override
   void dispose() {
-    _promptController.dispose();
     _manualUrlController.dispose();
     _manualPasswordController.dispose();
     _localPasswordController.dispose();
@@ -513,6 +513,8 @@ class _AgentsTabState extends State<AgentsTab> {
       }
     }
 
+    final currentModel = agents.currentModelId(active);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -528,6 +530,18 @@ class _AgentsTabState extends State<AgentsTab> {
             title: Text(
               title,
               overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: currentModel == null
+                ? null
+                : Text(
+                    currentModel,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+            trailing: IconButton(
+              icon: const Icon(Icons.tune),
+              tooltip: 'Model & providers',
+              onPressed: () => showAgentModelProviderSheet(context, active),
             ),
           ),
         ),
@@ -556,46 +570,16 @@ class _AgentsTabState extends State<AgentsTab> {
   }
 
   Widget _buildPromptInput(AgentProvider agents, AgentConnection active) {
-    final canSend = active.activeSessionId != null && !active.isSending;
+    final canSend = active.activeSessionId != null;
 
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _promptController,
-              decoration: const InputDecoration(
-                hintText: 'Send a prompt to the agent...',
-                border: OutlineInputBorder(),
-              ),
-              minLines: 1,
-              maxLines: 4,
-              enabled: canSend,
-              onSubmitted:
-                  canSend ? (_) => _sendPrompt(agents, active.id) : null,
-            ),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: canSend ? () => _sendPrompt(agents, active.id) : null,
-            child: active.isSending
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.send),
-          ),
-        ],
-      ),
+    return AgentPromptInput(
+      commands: active.availableCommands,
+      agents: active.availableAgents,
+      models: active.modelOptions,
+      enabled: canSend,
+      isSending: active.isSending,
+      onSubmit: (text) => agents.sendPrompt(active.id, text),
     );
-  }
-
-  Future<void> _sendPrompt(AgentProvider agents, String connectionId) async {
-    final text = _promptController.text;
-    _promptController.clear();
-    await agents.sendPrompt(connectionId, text);
   }
 
   Future<void> _showPermissionDialog(

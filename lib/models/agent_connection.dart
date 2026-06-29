@@ -1,5 +1,6 @@
 import 'package:opencode_api/opencode_api.dart';
 
+import '../models/agent_model_option.dart';
 import '../models/ssh_profile.dart';
 import '../services/opencode_connection_service.dart';
 
@@ -16,6 +17,13 @@ class AgentConnection {
     this.isSending = false,
     this.isLocal = false,
     this.selectedDirectory,
+    this.availableCommands = const [],
+    this.availableAgents = const [],
+    this.modelOptions = const [],
+    this.providerInfo,
+    this.configProviders,
+    this.selectedModelId,
+    this.isLoadingMetadata = false,
   });
 
   final String id;
@@ -29,4 +37,11 @@ class AgentConnection {
   bool isSending;
   bool isLocal;
   String? selectedDirectory;
+  List<Command> availableCommands;
+  List<Agent> availableAgents;
+  List<AgentModelOption> modelOptions;
+  ProviderListResponse? providerInfo;
+  ConfigProvidersResponse? configProviders;
+  String? selectedModelId;
+  bool isLoadingMetadata;
 }

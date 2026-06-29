@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:opencode_api/opencode_api.dart' hide ConfigService;
 import 'package:uuid/uuid.dart';
 
 import '../models/agent_connection.dart';
@@ -8,6 +9,7 @@ import '../models/agent_permission_request.dart';
 import '../models/ssh_profile.dart';
 import '../services/config_service.dart';
 import '../services/opencode_connection_service.dart';
+import '../utils/agent_prompt_utils.dart';
 import '../utils/agent_session_utils.dart';
 
 class AgentProvider extends ChangeNotifier {
@@ -59,6 +61,8 @@ class AgentProvider extends ChangeNotifier {
         'Agent connected: ${profile.name} (${profile.agentBaseUrl})',
       );
       notifyListeners();
+      // ignore: unawaited_futures
+      _loadMetadata(connection);
       return connection;
     } catch (e) {
       service.dispose();
@@ -134,6 +138,8 @@ class AgentProvider extends ChangeNotifier {
         'Agent connected locally (${profile.agentBaseUrl})',
       );
       notifyListeners();
+      // ignore: unawaited_futures
+      _loadMetadata(connection);
       return connection;
     } catch (e) {
       service.dispose();
@@ -200,6 +206,8 @@ class AgentProvider extends ChangeNotifier {
       connection.isLoadingMessages = false;
       notifyListeners();
     }
+    // ignore: unawaited_futures
+    _loadMetadata(connection);
   }
 
   void clearActiveSession(String connectionId) {
@@ -259,15 +267,101 @@ class AgentProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await connection.service.sendMessageAsync(
-        connection.activeSessionId!,
-        trimmed,
-      );
-      onLog?.call('Agent prompt sent to ${connection.profile.name}');
+      final sessionId = connection.activeSessionId!;
+      if (isSlashCommand(trimmed)) {
+        await connection.service.executeCommand(sessionId, trimmed);
+        onLog?.call('Agent command sent: $trimmed');
+      } else {
+        await connection.service.sendMessageAsync(sessionId, trimmed);
+        onLog?.call('Agent prompt sent to ${connection.profile.name}');
+      }
     } finally {
       connection.isSending = false;
       notifyListeners();
     }
+  }
+
+  Future<void> refreshProviders(String connectionId) async {
+    final connection = _findConnection(connectionId);
+    if (connection == null) return;
+
+    try {
+      connection.providerInfo = await connection.service.getProviders();
+      connection.configProviders =
+          await connection.service.getConfigProviders();
+      connection.modelOptions = deriveModelOptions(
+        providerInfo: connection.providerInfo,
+        configProviders: connection.configProviders,
+      );
+      onLog?.call('Agent providers refreshed');
+    } catch (e) {
+      onLog?.call('Agent provider refresh failed: $e');
+    }
+    notifyListeners();
+  }
+
+  Future<void> setModel(String connectionId, String modelId) async {
+    final connection = _findConnection(connectionId);
+    if (connection == null || connection.activeSessionId == null) return;
+
+    final trimmed = modelId.trim();
+    if (trimmed.isEmpty) return;
+
+    connection.isSending = true;
+    notifyListeners();
+
+    try {
+      await connection.service.executeCommand(
+        connection.activeSessionId!,
+        '/model $trimmed',
+      );
+      connection.selectedModelId = trimmed;
+      onLog?.call('Agent model set: $trimmed');
+    } finally {
+      connection.isSending = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> connectProvider(
+    String connectionId,
+    String providerId,
+    String apiKey,
+  ) async {
+    final connection = _findConnection(connectionId);
+    if (connection == null) return;
+
+    final trimmedKey = apiKey.trim();
+    if (providerId.isEmpty || trimmedKey.isEmpty) return;
+
+    await connection.service.setProviderAuth(
+      providerId,
+      <String, dynamic>{
+        'type': 'api',
+        'key': trimmedKey,
+      },
+    );
+    await refreshProviders(connectionId);
+    onLog?.call('Agent provider connected: $providerId');
+  }
+
+  Future<void> openModelsPicker(String connectionId) async {
+    final connection = _findConnection(connectionId);
+    if (connection == null || connection.activeSessionId == null) return;
+
+    await connection.service.executeCommand(
+      connection.activeSessionId!,
+      '/models',
+    );
+    onLog?.call('Agent models picker opened');
+  }
+
+  String? currentModelId(AgentConnection connection) {
+    return resolveCurrentModelId(
+      selectedModelId: connection.selectedModelId,
+      providerInfo: connection.providerInfo,
+      configProviders: connection.configProviders,
+    );
   }
 
   Future<void> respondToPermission({
@@ -298,6 +392,34 @@ class AgentProvider extends ChangeNotifier {
       return _connections.firstWhere((c) => c.id == connectionId);
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<void> _loadMetadata(AgentConnection connection) async {
+    connection.isLoadingMetadata = true;
+    notifyListeners();
+
+    try {
+      final results = await Future.wait<Object?>(<Future<Object?>>[
+        connection.service.getCommands(),
+        connection.service.getAgents(),
+        connection.service.getProviders(),
+        connection.service.getConfigProviders(),
+      ]);
+
+      connection.availableCommands = results[0]! as List<Command>;
+      connection.availableAgents = results[1]! as List<Agent>;
+      connection.providerInfo = results[2]! as ProviderListResponse;
+      connection.configProviders = results[3]! as ConfigProvidersResponse;
+      connection.modelOptions = deriveModelOptions(
+        providerInfo: connection.providerInfo,
+        configProviders: connection.configProviders,
+      );
+    } catch (e) {
+      onLog?.call('Agent metadata load failed: $e');
+    } finally {
+      connection.isLoadingMetadata = false;
+      notifyListeners();
     }
   }
 
