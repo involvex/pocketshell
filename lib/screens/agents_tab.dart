@@ -10,6 +10,7 @@ import '../models/ssh_profile.dart';
 import '../providers/agent_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
+import '../utils/agent_message_grouping.dart';
 import '../utils/agent_session_utils.dart';
 import '../widgets/agent_message_bubble.dart';
 import '../widgets/agent_permission_dialog.dart';
@@ -541,27 +542,37 @@ class AgentsTabState extends State<AgentsTab> {
       children: [
         Material(
           elevation: 1,
-          child: ListTile(
-            dense: true,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              tooltip: 'Back to sessions',
-              onPressed: () => agents.clearActiveSession(active.id),
-            ),
-            title: Text(
-              title,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: currentModel == null
-                ? null
-                : Text(
-                    currentModel,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+            child: Row(
               children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: 'Back to sessions',
+                  onPressed: () => agents.clearActiveSession(active.id),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      if (currentModel != null)
+                        Text(
+                          currentModel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.outline,
+                              ),
+                        ),
+                    ],
+                  ),
+                ),
                 IconButton(
                   icon: Icon(
                     active.collapseToolParts
@@ -574,16 +585,34 @@ class AgentsTabState extends State<AgentsTab> {
                   onPressed: () =>
                       agents.toggleCollapseToolParts(active.id),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.settings),
-                  tooltip: 'OpenCode config',
-                  onPressed: () => showOpenCodeConfigSheet(context, active),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.tune),
-                  tooltip: 'Model & providers',
-                  onPressed: () =>
-                      showAgentModelProviderSheet(context, active),
+                PopupMenuButton<String>(
+                  tooltip: 'Chat options',
+                  itemBuilder: (context) => <PopupMenuEntry<String>>[
+                    const PopupMenuItem<String>(
+                      value: 'config',
+                      child: ListTile(
+                        leading: Icon(Icons.settings),
+                        title: Text('OpenCode config'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'model',
+                      child: ListTile(
+                        leading: Icon(Icons.tune),
+                        title: Text('Model & providers'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ],
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'config':
+                        showOpenCodeConfigSheet(context, active);
+                      case 'model':
+                        showAgentModelProviderSheet(context, active);
+                    }
+                  },
                 ),
               ],
             ),
@@ -740,43 +769,80 @@ class _AgentChatScrollViewState extends State<_AgentChatScrollView> {
       }
     }
 
+    final groups = groupAgentMessages(connection.messages);
+
     return Stack(
       children: [
         ListView.builder(
           controller: _scrollController,
-          padding: const EdgeInsets.all(12),
-          itemCount: connection.messages.length,
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+          itemCount: groups.length,
           itemBuilder: (context, index) {
-            final message = connection.messages[index];
-            return AgentMessageBubble(
-              message: message,
+            final group = groups[index];
+            return AgentMessageGroupBubble(
+              group: group,
               collapseToolParts: connection.collapseToolParts,
             );
           },
         ),
         if (_showScrollTop)
           Positioned(
-            right: 12,
-            bottom: 64,
-            child: FloatingActionButton.small(
-              heroTag: 'agent_scroll_top',
+            right: 8,
+            bottom: 52,
+            child: _ScrollFab(
+              icon: Icons.arrow_upward,
               tooltip: 'Scroll to top',
               onPressed: _scrollToTop,
-              child: const Icon(Icons.arrow_upward),
+              heroTag: 'agent_scroll_top',
             ),
           ),
         if (_showScrollBottom)
           Positioned(
-            right: 12,
-            bottom: 12,
-            child: FloatingActionButton.small(
-              heroTag: 'agent_scroll_bottom',
+            right: 8,
+            bottom: 8,
+            child: _ScrollFab(
+              icon: Icons.arrow_downward,
               tooltip: 'Scroll to bottom',
               onPressed: _scrollToBottom,
-              child: const Icon(Icons.arrow_downward),
+              heroTag: 'agent_scroll_bottom',
             ),
           ),
       ],
+    );
+  }
+}
+
+class _ScrollFab extends StatelessWidget {
+  const _ScrollFab({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    required this.heroTag,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final String heroTag;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 2,
+      color: Theme.of(context).colorScheme.primaryContainer,
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onPressed,
+        customBorder: const CircleBorder(),
+        child: Tooltip(
+          message: tooltip,
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Icon(icon, size: 18),
+          ),
+        ),
+      ),
     );
   }
 }
