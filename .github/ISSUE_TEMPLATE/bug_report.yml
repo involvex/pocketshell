@@ -1,0 +1,96 @@
+name: Bug report
+description: Report something that is broken or not working as expected
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please search [existing issues](https://github.com/involvex/pocketshell/issues) first.
+
+  - type: input
+    id: version
+    attributes:
+      label: PocketShell version
+      description: Found in Settings → About (e.g. 1.0.2)
+      placeholder: "1.0.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Where did the issue occur?
+      options:
+        - Android
+        - Windows
+        - Linux
+        - macOS
+        - iOS
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the app is affected?
+      options:
+        - SSH client / terminal
+        - SSH server
+        - OpenCode agents
+        - SFTP / file browser
+        - Settings / profiles / keys
+        - Android widgets
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug
+      placeholder: When I connect to my Windows host and…
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the behavior
+      placeholder: |
+        1. Open PocketShell
+        2. Connect to profile X
+        3. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Relevant output from the Logs tab or screenshots (redact secrets)
+      placeholder: Paste logs or drag images here
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate
+          required: true
+        - label: I removed hostnames, passwords, and private keys from this report
+          required: true

@@ -1,4 +1,4 @@
-# SSH App
+# Pocketshell
 
 A powerful and versatile Flutter-based SSH Client and Server application for Mobile and Desktop.
 
@@ -69,8 +69,8 @@ A powerful and versatile Flutter-based SSH Client and Server application for Mob
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/your-username/ssh_app.git
-   cd ssh_app
+   git clone https://github.com/involvex/pocketshell.git
+   cd pocketshell
    ```
 
 2. Install dependencies:
