@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Extract changelog
+        id: changelog
+        run: |
+          BODY_FILE="${RUNNER_TEMP}/release-notes.md"
+          if ! .github/scripts/extract-changelog.sh "${{ steps.version.outputs.version }}" > "$BODY_FILE"; then
+            echo "Failed to extract changelog" >&2
+            exit 1
+          fi
+          if [[ ! -s "$BODY_FILE" ]]; then
+            echo "No changelog entry for version ${{ steps.version.outputs.version }}" >&2
+            exit 1
+          fi
+          {
+            echo "body<<EOF"
+            cat "$BODY_FILE"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Prepare APK artifact
+        run: |
+          APK_SRC="build/app/outputs/flutter-apk/app-release.apk"
+          APK_DST="PocketShell-v${{ steps.version.outputs.version }}.apk"
+          cp "$APK_SRC" "$APK_DST"
+          echo "apk_path=$APK_DST" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: PocketShell v${{ steps.version.outputs.version }}
+          body: ${{ steps.changelog.outputs.body }}
+          files: ${{ env.apk_path }}
+          draft: false
+          prerelease: false
+          generate_release_notes: false
