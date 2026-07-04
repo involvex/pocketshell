@@ -150,3 +150,14 @@ lib/
 - `AppLifecycleService` and `ConnectionForegroundService` keep SSH/agent sessions alive when Android is backgrounded.
 - Agent chat groups consecutive same-role messages via `groupAgentMessages` in `lib/utils/agent_message_grouping.dart`; rendering uses `AgentMessageBubble` and `AgentMessagePartTile`.
 - `OpenCodeRemoteConfigService` imports Windows host config over SSH from `%USERPROFILE%\.config\opencode\`; Android build uses AGP 9.0.1 with vendored `packages/home_widget`.
+
+## Cursor Cloud specific instructions
+
+The standard commands (`flutter pub get` / `flutter analyze` / `flutter test`) are documented in the Build/Lint/Testing sections above. Notes below cover only non-obvious caveats for the headless cloud VM.
+
+- **Flutter SDK** is installed at `~/flutter` and on `PATH` via `~/.bashrc`. The startup update script only runs `flutter pub get`; the SDK and system libraries live in the VM snapshot.
+- **Running the app:** Android is the primary product target, but this VM has no Android device. The runnable dev target here is the Linux desktop against the virtual display: `export DISPLAY=:1 && flutter run -d linux`. `flutter run -d web-server` is not viable because `flutter_pty` has no web support.
+- **Linux desktop build deps** (already in the snapshot): `ninja-build`, `libgtk-3-dev`, `build-essential`, and crucially `libstdc++-14-dev`. Clang 18 selects GCC 14, so without `libstdc++-14-dev` the build fails with `/usr/bin/ld: cannot find -lstdc++`.
+- **`flutter_secure_storage` throws `PlatformException(KeyringLocked)` on startup** here because the headless VM has no unlocked libsecret/GNOME keyring. This is non-fatal: the app runs normally and SSH profiles (stored via `shared_preferences`) work. Only secure-storage-backed values (e.g. the OpenCode Zen API key) are affected.
+- **Pre-existing `assets/` warning:** `flutter analyze`/`test` print `asset directory 'assets/' doesn't exist` because `pubspec.yaml` lists `assets/` but the dir is absent. It is a harmless warning, not a failure.
+- **Testing the SSH client E2E locally:** start a local `sshd` (`sudo /usr/sbin/sshd`), set a password for the `ubuntu` user, and connect the app's Client tab to `localhost:22`. This exercises the real SSH connect + terminal path without an external host.
