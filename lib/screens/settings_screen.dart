@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:ssh_app/constants/app_metadata.dart';
 import '../providers/settings_provider.dart';
 import '../services/backup_service.dart';
 import '../widgets/app_about_tile.dart';
@@ -252,9 +255,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               const AppAboutTile(),
+              const SizedBox(height: 24),
+              const _SettingsFooter(),
+              const SizedBox(height: 16),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _SettingsFooter extends StatelessWidget {
+  const _SettingsFooter();
+
+  Future<void> _openGitHubRepo(BuildContext context) async {
+    final Uri uri = Uri.parse(kGitHubRepoUrl);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open GitHub repository')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return Center(
+      child: TextButton.icon(
+        onPressed: () => _openGitHubRepo(context),
+        icon: Icon(Icons.open_in_new, size: 16, color: theme.colorScheme.primary),
+        label: Text(
+          kGitHubRepoUrl,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.primary,
+          ),
+        ),
       ),
     );
   }
