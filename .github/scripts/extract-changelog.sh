@@ -3,6 +3,7 @@
 set -euo pipefail
 
 VERSION="${1:?Usage: extract-changelog.sh <version>}"
+VERSION="${VERSION#v}"
 CHANGELOG="${2:-CHANGELOG.md}"
 
 if [[ ! -f "$CHANGELOG" ]]; then
