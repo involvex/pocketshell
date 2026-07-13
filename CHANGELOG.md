@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [1.0.4] - 2026-07-13
+
+### Fixed
+
+- Remove empty assets directory declaration causing CI analyze failure
+
+
 
 
 ## [1.0.3] - 2026-07-13
