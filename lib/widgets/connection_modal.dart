@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/ssh_provider.dart';
 import '../models/ssh_profile.dart';
+import '../utils/session_manager.dart';
 
 class ConnectionModal extends StatefulWidget {
   const ConnectionModal({super.key});
@@ -19,6 +20,7 @@ class _ConnectionModalState extends State<ConnectionModal> {
   final _startupCommandController = TextEditingController();
   bool _isLoading = false;
   bool _isServer = false;
+  SessionManager _sessionManager = SessionManager.none;
 
   @override
   void initState() {
@@ -36,6 +38,7 @@ class _ConnectionModalState extends State<ConnectionModal> {
       _passwordController.text = session.password ?? '';
       _startupCommandController.text = session.startupCommand ?? '';
       _isServer = session.isServer;
+      _sessionManager = session.sessionManager;
     } else {
       _hostController.text = 'localhost';
       _usernameController.text = 'user';
@@ -58,6 +61,7 @@ class _ConnectionModalState extends State<ConnectionModal> {
       startupCommand: _startupCommandController.text.isNotEmpty
           ? _startupCommandController.text
           : null,
+      sessionManager: _sessionManager,
     );
 
     await ssh.saveLastSession(profile);
@@ -71,7 +75,6 @@ class _ConnectionModalState extends State<ConnectionModal> {
           sshKeyType: null,
         );
       } else {
-        // create a new session entry then connect it
         final entry = ssh.createSessionFromProfile(profile, name: profile.name);
         await ssh.connectSession(entry.id);
         if (mounted) Navigator.pop(context);
@@ -156,11 +159,29 @@ class _ConnectionModalState extends State<ConnectionModal> {
                   validator: (value) => value!.isEmpty ? 'Required' : null,
                 ),
                 const SizedBox(height: 8),
+                DropdownButtonFormField<SessionManager>(
+                  key: ValueKey(_sessionManager),
+                  initialValue: _sessionManager,
+                  decoration: const InputDecoration(
+                    labelText: 'Session Manager',
+                  ),
+                  items: SessionManager.values.map((manager) {
+                    return DropdownMenuItem(
+                      value: manager,
+                      child: Text(manager.displayName),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _sessionManager = value);
+                  },
+                ),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: _startupCommandController,
                   decoration: const InputDecoration(
                     labelText: 'Startup Command (optional)',
-                    hintText: 'e.g., ls -la, pwd, whoami',
+                    hintText: 'Overrides session manager when set',
                   ),
                 ),
               ],

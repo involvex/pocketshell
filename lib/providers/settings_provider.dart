@@ -5,6 +5,8 @@ import '../models/home_toolbar_action.dart';
 import '../models/keyboard_shortcut.dart';
 import '../services/config_service.dart';
 import '../services/secure_storage_service.dart';
+import '../utils/terminal_enter_mapping.dart';
+import '../utils/terminal_themes.dart';
 
 enum AppTheme { system, light, dark, hacker }
 
@@ -13,6 +15,10 @@ enum TerminalFontFamily {
   courierNew,
   consolas,
   menlo,
+  jetBrainsMono,
+  firaCode,
+  spaceMono,
+  sourceCodePro,
 }
 
 enum TerminalFontWeight {
@@ -39,6 +45,9 @@ class SettingsProvider extends ChangeNotifier {
   TerminalFontFamily _terminalFontFamily = TerminalFontFamily.monospace;
   TerminalFontWeight _terminalFontWeight = TerminalFontWeight.normal;
   TerminalFontStyle _terminalFontStyle = TerminalFontStyle.normal;
+  TerminalEnterSends _terminalEnterSends = TerminalEnterSends.cr;
+  bool _sendMouseTaps = true;
+  TerminalColorTheme _terminalColorTheme = TerminalColorTheme.standard;
   AiProvider _aiProvider = AiProvider.opencodeZen;
   String _opencodeZenApiKey = '';
   String _kiloApiKey = '';
@@ -58,6 +67,9 @@ class SettingsProvider extends ChangeNotifier {
   TerminalFontFamily get terminalFontFamily => _terminalFontFamily;
   TerminalFontWeight get terminalFontWeight => _terminalFontWeight;
   TerminalFontStyle get terminalFontStyle => _terminalFontStyle;
+  TerminalEnterSends get terminalEnterSends => _terminalEnterSends;
+  bool get sendMouseTaps => _sendMouseTaps;
+  TerminalColorTheme get terminalColorTheme => _terminalColorTheme;
   AiProvider get aiProvider => _aiProvider;
   String get opencodeZenApiKey => _opencodeZenApiKey;
   String get kiloApiKey => _kiloApiKey;
@@ -143,6 +155,15 @@ class SettingsProvider extends ChangeNotifier {
       settings['terminalFontStyle'] as String? ?? 'normal',
     );
 
+    _terminalEnterSends = TerminalEnterSends.values.firstWhere(
+      (e) => e.name == (settings['terminalEnterSends'] as String? ?? 'cr'),
+      orElse: () => TerminalEnterSends.cr,
+    );
+    _sendMouseTaps = settings['sendMouseTaps'] as bool? ?? true;
+    _terminalColorTheme = TerminalColorThemeX.fromStorage(
+      settings['terminalColorTheme'] as String?,
+    );
+
     _aiProvider = AiProvider.values.firstWhere(
       (e) => e.name == (settings['aiProvider'] as String? ?? 'opencodeZen'),
       orElse: () => AiProvider.opencodeZen,
@@ -180,6 +201,10 @@ class SettingsProvider extends ChangeNotifier {
       TerminalFontFamily.courierNew => 'courierNew',
       TerminalFontFamily.consolas => 'consolas',
       TerminalFontFamily.menlo => 'menlo',
+      TerminalFontFamily.jetBrainsMono => 'jetBrainsMono',
+      TerminalFontFamily.firaCode => 'firaCode',
+      TerminalFontFamily.spaceMono => 'spaceMono',
+      TerminalFontFamily.sourceCodePro => 'sourceCodePro',
     };
   }
 
@@ -265,6 +290,24 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> setTerminalFontStyle(TerminalFontStyle style) async {
     _terminalFontStyle = style;
     await _saveSetting('terminalFontStyle', style.name);
+    notifyListeners();
+  }
+
+  Future<void> setTerminalEnterSends(TerminalEnterSends value) async {
+    _terminalEnterSends = value;
+    await _saveSetting('terminalEnterSends', value.name);
+    notifyListeners();
+  }
+
+  Future<void> setSendMouseTaps(bool value) async {
+    _sendMouseTaps = value;
+    await _saveSetting('sendMouseTaps', value);
+    notifyListeners();
+  }
+
+  Future<void> setTerminalColorTheme(TerminalColorTheme theme) async {
+    _terminalColorTheme = theme;
+    await _saveSetting('terminalColorTheme', theme.name);
     notifyListeners();
   }
 

@@ -11,12 +11,17 @@ import '../services/network_discovery_service.dart';
 import '../services/app_lifecycle_service.dart';
 import '../services/widget_profile_service.dart';
 import '../models/session_entry.dart';
+import '../utils/session_manager.dart';
 import '../utils/terminal_context.dart';
+import '../utils/terminal_enter_mapping.dart';
 
 class SSHProvider extends ChangeNotifier {
   // sessions container
   final List<SessionEntry> sessions = <SessionEntry>[];
   String? activeSessionId;
+
+  /// Synced from [SettingsProvider] for startup / paste newline mapping.
+  TerminalEnterSends terminalEnterSends = TerminalEnterSends.cr;
 
   bool isServerRunning = false;
   int serverPort = 22;
@@ -65,6 +70,13 @@ class SSHProvider extends ChangeNotifier {
     lastSession = profile;
     await ConfigService.saveLastSession(profile.toJson());
     notifyListeners();
+  }
+
+  void setTerminalEnterSends(TerminalEnterSends mapping) {
+    if (terminalEnterSends == mapping) {
+      return;
+    }
+    terminalEnterSends = mapping;
   }
 
   Future<void> scanNetwork() async {
@@ -182,25 +194,38 @@ class SSHProvider extends ChangeNotifier {
       addLog('Connected: ${entry.name}');
       notifyListeners();
 
-      if (profile.startupCommand?.isNotEmpty ?? false) {
-        final startupCommand = profile.startupCommand!;
-        final trimmed = startupCommand.trim();
+      final effectiveStartup = resolveStartupCommand(
+        sessionManager: profile.sessionManager,
+        startupCommand: profile.startupCommand,
+      );
+      if (effectiveStartup != null && effectiveStartup.isNotEmpty) {
+        final trimmed = effectiveStartup.trim();
         final isGit = trimmed.toLowerCase().startsWith('git ');
         if (isGit) {
-          final escaped = startupCommand.replaceAll("'", "''");
+          final escaped = effectiveStartup.replaceAll("'", "''");
           const gitFullPath = r'C:\Program Files\Git\cmd\git.exe';
           final psCmd =
               "powershell -NoProfile -Command \"& '$gitFullPath' $escaped\"";
           try {
-            shell.stdin.add(utf8.encode('$psCmd\r'));
+            shell.stdin.add(
+              utf8.encode(withEnterSuffix(psCmd, terminalEnterSends)),
+            );
             addLog('Executed startup command via PowerShell wrapper: $psCmd');
           } catch (_) {
-            shell.stdin.add(utf8.encode('$startupCommand\r'));
-            addLog('Fallback: Executed startup command raw: $startupCommand');
+            shell.stdin.add(
+              utf8.encode(
+                withEnterSuffix(effectiveStartup, terminalEnterSends),
+              ),
+            );
+            addLog('Fallback: Executed startup command raw: $effectiveStartup');
           }
         } else {
-          shell.stdin.add(utf8.encode('$startupCommand\r'));
-          addLog('Executed startup command: $startupCommand');
+          shell.stdin.add(
+            utf8.encode(
+              withEnterSuffix(effectiveStartup, terminalEnterSends),
+            ),
+          );
+          addLog('Executed startup command: $effectiveStartup');
         }
       }
     } catch (e) {
@@ -302,7 +327,8 @@ class SSHProvider extends ChangeNotifier {
   void sendString(String data) {
     final entry = activeSession;
     if (entry != null && entry.shellSession != null && entry.isConnected) {
-      entry.shellSession!.stdin.add(utf8.encode(data));
+      final normalized = normalizeNewlines(data, terminalEnterSends);
+      entry.shellSession!.stdin.add(utf8.encode(normalized));
     }
   }
 

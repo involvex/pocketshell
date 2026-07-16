@@ -47,6 +47,10 @@ class TerminalFontSettings extends StatelessWidget {
                         TerminalFontFamily.courierNew => 'Courier New',
                         TerminalFontFamily.consolas => 'Consolas',
                         TerminalFontFamily.menlo => 'Menlo',
+                        TerminalFontFamily.jetBrainsMono => 'JetBrains Mono',
+                        TerminalFontFamily.firaCode => 'Fira Code',
+                        TerminalFontFamily.spaceMono => 'Space Mono',
+                        TerminalFontFamily.sourceCodePro => 'Source Code Pro',
                       }),
                       selected: selected,
                       onSelected: (value) {

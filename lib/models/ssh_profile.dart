@@ -1,5 +1,7 @@
 import 'package:uuid/uuid.dart';
 
+import '../utils/session_manager.dart';
+
 class SSHProfile {
   final String id;
   final String name;
@@ -12,6 +14,7 @@ class SSHProfile {
   final String? startupCommand;
   final int agentPort;
   final bool useHttps;
+  final SessionManager sessionManager;
 
   SSHProfile({
     required this.name,
@@ -25,6 +28,7 @@ class SSHProfile {
     this.startupCommand,
     this.agentPort = 5000,
     this.useHttps = false,
+    this.sessionManager = SessionManager.none,
   }) : id = id ?? const Uuid().v4();
 
   String get agentBaseUrl =>
@@ -42,6 +46,7 @@ class SSHProfile {
     String? startupCommand,
     int? agentPort,
     bool? useHttps,
+    SessionManager? sessionManager,
   }) {
     return SSHProfile(
       id: id ?? this.id,
@@ -55,6 +60,7 @@ class SSHProfile {
       startupCommand: startupCommand ?? this.startupCommand,
       agentPort: agentPort ?? this.agentPort,
       useHttps: useHttps ?? this.useHttps,
+      sessionManager: sessionManager ?? this.sessionManager,
     );
   }
 
@@ -71,6 +77,7 @@ class SSHProfile {
       'startupCommand': startupCommand,
       'agentPort': agentPort,
       'useHttps': useHttps,
+      'sessionManager': sessionManager.name,
     };
   }
 
@@ -87,6 +94,9 @@ class SSHProfile {
       startupCommand: json['startupCommand'] as String?,
       agentPort: json['agentPort'] as int? ?? 5000,
       useHttps: json['useHttps'] as bool? ?? false,
+      sessionManager: SessionManagerX.fromStorage(
+        json['sessionManager'] as String?,
+      ),
     );
   }
 }

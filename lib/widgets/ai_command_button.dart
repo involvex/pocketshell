@@ -10,6 +10,7 @@ import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
 import '../services/ai_gateway_service.dart';
 import '../utils/terminal_context.dart';
+import '../utils/terminal_enter_mapping.dart';
 
 class AiCommandButton extends StatelessWidget {
   const AiCommandButton({super.key});
@@ -185,7 +186,7 @@ class _AiCommandDialogState extends State<_AiCommandDialog> {
     if (command.isEmpty) return;
 
     final ssh = context.read<SSHProvider>();
-    ssh.sendString('$command\r');
+    ssh.sendString(withEnterSuffix(command, ssh.terminalEnterSends));
     if (mounted) Navigator.of(context).pop();
   }
 

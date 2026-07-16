@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/ssh_provider.dart';
 import '../models/ssh_profile.dart';
+import '../utils/session_manager.dart';
 
 class ProfileManager extends StatefulWidget {
   const ProfileManager({super.key});
@@ -118,6 +119,7 @@ class _ProfileManagerState extends State<ProfileManager> {
         TextEditingController(text: profile?.startupCommand ?? '');
     var isServer = profile?.isServer ?? false;
     var useHttps = profile?.useHttps ?? false;
+    var sessionManager = profile?.sessionManager ?? SessionManager.none;
 
     showDialog<void>(
       context: context,
@@ -167,11 +169,29 @@ class _ProfileManagerState extends State<ProfileManager> {
                       obscureText: true,
                     ),
                     const SizedBox(height: 8),
+                    DropdownButtonFormField<SessionManager>(
+                      key: ValueKey(sessionManager),
+                      initialValue: sessionManager,
+                      decoration: const InputDecoration(
+                        labelText: 'Session Manager',
+                      ),
+                      items: SessionManager.values.map((manager) {
+                        return DropdownMenuItem(
+                          value: manager,
+                          child: Text(manager.displayName),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() => sessionManager = value);
+                      },
+                    ),
+                    const SizedBox(height: 8),
                     TextField(
                       controller: startupCommandController,
                       decoration: const InputDecoration(
                         labelText: 'Startup Command (optional)',
-                        hintText: 'e.g., ls -la, pwd',
+                        hintText: 'Overrides session manager when set',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -214,6 +234,7 @@ class _ProfileManagerState extends State<ProfileManager> {
                           : null,
                       agentPort: int.tryParse(agentPortController.text) ?? 5000,
                       useHttps: useHttps,
+                      sessionManager: sessionManager,
                     );
                     Provider.of<SSHProvider>(context, listen: false)
                         .saveProfile(newProfile);

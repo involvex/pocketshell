@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm/xterm.dart';
-import 'package:xterm/ui.dart';
 import '../models/home_toolbar_action.dart';
 import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
@@ -26,6 +25,9 @@ import '../screens/snippet_config_screen.dart';
 import '../screens/agents_tab.dart';
 import '../services/widget_launch_handler.dart';
 import '../utils/terminal_style_builder.dart';
+import '../utils/terminal_themes.dart';
+import '../utils/enter_mapping_input_handler.dart';
+import '../utils/terminal_enter_mapping.dart';
 
 enum AppTab { client, server, agents, logs }
 
@@ -411,9 +413,61 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class ClientTab extends StatelessWidget {
+class ClientTab extends StatefulWidget {
   final bool isFullScreen;
   const ClientTab({required this.isFullScreen, super.key});
+
+  @override
+  State<ClientTab> createState() => _ClientTabState();
+}
+
+class _ClientTabState extends State<ClientTab> {
+  final Map<String, TerminalController> _controllers =
+      <String, TerminalController>{};
+  final Map<String, EnterMappingInputHandler> _enterHandlers =
+      <String, EnterMappingInputHandler>{};
+
+  @override
+  void dispose() {
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  TerminalController _controllerFor(
+    String sessionId,
+    bool sendMouseTaps,
+  ) {
+    final existing = _controllers[sessionId];
+    if (existing != null) {
+      existing.setPointerInputs(
+        sendMouseTaps
+            ? const PointerInputs({PointerInput.tap})
+            : const PointerInputs.none(),
+      );
+      return existing;
+    }
+    final controller = TerminalController(
+      pointerInputs: sendMouseTaps
+          ? const PointerInputs({PointerInput.tap})
+          : const PointerInputs.none(),
+    );
+    _controllers[sessionId] = controller;
+    return controller;
+  }
+
+  void _applyEnterMapping(Terminal terminal, TerminalEnterSends mapping) {
+    final existing = _enterHandlers[identityHashCode(terminal).toString()];
+    if (existing != null) {
+      existing.mapping = mapping;
+      terminal.inputHandler = existing;
+      return;
+    }
+    final handler = EnterMappingInputHandler(mapping: mapping);
+    _enterHandlers[identityHashCode(terminal).toString()] = handler;
+    terminal.inputHandler = handler;
+  }
 
   Widget _buildSessionTabBar(BuildContext context) {
     return Consumer<SSHProvider>(builder: (context, ssh, child) {
@@ -479,39 +533,25 @@ class ClientTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer2<SSHProvider, SettingsProvider>(
       builder: (context, ssh, settings, child) {
-        final isHacker = settings.appTheme == AppTheme.hacker;
+        ssh.setTerminalEnterSends(settings.terminalEnterSends);
 
-        final terminalTheme = isHacker
-            ? const TerminalTheme(
-                cursor: Color(0XFFAEAFAD),
-                selection: Color(0XFFAEAFAD),
-                foreground: Colors.greenAccent,
-                background: Color(0XFF000000),
-                black: Color(0XFF000000),
-                red: Color(0XFFCD3131),
-                green: Color(0XFF0DBC79),
-                yellow: Color(0XFFE5E510),
-                blue: Color(0XFF2472C8),
-                magenta: Color(0XFFBC3FBC),
-                cyan: Color(0XFF11A8CD),
-                white: Color(0XFFE5E5E5),
-                brightBlack: Color(0XFF666666),
-                brightRed: Color(0XFFF14C4C),
-                brightGreen: Color(0XFF23D18B),
-                brightYellow: Color(0XFFF5F543),
-                brightBlue: Color(0XFF3B8EEA),
-                brightMagenta: Color(0XFFD670D6),
-                brightCyan: Color(0XFF29B8DB),
-                brightWhite: Color(0XFFFFFFFF),
-                searchHitBackground: Color(0XFFFFFF2B),
-                searchHitBackgroundCurrent: Color(0XFF31FF26),
-                searchHitForeground: Color(0XFF000000),
-              )
-            : TerminalThemes.defaultTheme;
+        final activeIds = ssh.sessions.map((s) => s.id).toSet();
+        _controllers.removeWhere((id, controller) {
+          if (activeIds.contains(id)) {
+            return false;
+          }
+          controller.dispose();
+          return true;
+        });
+
+        final terminalTheme = settings.appTheme == AppTheme.hacker &&
+                settings.terminalColorTheme == TerminalColorTheme.standard
+            ? TerminalColorTheme.hacker.toTerminalTheme()
+            : settings.terminalColorTheme.toTerminalTheme();
 
         return Column(
           children: <Widget>[
-            if (!isFullScreen) _buildSessionTabBar(context),
+            if (!widget.isFullScreen) _buildSessionTabBar(context),
             Expanded(
               child: Consumer<SSHProvider>(builder: (context, ssh, child) {
                 final active = ssh.activeSession;
@@ -563,15 +603,40 @@ class ClientTab extends StatelessWidget {
                     ),
                   );
                 }
+
+                _applyEnterMapping(
+                  active.terminal,
+                  settings.terminalEnterSends,
+                );
+                final controller = _controllerFor(
+                  active.id,
+                  settings.sendMouseTaps,
+                );
+
                 return Container(
                   color: terminalTheme.background,
-                  child: TerminalView(
-                    active.terminal,
-                    padding: const EdgeInsets.all(8),
-                    theme: terminalTheme,
-                    textStyle:
-                        TerminalStyleBuilder.buildTerminalStyle(settings),
-                    autoResize: true,
+                  child: _TerminalLongPressHost(
+                    onLongPress: () {
+                      active.terminal.keyInput(
+                        TerminalKey.f10,
+                        shift: true,
+                      );
+                    },
+                    child: TerminalView(
+                      active.terminal,
+                      controller: controller,
+                      padding: const EdgeInsets.all(8),
+                      theme: terminalTheme,
+                      textStyle:
+                          TerminalStyleBuilder.buildTerminalStyle(settings),
+                      autoResize: true,
+                      onSecondaryTapDown: (_, __) {
+                        active.terminal.keyInput(
+                          TerminalKey.f10,
+                          shift: true,
+                        );
+                      },
+                    ),
                   ),
                 );
               }),
@@ -589,7 +654,7 @@ class ClientTab extends StatelessWidget {
                   ],
                 ),
               ),
-            if (ssh.sessions.any((s) => s.isConnected) && !isFullScreen)
+            if (ssh.sessions.any((s) => s.isConnected) && !widget.isFullScreen)
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: OutlinedButton.icon(
@@ -613,6 +678,66 @@ class ClientTab extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Detects long-press via [Listener] (avoids gesture-arena conflicts with
+/// xterm's selection long-press) and sends a context-menu key.
+class _TerminalLongPressHost extends StatefulWidget {
+  const _TerminalLongPressHost({
+    required this.onLongPress,
+    required this.child,
+  });
+
+  final VoidCallback onLongPress;
+  final Widget child;
+
+  @override
+  State<_TerminalLongPressHost> createState() => _TerminalLongPressHostState();
+}
+
+class _TerminalLongPressHostState extends State<_TerminalLongPressHost> {
+  static const Duration _longPressDuration = Duration(milliseconds: 550);
+  static const double _moveSlop = 18;
+
+  int? _pointer;
+  Offset? _downPosition;
+  bool _fired = false;
+
+  void _cancel() {
+    _pointer = null;
+    _downPosition = null;
+    _fired = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        _pointer = event.pointer;
+        _downPosition = event.localPosition;
+        _fired = false;
+        Future<void>.delayed(_longPressDuration, () {
+          if (!mounted || _pointer != event.pointer || _fired) {
+            return;
+          }
+          _fired = true;
+          widget.onLongPress();
+        });
+      },
+      onPointerMove: (event) {
+        if (_pointer != event.pointer || _downPosition == null) {
+          return;
+        }
+        if ((event.localPosition - _downPosition!).distance > _moveSlop) {
+          _cancel();
+        }
+      },
+      onPointerUp: (_) => _cancel(),
+      onPointerCancel: (_) => _cancel(),
+      child: widget.child,
     );
   }
 }

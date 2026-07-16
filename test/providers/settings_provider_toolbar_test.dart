@@ -12,8 +12,10 @@ void main() {
         HomeToolbarActionX.defaultPinned,
       );
       expect(settings.isToolbarActionPinned(HomeToolbarAction.connect), isTrue);
-      expect(settings.isToolbarActionPinned(HomeToolbarAction.profiles), isTrue);
-      expect(settings.isToolbarActionPinned(HomeToolbarAction.snippets), isFalse);
+      expect(
+          settings.isToolbarActionPinned(HomeToolbarAction.profiles), isTrue);
+      expect(
+          settings.isToolbarActionPinned(HomeToolbarAction.snippets), isFalse);
     });
   });
 }

@@ -11,6 +11,7 @@ import '../widgets/theme_picker.dart';
 import '../widgets/shortcut_editor.dart';
 import '../widgets/keyboard_shortcut_bar.dart';
 import '../widgets/terminal_font_settings.dart';
+import '../widgets/terminal_input_settings.dart';
 import '../widgets/ai_provider_settings.dart';
 import '../widgets/opencode_config_sheet.dart';
 import '../providers/agent_provider.dart';
@@ -148,6 +149,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               const TerminalFontSettings(),
+              const SizedBox(height: 16),
+              const TerminalInputSettings(),
               const Divider(height: 32),
               const Text('AI Provider',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -288,7 +291,8 @@ class _SettingsFooter extends StatelessWidget {
     return Center(
       child: TextButton.icon(
         onPressed: () => _openGitHubRepo(context),
-        icon: Icon(Icons.open_in_new, size: 16, color: theme.colorScheme.primary),
+        icon:
+            Icon(Icons.open_in_new, size: 16, color: theme.colorScheme.primary),
         label: Text(
           kGitHubRepoUrl,
           style: theme.textTheme.bodySmall?.copyWith(
