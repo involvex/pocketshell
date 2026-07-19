@@ -48,6 +48,14 @@ Three compounding issues:
 
 `onReorderItem` itself is correct for Flutter 3.41+ (replaces deprecated `onReorder`). The reorder callback logic is mostly fine; the gesture plumbing and nested scroll are the failure points.
 
+### Bug C — Save closes Settings unexpectedly
+
+`_save()` calls `Navigator.pop(context)` after `updateShortcuts`. The editor is embedded inside Settings (`ExpansionTile` children), not pushed as a route, so Save pops the entire Settings screen instead of confirming in place. Fix: remove the pop; optionally show a SnackBar (`Shortcuts saved`).
+
+### Bug D — Oversized nested viewport
+
+`ShortcutEditor` forces `height: MediaQuery.size.height * 0.75` inside the expansion tile, which worsens nested scrolling. Prefer `shrinkWrap: true` on the reorder list (or a modest max height) so Settings can scroll as one surface.
+
 ---
 
 ## File Structure
@@ -687,7 +695,36 @@ Notes:
 - Keep `_onReorderItem` as-is for Flutter 3.47 `onReorderItem` (index already adjusted; do **not** subtract 1).
 - Optional Settings polish (same PR if quick): when embedding in `settings_screen.dart`, leave `ShortcutEditor` as-is; `primary: false` + explicit drag handle is enough. Do **not** change Settings layout unless reorder still fails on device.
 
-If reorder still fights the parent `ListView` on device, wrap `ShortcutEditor`'s root in:
+Also fix Bugs C and D in the same edit:
+
+1. Change `_save` to **not** pop Settings:
+
+```dart
+Future<void> _save() async {
+  final SettingsProvider settings = context.read<SettingsProvider>();
+  await settings.updateShortcuts(_shortcuts);
+  if (!mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Shortcuts saved')),
+  );
+}
+```
+
+2. Remove the fixed `height: MediaQuery.of(context).size.height * 0.75` from the editor container. Prefer:
+
+```dart
+child: ReorderableListView.builder(
+  shrinkWrap: true,
+  buildDefaultDragHandles: false,
+  primary: false,
+  physics: const NeverScrollableScrollPhysics(),
+  // ...
+)
+```
+
+When using `shrinkWrap: true` + `NeverScrollableScrollPhysics`, drop the wrapping `Expanded` and let the Settings `ListView` own scrolling. Keep a reasonable `ConstrainedBox(maxHeight: …)` only if the list becomes awkwardly long.
+
+If reorder still fights the parent `ListView` on device after the above, wrap `ShortcutEditor`'s root in:
 
 ```dart
 NotificationListener<ScrollNotification>(
@@ -696,7 +733,7 @@ NotificationListener<ScrollNotification>(
 )
 ```
 
-Only add this if needed after manual Android check — YAGNI otherwise.
+Only add the notification absorber if still needed after manual Android check — YAGNI otherwise.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -761,7 +798,7 @@ git push -u origin cursor/fix-configure-shortcuts-8a40
 
 ## Self-Review
 
-1. **Spec coverage:** Add applies real shortcut ✓ — Task 2. Drag sort works ✓ — Task 3. Catalog prevents label/action drift ✓ — Task 1. Persistence via existing Save ✓ — unchanged provider path.
+1. **Spec coverage:** Add applies real shortcut ✓ — Task 2. Drag sort works ✓ — Task 3. Catalog prevents label/action drift ✓ — Task 1. Persistence via existing Save ✓ — unchanged provider path. Save no longer pops Settings ✓ — Task 3. Nested height/scroll fixed ✓ — Task 3.
 2. **Placeholder scan:** No TBD/TODO steps; concrete code and commands included.
 3. **Type consistency:** `createForAction` / `actionsForRow` / `displayNameFor` names match across Task 1–2.
 
