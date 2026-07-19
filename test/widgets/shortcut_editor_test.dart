@@ -98,7 +98,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Add Shortcut'), findsOneWidget);
-    expect(find.byType(DropdownButtonFormField<ShortcutAction>), findsOneWidget);
+    expect(
+        find.byType(DropdownButtonFormField<ShortcutAction>), findsOneWidget);
 
     // Pick Ctrl+A from dropdown so the inserted shortcut is unique.
     await tester.tap(find.byType(DropdownButtonFormField<ShortcutAction>));
