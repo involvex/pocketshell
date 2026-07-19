@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/keyboard_shortcut.dart';
-import '../providers/settings_provider.dart';
+import 'package:ssh_app/models/keyboard_shortcut.dart';
+import 'package:ssh_app/providers/settings_provider.dart';
 
 class ShortcutEditor extends StatefulWidget {
   const ShortcutEditor({super.key});
@@ -81,16 +81,125 @@ class _ShortcutEditorState extends State<ShortcutEditor> {
     }
   }
 
-  void _addShortcut() {
-    final newShortcut = KeyboardShortcut(
-      label: 'New',
-      description: 'New Shortcut',
-      action: ShortcutAction.newConnection,
-      row: _selectedRow,
+  Future<void> _addShortcut() async {
+    final KeyboardShortcut? created = await _showShortcutDialog(
+      title: 'Add Shortcut',
+      initial: null,
     );
+    if (created == null || !mounted) return;
+    setState(() => _shortcuts.add(created));
+  }
+
+  Future<void> _editShortcut(KeyboardShortcut shortcut) async {
+    final KeyboardShortcut? updated = await _showShortcutDialog(
+      title: 'Edit Shortcut',
+      initial: shortcut,
+    );
+    if (updated == null || !mounted) return;
     setState(() {
-      _shortcuts.add(newShortcut);
+      final int idx = _shortcuts.indexWhere((s) => s.id == shortcut.id);
+      if (idx >= 0) {
+        _shortcuts[idx] = updated;
+      }
     });
+  }
+
+  Future<KeyboardShortcut?> _showShortcutDialog({
+    required String title,
+    required KeyboardShortcut? initial,
+  }) async {
+    final List<ShortcutAction> actions =
+        KeyboardShortcut.actionsForRow(_selectedRow);
+    ShortcutAction selected = initial?.action ?? actions.first;
+    final TextEditingController labelController = TextEditingController(
+      text: initial?.label ?? KeyboardShortcut.defaultLabelFor(selected),
+    );
+    final TextEditingController descriptionController = TextEditingController(
+      text: initial?.description ??
+          KeyboardShortcut.defaultDescriptionFor(selected),
+    );
+
+    final KeyboardShortcut? result = await showDialog<KeyboardShortcut>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text(title),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    DropdownButtonFormField<ShortcutAction>(
+                      initialValue: selected,
+                      decoration: const InputDecoration(labelText: 'Action'),
+                      items: actions
+                          .map(
+                            (ShortcutAction a) => DropdownMenuItem(
+                              value: a,
+                              child: Text(KeyboardShortcut.displayNameFor(a)),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (ShortcutAction? value) {
+                        if (value == null) return;
+                        setDialogState(() {
+                          selected = value;
+                          labelController.text =
+                              KeyboardShortcut.defaultLabelFor(value);
+                          descriptionController.text =
+                              KeyboardShortcut.defaultDescriptionFor(value);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: labelController,
+                      decoration: const InputDecoration(labelText: 'Label'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: descriptionController,
+                      decoration:
+                          const InputDecoration(labelText: 'Description'),
+                    ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final String label = labelController.text.trim();
+                    final String description =
+                        descriptionController.text.trim();
+                    if (label.isEmpty || description.isEmpty) return;
+                    Navigator.pop(
+                      dialogContext,
+                      KeyboardShortcut.createForAction(
+                        selected,
+                        row: _selectedRow,
+                        id: initial?.id,
+                        label: label,
+                        description: description,
+                      ),
+                    );
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    labelController.dispose();
+    descriptionController.dispose();
+    return result;
   }
 
   void _removeShortcut(KeyboardShortcut shortcut) {
@@ -150,17 +259,10 @@ class _ShortcutEditorState extends State<ShortcutEditor> {
                   final shortcut = _currentRowShortcuts[index];
                   return _ShortcutTile(
                     key: ValueKey(shortcut.id),
+                    index: index,
                     shortcut: shortcut,
                     onDelete: () => _removeShortcut(shortcut),
-                    onLabelChanged: (label) {
-                      setState(() {
-                        final idx =
-                            _shortcuts.indexWhere((s) => s.id == shortcut.id);
-                        if (idx >= 0) {
-                          _shortcuts[idx] = shortcut.copyWith(label: label);
-                        }
-                      });
-                    },
+                    onEdit: () => _editShortcut(shortcut),
                   );
                 },
               ),
@@ -189,14 +291,16 @@ class _ShortcutEditorState extends State<ShortcutEditor> {
 }
 
 class _ShortcutTile extends StatelessWidget {
+  final int index;
   final KeyboardShortcut shortcut;
   final VoidCallback onDelete;
-  final ValueChanged<String> onLabelChanged;
+  final VoidCallback onEdit;
 
   const _ShortcutTile({
+    required this.index,
     required this.shortcut,
     required this.onDelete,
-    required this.onLabelChanged,
+    required this.onEdit,
     super.key,
   });
 
@@ -209,6 +313,7 @@ class _ShortcutTile extends StatelessWidget {
         leading: const Icon(Icons.drag_handle),
         title: Text(shortcut.label),
         subtitle: Text(shortcut.description),
+        onTap: onEdit,
         trailing: IconButton(
           icon: const Icon(Icons.delete, color: Colors.red),
           onPressed: onDelete,
