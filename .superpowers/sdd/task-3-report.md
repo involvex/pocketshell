@@ -61,3 +61,40 @@ Results:
 
 - `lib/widgets/shortcut_editor.dart`
 - `test/widgets/shortcut_editor_test.dart`
+
+## Review finding follow-up
+
+- Strengthened `test/widgets/shortcut_editor_test.dart` so the Ctrl-row reorder test no longer calls `onReorderItem` directly.
+- Kept a structural assertion that the `Ctrl+C` row's leading `Icons.drag_handle` is wrapped by `ReorderableDragStartListener(index: 0)`.
+- Replaced the callback-only reorder with a gesture-based reorder assertion that drags the real handle and verifies `Ctrl+D` moves above `Ctrl+C`.
+- Attempted `tester.drag(...)` on the handle first; it did not reorder reliably in this headless environment. Switched to `tester.timedDrag(...)` on the same finder with enough vertical movement, which consistently exercised the real drag path and passed.
+
+Latest verification command:
+
+```text
+flutter test test/widgets/shortcut_editor_test.dart test/models/keyboard_shortcut_catalog_test.dart
+```
+
+Latest verification output:
+
+```text
+Resolving dependencies...
+Downloading packages...
+  flutter_secure_storage_darwin 0.3.2 (0.4.0 available)
+  image 4.8.0 (4.9.1 available)
+  package_config 2.2.0 (3.0.0 available)
+  test_api 0.7.12 (0.7.13 available)
+  xml 6.6.1 (7.0.1 available)
+Got dependencies!
+5 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+00:00 +0: loading D:/repos/test/flutter/ssh_app/test/widgets/shortcut_editor_test.dart
+00:00 +0: D:/repos/test/flutter/ssh_app/test/widgets/shortcut_editor_test.dart: Add opens dialog and applies selected action
+00:00 +1: D:/repos/test/flutter/ssh_app/test/widgets/shortcut_editor_test.dart: Add opens dialog and applies selected action
+00:00 +2: D:/repos/test/flutter/ssh_app/test/widgets/shortcut_editor_test.dart: Add opens dialog and applies selected action
+00:00 +3: D:/repos/test/flutter/ssh_app/test/widgets/shortcut_editor_test.dart: Add opens dialog and applies selected action
+00:01 +4: D:/repos/test/flutter/ssh_app/test/widgets/shortcut_editor_test.dart: drag handle wiring reorders shortcuts within the selected row
+00:01 +5: D:/repos/test/flutter/ssh_app/test\widgets/shortcut_editor_test.dart: save shows snackbar and keeps editor open
+00:01 +6: D:/repos/test/flutter/ssh_app/test\widgets/shortcut_editor_test.dart: editor uses parent-owned scrolling for reorder list
+00:02 +7: All tests passed!
+```

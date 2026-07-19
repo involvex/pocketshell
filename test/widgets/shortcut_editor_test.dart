@@ -120,17 +120,40 @@ void main() {
     await tester.tap(find.text('Ctrl'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(ReorderableDragStartListener), findsWidgets);
-
-    final ReorderableListView list = tester.widget<ReorderableListView>(
-      find.byType(ReorderableListView),
+    final Finder ctrlCTile = find.ancestor(
+      of: find.text('Ctrl+C'),
+      matching: find.byType(ListTile),
     );
-    list.onReorderItem?.call(0, 1);
+    final Finder ctrlCDragHandle = find.descendant(
+      of: ctrlCTile,
+      matching: find.byIcon(Icons.drag_handle),
+    );
+    expect(ctrlCDragHandle, findsOneWidget);
+    expect(
+      find.ancestor(
+        of: ctrlCDragHandle,
+        matching: find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is ReorderableDragStartListener && widget.index == 0,
+        ),
+      ),
+      findsOneWidget,
+    );
+
+    final double initialCtrlCDy = tester.getTopLeft(find.text('Ctrl+C')).dy;
+    final double initialCtrlDDy = tester.getTopLeft(find.text('Ctrl+D')).dy;
+    expect(initialCtrlCDy < initialCtrlDDy, isTrue);
+
+    await tester.timedDrag(
+      ctrlCDragHandle,
+      Offset(0, (initialCtrlDDy - initialCtrlCDy) + 40),
+      const Duration(milliseconds: 600),
+    );
     await tester.pumpAndSettle();
 
-    final double dyD = tester.getTopLeft(find.text('Ctrl+D')).dy;
-    final double dyC = tester.getTopLeft(find.text('Ctrl+C')).dy;
-    expect(dyD < dyC, isTrue);
+    final double reorderedCtrlCDy = tester.getTopLeft(find.text('Ctrl+C')).dy;
+    final double reorderedCtrlDDy = tester.getTopLeft(find.text('Ctrl+D')).dy;
+    expect(reorderedCtrlDDy < reorderedCtrlCDy, isTrue);
   });
 
   testWidgets('save shows snackbar and keeps editor open', (tester) async {
