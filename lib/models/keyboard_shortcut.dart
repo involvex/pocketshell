@@ -61,6 +61,135 @@ class KeyboardShortcut {
     };
   }
 
+  static String displayNameFor(ShortcutAction action) {
+    return switch (action) {
+      ShortcutAction.newConnection => 'New Connection',
+      ShortcutAction.profiles => 'Profiles',
+      ShortcutAction.discovery => 'Discovery',
+      ShortcutAction.keys => 'Keys',
+      ShortcutAction.tabChar => 'Tab',
+      ShortcutAction.arrowUp => 'Arrow Up',
+      ShortcutAction.arrowDown => 'Arrow Down',
+      ShortcutAction.arrowLeft => 'Arrow Left',
+      ShortcutAction.arrowRight => 'Arrow Right',
+      ShortcutAction.home => 'Home',
+      ShortcutAction.end => 'End',
+      ShortcutAction.ctrlC => 'Ctrl+C (Interrupt)',
+      ShortcutAction.ctrlD => 'Ctrl+D (EOF)',
+      ShortcutAction.ctrlZ => 'Ctrl+Z (Suspend)',
+      ShortcutAction.ctrlL => 'Ctrl+L (Clear)',
+      ShortcutAction.ctrlA => 'Ctrl+A',
+      ShortcutAction.ctrlP => 'Ctrl+P',
+      ShortcutAction.ctrlV => 'Paste',
+    };
+  }
+
+  static String defaultLabelFor(ShortcutAction action) {
+    return switch (action) {
+      ShortcutAction.newConnection => 'Ctrl+N',
+      ShortcutAction.profiles => 'Ctrl+P',
+      ShortcutAction.discovery => 'Ctrl+D',
+      ShortcutAction.keys => 'Ctrl+K',
+      ShortcutAction.tabChar => 'Tab',
+      ShortcutAction.arrowUp => '↑',
+      ShortcutAction.arrowDown => '↓',
+      ShortcutAction.arrowLeft => '←',
+      ShortcutAction.arrowRight => '→',
+      ShortcutAction.home => 'Home',
+      ShortcutAction.end => 'End',
+      ShortcutAction.ctrlC => 'Ctrl+C',
+      ShortcutAction.ctrlD => 'Ctrl+D',
+      ShortcutAction.ctrlZ => 'Ctrl+Z',
+      ShortcutAction.ctrlL => 'Ctrl+L',
+      ShortcutAction.ctrlA => 'Ctrl+A',
+      ShortcutAction.ctrlP => 'Ctrl+P',
+      ShortcutAction.ctrlV => 'Ctrl+V',
+    };
+  }
+
+  static String defaultDescriptionFor(ShortcutAction action) {
+    return switch (action) {
+      ShortcutAction.newConnection => 'New Connection',
+      ShortcutAction.profiles => 'Profiles',
+      ShortcutAction.discovery => 'Discovery',
+      ShortcutAction.keys => 'Keys',
+      ShortcutAction.tabChar => 'Tab',
+      ShortcutAction.arrowUp => 'Arrow Up',
+      ShortcutAction.arrowDown => 'Arrow Down',
+      ShortcutAction.arrowLeft => 'Arrow Left',
+      ShortcutAction.arrowRight => 'Arrow Right',
+      ShortcutAction.home => 'Home',
+      ShortcutAction.end => 'End',
+      ShortcutAction.ctrlC => 'Interrupt',
+      ShortcutAction.ctrlD => 'EOF',
+      ShortcutAction.ctrlZ => 'Suspend',
+      ShortcutAction.ctrlL => 'Clear',
+      ShortcutAction.ctrlA => 'Select All / Line Start',
+      ShortcutAction.ctrlP => 'Previous',
+      ShortcutAction.ctrlV => 'Paste',
+    };
+  }
+
+  static int? defaultCharCodeFor(ShortcutAction action) {
+    return switch (action) {
+      ShortcutAction.tabChar => 9,
+      ShortcutAction.ctrlC => 3,
+      ShortcutAction.ctrlD => 4,
+      ShortcutAction.ctrlZ => 26,
+      ShortcutAction.ctrlL => 12,
+      ShortcutAction.ctrlA => 1,
+      ShortcutAction.ctrlP => 16,
+      _ => null,
+    };
+  }
+
+  static List<ShortcutAction> actionsForRow(int row) {
+    return switch (row) {
+      0 => <ShortcutAction>[
+          ShortcutAction.newConnection,
+          ShortcutAction.profiles,
+          ShortcutAction.discovery,
+          ShortcutAction.keys,
+        ],
+      1 => <ShortcutAction>[
+          ShortcutAction.tabChar,
+          ShortcutAction.arrowLeft,
+          ShortcutAction.arrowRight,
+          ShortcutAction.arrowUp,
+          ShortcutAction.arrowDown,
+          ShortcutAction.home,
+          ShortcutAction.end,
+          ShortcutAction.ctrlV,
+        ],
+      _ => <ShortcutAction>[
+          ShortcutAction.ctrlC,
+          ShortcutAction.ctrlD,
+          ShortcutAction.ctrlZ,
+          ShortcutAction.ctrlL,
+          ShortcutAction.ctrlA,
+          ShortcutAction.ctrlP,
+          ShortcutAction.ctrlV,
+        ],
+    };
+  }
+
+  static KeyboardShortcut createForAction(
+    ShortcutAction action, {
+    required int row,
+    String? id,
+    String? label,
+    String? description,
+  }) {
+    return KeyboardShortcut(
+      id: id,
+      label: label ?? defaultLabelFor(action),
+      description: description ?? defaultDescriptionFor(action),
+      action: action,
+      charCode: defaultCharCodeFor(action),
+      row: row,
+    );
+  }
+
   KeyboardShortcut copyWith({
     String? id,
     String? label,
@@ -125,91 +254,22 @@ class KeyboardShortcut {
     };
   }
 
-  static List<KeyboardShortcut> get defaults => [
-        KeyboardShortcut(
-            label: 'Ctrl+N',
-            description: 'New Connection',
-            action: ShortcutAction.newConnection,
-            row: 0),
-        KeyboardShortcut(
-            label: 'Ctrl+P',
-            description: 'Profiles',
-            action: ShortcutAction.profiles,
-            row: 0),
-        KeyboardShortcut(
-            label: 'Ctrl+D',
-            description: 'Discovery',
-            action: ShortcutAction.discovery,
-            row: 0),
-        KeyboardShortcut(
-            label: 'Ctrl+K',
-            description: 'Keys',
-            action: ShortcutAction.keys,
-            row: 0),
-        KeyboardShortcut(
-            label: 'Tab',
-            description: 'Tab',
-            action: ShortcutAction.tabChar,
-            charCode: 9,
-            row: 1),
-        KeyboardShortcut(
-            label: '←',
-            description: 'Arrow Left',
-            action: ShortcutAction.arrowLeft,
-            row: 1),
-        KeyboardShortcut(
-            label: '→',
-            description: 'Arrow Right',
-            action: ShortcutAction.arrowRight,
-            row: 1),
-        KeyboardShortcut(
-            label: '↑',
-            description: 'Arrow Up',
-            action: ShortcutAction.arrowUp,
-            row: 1),
-        KeyboardShortcut(
-            label: '↓',
-            description: 'Arrow Down',
-            action: ShortcutAction.arrowDown,
-            row: 1),
-        KeyboardShortcut(
-            label: 'Home',
-            description: 'Home',
-            action: ShortcutAction.home,
-            row: 1),
-        KeyboardShortcut(
-            label: 'End',
-            description: 'End',
-            action: ShortcutAction.end,
-            row: 1),
-        KeyboardShortcut(
-            label: 'Ctrl+C',
-            description: 'Interrupt',
-            action: ShortcutAction.ctrlC,
-            charCode: 3,
-            row: 2),
-        KeyboardShortcut(
-            label: 'Ctrl+D',
-            description: 'EOF',
-            action: ShortcutAction.ctrlD,
-            charCode: 4,
-            row: 2),
-        KeyboardShortcut(
-            label: 'Ctrl+Z',
-            description: 'Suspend',
-            action: ShortcutAction.ctrlZ,
-            charCode: 26,
-            row: 2),
-        KeyboardShortcut(
-            label: 'Ctrl+L',
-            description: 'Clear',
-            action: ShortcutAction.ctrlL,
-            charCode: 12,
-            row: 2),
-        KeyboardShortcut(
-            label: 'Ctrl+V',
-            description: 'Paste',
-            action: ShortcutAction.ctrlV,
-            row: 2),
+  static List<KeyboardShortcut> get defaults => <KeyboardShortcut>[
+        createForAction(ShortcutAction.newConnection, row: 0),
+        createForAction(ShortcutAction.profiles, row: 0),
+        createForAction(ShortcutAction.discovery, row: 0),
+        createForAction(ShortcutAction.keys, row: 0),
+        createForAction(ShortcutAction.tabChar, row: 1),
+        createForAction(ShortcutAction.arrowLeft, row: 1),
+        createForAction(ShortcutAction.arrowRight, row: 1),
+        createForAction(ShortcutAction.arrowUp, row: 1),
+        createForAction(ShortcutAction.arrowDown, row: 1),
+        createForAction(ShortcutAction.home, row: 1),
+        createForAction(ShortcutAction.end, row: 1),
+        createForAction(ShortcutAction.ctrlC, row: 2),
+        createForAction(ShortcutAction.ctrlD, row: 2),
+        createForAction(ShortcutAction.ctrlZ, row: 2),
+        createForAction(ShortcutAction.ctrlL, row: 2),
+        createForAction(ShortcutAction.ctrlV, row: 2),
       ];
 }
