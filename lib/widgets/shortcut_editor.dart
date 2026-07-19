@@ -66,9 +66,12 @@ class _ShortcutEditorState extends State<ShortcutEditor> {
   }
 
   Future<void> _save() async {
-    final settings = context.read<SettingsProvider>();
+    final SettingsProvider settings = context.read<SettingsProvider>();
     await settings.updateShortcuts(_shortcuts);
-    if (mounted) Navigator.pop(context);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Shortcuts saved')),
+    );
   }
 
   Future<void> _reset() async {
@@ -214,9 +217,9 @@ class _ShortcutEditorState extends State<ShortcutEditor> {
       color: Theme.of(context).scaffoldBackgroundColor,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: Container(
-        height: MediaQuery.of(context).size.height * 0.75,
         padding: const EdgeInsets.all(16),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -251,21 +254,23 @@ class _ShortcutEditorState extends State<ShortcutEditor> {
               ],
             ),
             const SizedBox(height: 16),
-            Expanded(
-              child: ReorderableListView.builder(
-                itemCount: _currentRowShortcuts.length,
-                onReorderItem: _onReorderItem,
-                itemBuilder: (context, index) {
-                  final shortcut = _currentRowShortcuts[index];
-                  return _ShortcutTile(
-                    key: ValueKey(shortcut.id),
-                    index: index,
-                    shortcut: shortcut,
-                    onDelete: () => _removeShortcut(shortcut),
-                    onEdit: () => _editShortcut(shortcut),
-                  );
-                },
-              ),
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              buildDefaultDragHandles: false,
+              primary: false,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _currentRowShortcuts.length,
+              onReorderItem: _onReorderItem,
+              itemBuilder: (context, index) {
+                final KeyboardShortcut shortcut = _currentRowShortcuts[index];
+                return _ShortcutTile(
+                  key: ValueKey<String>(shortcut.id),
+                  index: index,
+                  shortcut: shortcut,
+                  onDelete: () => _removeShortcut(shortcut),
+                  onEdit: () => _editShortcut(shortcut),
+                );
+              },
             ),
             const SizedBox(height: 16),
             Row(
@@ -307,10 +312,12 @@ class _ShortcutTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      key: ValueKey(shortcut.id),
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
-        leading: const Icon(Icons.drag_handle),
+        leading: ReorderableDragStartListener(
+          index: index,
+          child: const Icon(Icons.drag_handle),
+        ),
         title: Text(shortcut.label),
         subtitle: Text(shortcut.description),
         onTap: onEdit,
