@@ -9,9 +9,11 @@ import '../models/ssh_profile.dart';
 import '../services/config_service.dart';
 import '../services/network_discovery_service.dart';
 import '../services/app_lifecycle_service.dart';
+import '../services/secure_storage_service.dart';
 import '../services/widget_profile_service.dart';
 import '../models/session_entry.dart';
 import '../utils/session_manager.dart';
+import '../utils/ssh_auth_utils.dart';
 import '../utils/terminal_context.dart';
 import '../utils/terminal_enter_mapping.dart';
 
@@ -34,16 +36,42 @@ class SSHProvider extends ChangeNotifier {
   bool isScanning = false;
 
   Future<void> loadConfig() async {
-    final profileData = await ConfigService.getProfiles();
-    profiles = profileData.map((e) => SSHProfile.fromJson(e)).toList();
+    var profileData = await ConfigService.getProfiles();
+    final migratedProfiles =
+        await SecureStorageService.migrateProfilePasswords(profileData);
+    if (!identical(migratedProfiles, profileData)) {
+      await ConfigService.saveProfiles(migratedProfiles);
+      profileData = migratedProfiles;
+    }
+
+    profiles = <SSHProfile>[];
+    for (final raw in profileData) {
+      profiles.add(await _hydrateProfile(SSHProfile.fromJson(raw)));
+    }
+
+    final keyData = await ConfigService.getSSHKeys();
+    final migratedKeys =
+        await SecureStorageService.migrateKeyPassphrases(keyData);
+    if (!identical(migratedKeys, keyData)) {
+      await ConfigService.saveSSHKeys(migratedKeys);
+    }
 
     final sessionData = await ConfigService.getLastSession();
     if (sessionData != null) {
-      lastSession = SSHProfile.fromJson(sessionData);
+      lastSession = await _hydrateProfile(SSHProfile.fromJson(sessionData));
     }
 
     await WidgetProfileService.syncProfiles(profiles);
     notifyListeners();
+  }
+
+  Future<SSHProfile> _hydrateProfile(SSHProfile profile) async {
+    final securePassword =
+        await SecureStorageService.readProfilePassword(profile.id);
+    if (securePassword == null || securePassword.isEmpty) {
+      return profile;
+    }
+    return profile.copyWith(password: securePassword);
   }
 
   Future<void> saveProfile(SSHProfile profile) async {
@@ -54,6 +82,10 @@ class SSHProvider extends ChangeNotifier {
       profiles.add(profile);
     }
 
+    await SecureStorageService.writeProfilePassword(
+      profile.id,
+      profile.password,
+    );
     await ConfigService.saveProfiles(profiles.map((e) => e.toJson()).toList());
     await WidgetProfileService.syncProfiles(profiles);
     notifyListeners();
@@ -61,6 +93,7 @@ class SSHProvider extends ChangeNotifier {
 
   Future<void> deleteProfile(String id) async {
     profiles.removeWhere((p) => p.id == id);
+    await SecureStorageService.deleteProfilePassword(id);
     await ConfigService.saveProfiles(profiles.map((e) => e.toJson()).toList());
     await WidgetProfileService.syncProfiles(profiles);
     notifyListeners();
@@ -68,6 +101,10 @@ class SSHProvider extends ChangeNotifier {
 
   Future<void> saveLastSession(SSHProfile profile) async {
     lastSession = profile;
+    await SecureStorageService.writeProfilePassword(
+      profile.id,
+      profile.password,
+    );
     await ConfigService.saveLastSession(profile.toJson());
     notifyListeners();
   }
@@ -151,11 +188,26 @@ class SSHProvider extends ChangeNotifier {
 
     try {
       addLog('Connecting to ${profile.host}:${profile.port}...');
-      final socket = await SSHSocket.connect(profile.host, profile.port);
+      final auth = await resolveSshAuthMaterial(profile);
+      if (!auth.hasKeyAuth && !auth.hasPasswordAuth) {
+        throw StateError(
+          'No credentials: set a password or select an SSH key for this profile',
+        );
+      }
+
+      final socket = await SSHSocket.connect(
+        profile.host,
+        profile.port,
+        timeout: const Duration(seconds: 20),
+      );
       final client = SSHClient(
         socket,
         username: profile.username,
-        onPasswordRequest: () => profile.password ?? '',
+        identities: auth.identities,
+        onPasswordRequest: auth.hasPasswordAuth
+            ? () => auth.password!
+            : null,
+        keepAliveInterval: const Duration(seconds: 15),
       );
 
       final shell = await client.shell(
@@ -190,6 +242,7 @@ class SSHProvider extends ChangeNotifier {
       }));
 
       entry.isConnected = true;
+      entry.lastError = null;
       entry.shouldReconnectOnResume = true;
       addLog('Connected: ${entry.name}');
       notifyListeners();
@@ -230,7 +283,10 @@ class SSHProvider extends ChangeNotifier {
       }
     } catch (e) {
       addLog('Connection failed for ${profile.host}:${profile.port} — $e');
-      sessions.removeWhere((s) => s.id == sessionId);
+      entry.isConnected = false;
+      entry.lastError = e.toString();
+      entry.client = null;
+      entry.shellSession = null;
       notifyListeners();
       rethrow;
     }
@@ -242,7 +298,8 @@ class SSHProvider extends ChangeNotifier {
     entry.client?.close();
     entry.shellSession = null;
     entry.client = null;
-    entry.terminal = Terminal();
+    // Preserve scrollback: reuse the existing Terminal buffer.
+    entry.terminal.write('\r\n\x1b[90m--- reconnecting ---\x1b[0m\r\n');
     await connectSession(sessionId);
   }
 

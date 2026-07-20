@@ -91,34 +91,126 @@ class _SftpBrowserState extends State<SftpBrowser> {
       return;
     }
 
+    // pickFiles defaults to multi-select in file_picker 12+.
     final FilePickerResult? result = await FilePicker.pickFiles();
-    if (result == null || result.files.single.path == null) {
+    if (result == null || result.files.isEmpty) {
       return;
     }
 
-    final String filename = result.files.single.name.trim();
-    if (filename.isEmpty) {
+    final files = result.files
+        .where((f) => f.path != null)
+        .map((f) => File(f.path!))
+        .toList();
+    if (files.isEmpty) {
       return;
     }
 
-    final bool remoteExists = await controller.remoteFileExists(filename);
-    if (remoteExists &&
-        !await _confirmOverwrite(
-          title: 'Overwrite remote file?',
-          message: 'A file named "$filename" already exists in this folder. '
-              'Do you want to replace it?',
-        )) {
-      return;
-    }
-
-    final bool success = await controller.upload(
-      File(result.files.single.path!),
-      remoteName: filename,
-    );
+    final int completed = await controller.uploadMany(files);
     _showOperationSnackBar(
       controller: controller,
-      success: success,
-      successMessage: 'Uploaded',
+      success: completed > 0 && controller.error == null,
+      successMessage: completed == 1
+          ? 'Uploaded'
+          : 'Uploaded $completed file(s)',
+    );
+  }
+
+  Future<void> _uploadDirectory() async {
+    final SftpController? controller = _controller;
+    if (controller == null) {
+      return;
+    }
+
+    final String? pickedDirectory = await FilePicker.getDirectoryPath();
+    if (pickedDirectory == null) {
+      return;
+    }
+
+    final int completed =
+        await controller.uploadDirectory(Directory(pickedDirectory));
+    _showOperationSnackBar(
+      controller: controller,
+      success: completed > 0 && controller.error == null,
+      successMessage: completed == 1
+          ? 'Uploaded folder (1 file)'
+          : 'Uploaded folder ($completed files)',
+    );
+  }
+
+  Future<void> _downloadSelected() async {
+    final SftpController? controller = _controller;
+    if (controller == null || controller.selectedNames.isEmpty) {
+      return;
+    }
+    final String? pickedDirectory = await FilePicker.getDirectoryPath();
+    if (pickedDirectory == null) {
+      return;
+    }
+    final int completed =
+        await controller.downloadSelected(Directory(pickedDirectory));
+    _showOperationSnackBar(
+      controller: controller,
+      success: completed > 0 && controller.error == null,
+      successMessage: 'Downloaded $completed item(s)',
+    );
+  }
+
+  Future<String?> _promptDestinationDir(String title) async {
+    final textController = TextEditingController(
+      text: _controller?.currentPath ?? '/',
+    );
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: textController,
+            decoration: const InputDecoration(
+              labelText: 'Destination directory',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, textController.text.trim()),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+    textController.dispose();
+    return result;
+  }
+
+  Future<void> _copyEntry(RemoteFsEntry entry) async {
+    final c = _controller;
+    if (c == null) return;
+    final dest = await _promptDestinationDir('Copy to directory');
+    if (dest == null || dest.isEmpty) return;
+    final ok = await c.copyEntry(entry, dest);
+    _showOperationSnackBar(
+      controller: c,
+      success: ok,
+      successMessage: 'Copied',
+    );
+  }
+
+  Future<void> _moveEntry(RemoteFsEntry entry) async {
+    final c = _controller;
+    if (c == null) return;
+    final dest = await _promptDestinationDir('Move to directory');
+    if (dest == null || dest.isEmpty) return;
+    final ok = await c.moveEntry(entry, dest);
+    _showOperationSnackBar(
+      controller: c,
+      success: ok,
+      successMessage: 'Moved',
     );
   }
 
@@ -138,13 +230,20 @@ class _SftpBrowserState extends State<SftpBrowser> {
       localDirectory,
       entry.name,
     );
-    final bool localExists = await File(localPath).exists();
+    final bool localExists = entry.isDirectory
+        ? await Directory(localPath).exists()
+        : await File(localPath).exists();
     if (localExists &&
         !await _confirmOverwrite(
-          title: 'Overwrite local file?',
-          message:
-              'A file named "${entry.name}" already exists in this folder. '
-              'Do you want to replace it?',
+          title: entry.isDirectory
+              ? 'Overwrite local folder?'
+              : 'Overwrite local file?',
+          message: entry.isDirectory
+              ? 'A folder named "${entry.name}" already exists in this '
+                  'location. Existing files with the same names may be '
+                  'replaced. Continue?'
+              : 'A file named "${entry.name}" already exists in this folder. '
+                  'Do you want to replace it?',
         )) {
       return;
     }
@@ -260,57 +359,84 @@ class _SftpBrowserState extends State<SftpBrowser> {
     }
 
     return Material(
-      child: SizedBox(
-        height: MediaQuery.of(context).size.height * 0.7,
-        child: AnimatedBuilder(
-          animation: controller,
-          builder: (BuildContext context, Widget? child) {
-            return Column(
-              children: <Widget>[
-                SftpBrowserHeader(
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (BuildContext context, Widget? child) {
+          return Column(
+            children: <Widget>[
+              SftpBrowserHeader(
+                currentPath: controller.currentPath,
+                drives: controller.drives,
+                filterTerm: controller.filterTerm,
+                sortField: controller.sortField,
+                sortAscending: controller.sortAscending,
+                onCopyPath: _showCopiedSnackbar,
+                onDriveSelected: (String drive) =>
+                    controller.navigateTo('$drive:/'),
+                onFilterChanged: controller.setFilter,
+                onSortChanged: (
+                  RemoteFsSortField field,
+                  bool ascending,
+                ) =>
+                    controller.setSort(field, ascending: ascending),
+                onRefresh: controller.refresh,
+                onCreateDirectory: _createDirectory,
+                onUpload: _upload,
+                onUploadDirectory: _uploadDirectory,
+              ),
+              if (controller.selectionMode)
+                Material(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      children: [
+                        Text('${controller.selectedNames.length} selected'),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: _downloadSelected,
+                          child: const Text('Download'),
+                        ),
+                        TextButton(
+                          onPressed: controller.clearSelection,
+                          child: const Text('Clear'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (controller.transferLabel != null)
+                SftpTransferBanner(
+                  label: controller.transferLabel!,
+                  transferredBytes: controller.transferBytes,
+                  totalBytes: controller.transferTotal,
+                  onCancel: controller.cancelTransfer,
+                ),
+              Expanded(
+                child: SftpEntryList(
+                  entries: controller.visibleEntries,
                   currentPath: controller.currentPath,
-                  drives: controller.drives,
-                  filterTerm: controller.filterTerm,
-                  sortField: controller.sortField,
-                  sortAscending: controller.sortAscending,
-                  onCopyPath: _showCopiedSnackbar,
-                  onDriveSelected: (String drive) =>
-                      controller.navigateTo('$drive:/'),
-                  onFilterChanged: controller.setFilter,
-                  onSortChanged: (
-                    RemoteFsSortField field,
-                    bool ascending,
-                  ) =>
-                      controller.setSort(field, ascending: ascending),
-                  onRefresh: controller.refresh,
-                  onCreateDirectory: _createDirectory,
-                  onUpload: _upload,
+                  loading: controller.loading,
+                  error: controller.error,
+                  selectionMode: controller.selectionMode,
+                  selectedNames: controller.selectedNames,
+                  onToggleSelected: controller.toggleSelected,
+                  onOpenEntry: controller.openEntry,
+                  onDownloadEntry: _download,
+                  onEditEntry: _editEntry,
+                  onPreviewEntry: _previewEntry,
+                  onRenameEntry: controller.rename,
+                  onDeleteEntry: controller.deleteEntry,
+                  onCopyEntry: _copyEntry,
+                  onMoveEntry: _moveEntry,
                 ),
-                if (controller.transferLabel != null)
-                  SftpTransferBanner(
-                    label: controller.transferLabel!,
-                    transferredBytes: controller.transferBytes,
-                    totalBytes: controller.transferTotal,
-                    onCancel: controller.cancelTransfer,
-                  ),
-                Expanded(
-                  child: SftpEntryList(
-                    entries: controller.visibleEntries,
-                    currentPath: controller.currentPath,
-                    loading: controller.loading,
-                    error: controller.error,
-                    onOpenEntry: controller.openEntry,
-                    onDownloadEntry: _download,
-                    onEditEntry: _editEntry,
-                    onPreviewEntry: _previewEntry,
-                    onRenameEntry: controller.rename,
-                    onDeleteEntry: controller.deleteEntry,
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

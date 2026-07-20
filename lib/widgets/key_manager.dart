@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/ssh_key.dart';
 import '../services/ssh_key_generator.dart';
 import '../services/config_service.dart';
+import '../services/secure_storage_service.dart';
 
 class KeyManager extends StatefulWidget {
   const KeyManager({super.key});
@@ -22,12 +23,40 @@ class _KeyManagerState extends State<KeyManager> {
 
   Future<void> _loadKeys() async {
     final keyData = await ConfigService.getSSHKeys();
+    final migrated =
+        await SecureStorageService.migrateKeyPassphrases(keyData);
+    if (!identical(migrated, keyData)) {
+      await ConfigService.saveSSHKeys(migrated);
+    }
+    final keys = <SSHKey>[];
+    for (final raw in migrated) {
+      final key = SSHKey.fromJson(raw);
+      final passphrase =
+          await SecureStorageService.readKeyPassphrase(key.id) ??
+              key.passphrase;
+      keys.add(
+        passphrase == null || passphrase == key.passphrase
+            ? key
+            : SSHKey(
+                id: key.id,
+                name: key.name,
+                keyType: key.keyType,
+                publicKey: key.publicKey,
+                privateKey: key.privateKey,
+                passphrase: passphrase,
+                createdAt: key.createdAt,
+              ),
+      );
+    }
     setState(() {
-      _keys = keyData.map((e) => SSHKey.fromJson(e)).toList();
+      _keys = keys;
     });
   }
 
   Future<void> _saveKeys() async {
+    for (final key in _keys) {
+      await SecureStorageService.writeKeyPassphrase(key.id, key.passphrase);
+    }
     await ConfigService.saveSSHKeys(_keys.map((e) => e.toJson()).toList());
   }
 

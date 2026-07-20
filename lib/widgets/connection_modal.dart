@@ -1,8 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/ssh_provider.dart';
-import '../models/ssh_profile.dart';
-import '../utils/session_manager.dart';
+
+import 'package:ssh_app/models/ssh_key.dart';
+import 'package:ssh_app/models/ssh_profile.dart';
+import 'package:ssh_app/providers/ssh_provider.dart';
+import 'package:ssh_app/services/config_service.dart';
+import 'package:ssh_app/utils/session_manager.dart';
+import 'package:ssh_app/utils/ssh_auth_utils.dart';
 
 class ConnectionModal extends StatefulWidget {
   const ConnectionModal({super.key});
@@ -21,11 +27,22 @@ class _ConnectionModalState extends State<ConnectionModal> {
   bool _isLoading = false;
   bool _isServer = false;
   SessionManager _sessionManager = SessionManager.none;
+  String? _selectedKeyId;
+  List<SSHKey> _keys = <SSHKey>[];
 
   @override
   void initState() {
     super.initState();
     _loadLastSession();
+    unawaited(_loadKeys());
+  }
+
+  Future<void> _loadKeys() async {
+    final raw = await ConfigService.getSSHKeys();
+    if (!mounted) return;
+    setState(() {
+      _keys = raw.map(SSHKey.fromJson).toList();
+    });
   }
 
   void _loadLastSession() {
@@ -39,10 +56,13 @@ class _ConnectionModalState extends State<ConnectionModal> {
       _startupCommandController.text = session.startupCommand ?? '';
       _isServer = session.isServer;
       _sessionManager = session.sessionManager;
+      final keyRef = session.privateKey;
+      if (keyRef != null && !looksLikePemPrivateKey(keyRef)) {
+        _selectedKeyId = keyRef;
+      }
     } else {
       _hostController.text = 'localhost';
       _usernameController.text = 'user';
-      _passwordController.text = 'password';
     }
   }
 
@@ -56,7 +76,10 @@ class _ConnectionModalState extends State<ConnectionModal> {
       host: _hostController.text,
       port: int.tryParse(_portController.text) ?? 22,
       username: _usernameController.text,
-      password: _passwordController.text,
+      password: _passwordController.text.isEmpty
+          ? null
+          : _passwordController.text,
+      privateKey: _selectedKeyId,
       isServer: _isServer,
       startupCommand: _startupCommandController.text.isNotEmpty
           ? _startupCommandController.text
@@ -153,12 +176,47 @@ class _ConnectionModalState extends State<ConnectionModal> {
                 TextFormField(
                   controller: _passwordController,
                   decoration: const InputDecoration(
-                    labelText: 'Password',
+                    labelText: 'Password (optional with key)',
                   ),
                   obscureText: true,
-                  validator: (value) => value!.isEmpty ? 'Required' : null,
+                  validator: (value) {
+                    final hasPassword = value != null && value.isNotEmpty;
+                    final hasKey = _selectedKeyId != null;
+                    if (!hasPassword && !hasKey && !_isServer) {
+                      return 'Password or SSH key required';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 8),
+                if (!_isServer)
+                  DropdownButtonFormField<String?>(
+                    initialValue: _selectedKeyId != null &&
+                            _keys.any((k) => k.id == _selectedKeyId)
+                        ? _selectedKeyId
+                        : null,
+                    decoration: const InputDecoration(
+                      labelText: 'SSH Key (optional)',
+                    ),
+                    items: <DropdownMenuItem<String?>>[
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('None (password only)'),
+                      ),
+                      ..._keys.map(
+                        (k) => DropdownMenuItem<String?>(
+                          value: k.id,
+                          child: Text(
+                            '${k.name} (${k.keyType.displayName})',
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _selectedKeyId = value);
+                    },
+                  ),
+                if (!_isServer) const SizedBox(height: 8),
                 DropdownButtonFormField<SessionManager>(
                   key: ValueKey(_sessionManager),
                   initialValue: _sessionManager,
@@ -202,7 +260,7 @@ class _ConnectionModalState extends State<ConnectionModal> {
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : Text(_isServer ? 'Start Server' : 'Connect'),
+              : const Text('Connect'),
         ),
       ],
     );

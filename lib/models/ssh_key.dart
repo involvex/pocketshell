@@ -84,14 +84,15 @@ class SSHKey {
       : id = id ?? const Uuid().v4(),
         createdAt = createdAt ?? DateTime.now();
 
-  Map<String, dynamic> toJson() {
+  /// Serializes key material. Passphrases are stored via SecureStorageService.
+  Map<String, dynamic> toJson({bool includePassphrase = false}) {
     return <String, dynamic>{
       'id': id,
       'name': name,
       'keyType': keyType.index,
       'publicKey': publicKey,
       'privateKey': privateKey,
-      'passphrase': passphrase,
+      if (includePassphrase) 'passphrase': passphrase,
       'createdAt': createdAt.toIso8601String(),
     };
   }

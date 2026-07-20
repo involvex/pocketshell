@@ -15,11 +15,16 @@ class SftpEntryList extends StatelessWidget {
     required this.onOpenEntry,
     this.error,
     this.directoriesOnly = false,
+    this.selectionMode = false,
+    this.selectedNames = const <String>{},
+    this.onToggleSelected,
     this.onDownloadEntry,
     this.onEditEntry,
     this.onPreviewEntry,
     this.onRenameEntry,
     this.onDeleteEntry,
+    this.onCopyEntry,
+    this.onMoveEntry,
     super.key,
   });
 
@@ -28,13 +33,18 @@ class SftpEntryList extends StatelessWidget {
   final bool loading;
   final String? error;
   final bool directoriesOnly;
+  final bool selectionMode;
+  final Set<String> selectedNames;
   final Future<void> Function(RemoteFsEntry entry) onOpenEntry;
+  final void Function(RemoteFsEntry entry)? onToggleSelected;
   final Future<void> Function(RemoteFsEntry entry)? onDownloadEntry;
   final Future<void> Function(RemoteFsEntry entry)? onEditEntry;
   final Future<void> Function(RemoteFsEntry entry)? onPreviewEntry;
   final Future<void> Function(RemoteFsEntry entry, String newName)?
       onRenameEntry;
   final Future<void> Function(RemoteFsEntry entry)? onDeleteEntry;
+  final Future<void> Function(RemoteFsEntry entry)? onCopyEntry;
+  final Future<void> Function(RemoteFsEntry entry)? onMoveEntry;
 
   @override
   Widget build(BuildContext context) {
@@ -84,12 +94,17 @@ class SftpEntryList extends StatelessWidget {
                     entry: entry,
                     currentPath: currentPath,
                     directoriesOnly: directoriesOnly,
+                    selectionMode: selectionMode,
+                    selected: selectedNames.contains(entry.name),
                     onOpenEntry: onOpenEntry,
+                    onToggleSelected: onToggleSelected,
                     onDownloadEntry: onDownloadEntry,
                     onEditEntry: onEditEntry,
                     onPreviewEntry: onPreviewEntry,
                     onRenameEntry: onRenameEntry,
                     onDeleteEntry: onDeleteEntry,
+                    onCopyEntry: onCopyEntry,
+                    onMoveEntry: onMoveEntry,
                   );
                 },
               ),
@@ -114,23 +129,33 @@ class _EntryTile extends StatelessWidget {
     required this.currentPath,
     required this.directoriesOnly,
     required this.onOpenEntry,
+    this.selectionMode = false,
+    this.selected = false,
+    this.onToggleSelected,
     this.onDownloadEntry,
     this.onEditEntry,
     this.onPreviewEntry,
     this.onRenameEntry,
     this.onDeleteEntry,
+    this.onCopyEntry,
+    this.onMoveEntry,
   });
 
   final RemoteFsEntry entry;
   final String currentPath;
   final bool directoriesOnly;
+  final bool selectionMode;
+  final bool selected;
   final Future<void> Function(RemoteFsEntry entry) onOpenEntry;
+  final void Function(RemoteFsEntry entry)? onToggleSelected;
   final Future<void> Function(RemoteFsEntry entry)? onDownloadEntry;
   final Future<void> Function(RemoteFsEntry entry)? onEditEntry;
   final Future<void> Function(RemoteFsEntry entry)? onPreviewEntry;
   final Future<void> Function(RemoteFsEntry entry, String newName)?
       onRenameEntry;
   final Future<void> Function(RemoteFsEntry entry)? onDeleteEntry;
+  final Future<void> Function(RemoteFsEntry entry)? onCopyEntry;
+  final Future<void> Function(RemoteFsEntry entry)? onMoveEntry;
 
   @override
   Widget build(BuildContext context) {
@@ -139,26 +164,40 @@ class _EntryTile extends StatelessWidget {
         !directoriesOnly && !entry.isDirectory && onDownloadEntry != null;
 
     return ListTile(
-      leading: Icon(
-        entry.isParentLink
-            ? Icons.arrow_upward
-            : entry.isDirectory
-                ? Icons.folder_outlined
-                : Icons.insert_drive_file_outlined,
-      ),
+      selected: selected,
+      leading: selectionMode && !entry.isParentLink
+          ? Checkbox(
+              value: selected,
+              onChanged: (_) => onToggleSelected?.call(entry),
+            )
+          : Icon(
+              entry.isParentLink
+                  ? Icons.arrow_upward
+                  : entry.isDirectory
+                      ? Icons.folder_outlined
+                      : Icons.insert_drive_file_outlined,
+            ),
       title: Text(entry.name),
       subtitle: Text(_buildSubtitle(entry)),
-      onTap: entry.isDirectory
-          ? () async {
-              await onOpenEntry(entry);
-            }
-          : null,
+      onTap: () async {
+        if (selectionMode && !entry.isParentLink) {
+          onToggleSelected?.call(entry);
+          return;
+        }
+        if (entry.isDirectory) {
+          await onOpenEntry(entry);
+        }
+      },
       onLongPress: canShowMenu
           ? () async {
+              if (!directoriesOnly && onToggleSelected != null) {
+                onToggleSelected!(entry);
+                return;
+              }
               await _showEntryActions(context);
             }
           : null,
-      trailing: canShowMenu
+      trailing: canShowMenu && !selectionMode
           ? Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
@@ -255,6 +294,24 @@ class _EntryTile extends StatelessWidget {
                       return;
                     }
                     await onRenameEntry?.call(entry, newName);
+                  },
+                ),
+              if (onCopyEntry != null && !entry.isDirectory)
+                ListTile(
+                  leading: const Icon(Icons.file_copy_outlined),
+                  title: const Text('Copy to…'),
+                  onTap: () async {
+                    Navigator.of(sheetContext).pop();
+                    await onCopyEntry?.call(entry);
+                  },
+                ),
+              if (onMoveEntry != null)
+                ListTile(
+                  leading: const Icon(Icons.drive_file_move_outline),
+                  title: const Text('Move to…'),
+                  onTap: () async {
+                    Navigator.of(sheetContext).pop();
+                    await onMoveEntry?.call(entry);
                   },
                 ),
               if (onDeleteEntry != null)

@@ -41,6 +41,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _isLoaded = false;
   double _terminalFontSize = 12.0;
   bool _showServerTab = true;
+  bool _showMobileShortcutBar = false;
   int _defaultAgentPort = 5000;
   TerminalFontFamily _terminalFontFamily = TerminalFontFamily.monospace;
   TerminalFontWeight _terminalFontWeight = TerminalFontWeight.normal;
@@ -63,6 +64,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get isLoaded => _isLoaded;
   double get terminalFontSize => _terminalFontSize;
   bool get showServerTab => _showServerTab;
+  bool get showMobileShortcutBar => _showMobileShortcutBar;
   int get defaultAgentPort => _defaultAgentPort;
   TerminalFontFamily get terminalFontFamily => _terminalFontFamily;
   TerminalFontWeight get terminalFontWeight => _terminalFontWeight;
@@ -139,6 +141,8 @@ class SettingsProvider extends ChangeNotifier {
     }
 
     _showServerTab = settings['showServerTab'] as bool? ?? true;
+    _showMobileShortcutBar =
+        settings['showMobileShortcutBar'] as bool? ?? false;
 
     final agentPortVal = settings['defaultAgentPort'];
     if (agentPortVal != null) {
@@ -266,6 +270,12 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> setShowServerTab(bool value) async {
     _showServerTab = value;
     await _saveSetting('showServerTab', value);
+    notifyListeners();
+  }
+
+  Future<void> setShowMobileShortcutBar(bool value) async {
+    _showMobileShortcutBar = value;
+    await _saveSetting('showMobileShortcutBar', value);
     notifyListeners();
   }
 
