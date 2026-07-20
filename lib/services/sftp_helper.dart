@@ -19,10 +19,14 @@ class SftpHelper {
   SftpHelper(this.client);
   final SSHClient client;
   SftpClient? _sftpClient;
+  Future<SftpClient>? _sftpFuture;
   List<String>? _drives;
 
-  Future<SftpClient> _sftp() async {
-    return _sftpClient ??= await client.sftp();
+  Future<SftpClient> _sftp() {
+    return _sftpFuture ??= client.sftp().then((SftpClient c) {
+      _sftpClient = c;
+      return c;
+    });
   }
 
   Future<List<RemoteFsEntry>> listDir(String path) async {
@@ -61,8 +65,10 @@ class SftpHelper {
   }
 
   Future<void> close() async {
-    _sftpClient?.close();
+    _sftpFuture = null;
+    final c = _sftpClient;
     _sftpClient = null;
+    c?.close();
     _drives = null;
   }
 
