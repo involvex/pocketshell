@@ -12,10 +12,11 @@ From an active Client session, open the SFTP browser (modal) to list drives,
 navigate folders, and upload/download single files. The Agents tab reuses SFTP
 to pick an OpenCode project directory on the same host.
 
-Planned explorer foundations (typed listing, sort/filter, mkdir/rename/delete,
-transfer progress, capped preview/edit) are specified in
+Explorer foundations include typed listings, sort/filter, mkdir/rename/delete,
+transfer progress/cancel, overwrite confirmation, and capped text/image
+preview. Spec:
 [2026-07-20-sftp-explorer-foundations.md](superpowers/plans/2026-07-20-sftp-explorer-foundations.md).
-Split terminal|files “workstation” layout is **out of scope** for that plan.
+Split terminal|files “workstation” layout remains out of scope.
 
 ## SSH server (optional)
 

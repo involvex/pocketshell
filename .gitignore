@@ -26,6 +26,9 @@ migrate_working_dir/
 # MkDocs output
 /site/
 
+# Agent SDD scratch (briefs, reports, review packages)
+.superpowers/
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id
