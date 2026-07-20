@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/material.dart';
 
-import '../services/sftp_helper.dart';
+import 'package:ssh_app/providers/sftp_controller.dart';
+import 'package:ssh_app/utils/remote_fs_sort.dart';
+import 'package:ssh_app/widgets/sftp/sftp_browser_header.dart';
+import 'package:ssh_app/widgets/sftp/sftp_entry_list.dart';
 
 /// SFTP browser dialog that returns the selected remote directory path.
 class SftpDirectoryPicker extends StatefulWidget {
@@ -21,81 +24,19 @@ class SftpDirectoryPicker extends StatefulWidget {
 }
 
 class _SftpDirectoryPickerState extends State<SftpDirectoryPicker> {
-  late String _currentPath;
-  List<Map<String, dynamic>> _entries = <Map<String, dynamic>>[];
-  List<String> _availableDrives = <String>[];
-  bool _loading = true;
+  late final SftpController _controller;
 
   @override
   void initState() {
     super.initState();
-    _currentPath = widget.initialPath ?? '/';
-    unawaited(_init());
+    _controller = SftpController(client: widget.client);
+    unawaited(_controller.init(initialPath: widget.initialPath));
   }
 
-  Future<void> _init() async {
-    final helper = SftpHelper(widget.client);
-    final drives = await helper.listDrives();
-    if (!mounted) return;
-
-    setState(() {
-      _availableDrives = drives;
-      if (widget.initialPath == null && drives.isNotEmpty) {
-        _currentPath = '${drives.first}:/';
-      }
-    });
-    await _refresh();
-  }
-
-  Future<void> _refresh() async {
-    setState(() => _loading = true);
-
-    try {
-      final helper = SftpHelper(widget.client);
-      final out = await helper.listDirWithType(_currentPath);
-
-      if (_currentPath != '.' && _currentPath != '/') {
-        out.insert(0, <String, dynamic>{'name': '..', 'isDirectory': true});
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _entries = out;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to list directory: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _navigateUp() async {
-    final lastSlash = _currentPath.lastIndexOf('/');
-    if (lastSlash <= 0) {
-      setState(() => _currentPath = lastSlash == 0 ? '/' : '.');
-    } else {
-      setState(() => _currentPath = _currentPath.substring(0, lastSlash));
-    }
-    await _refresh();
-  }
-
-  Future<void> _enterDirectory(String name) async {
-    setState(() {
-      _currentPath = (_currentPath == '.' || _currentPath == '/')
-          ? name
-          : '$_currentPath/$name';
-    });
-    await _refresh();
-  }
-
-  void _selectCurrentDirectory() {
-    Navigator.pop(context, _currentPath);
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -104,84 +45,62 @@ class _SftpDirectoryPickerState extends State<SftpDirectoryPicker> {
       title: const Text('Select Project Directory'),
       content: SizedBox(
         width: double.maxFinite,
-        height: MediaQuery.of(context).size.height * 0.5,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              _currentPath,
-              style: Theme.of(context).textTheme.bodySmall,
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
-            ),
-            const SizedBox(height: 8),
-            if (_availableDrives.isNotEmpty)
-              SizedBox(
-                height: 40,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _availableDrives.length,
-                  itemBuilder: (context, idx) {
-                    final drive = _availableDrives[idx];
-                    final isSelected = _currentPath.startsWith('$drive:');
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: ChoiceChip(
-                        label: Text('$drive:'),
-                        selected: isSelected,
-                        onSelected: (_) async {
-                          setState(() => _currentPath = '$drive:/');
-                          await _refresh();
-                        },
-                      ),
+        height: MediaQuery.of(context).size.height * 0.6,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (BuildContext context, Widget? child) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                SftpBrowserHeader(
+                  currentPath: _controller.currentPath,
+                  drives: _controller.drives,
+                  filterTerm: _controller.filterTerm,
+                  sortField: _controller.sortField,
+                  sortAscending: _controller.sortAscending,
+                  onCopyPath: () async {
+                    if (!mounted) {
+                      return;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Path copied')),
                     );
                   },
+                  onDriveSelected: (String drive) =>
+                      _controller.navigateTo('$drive:/'),
+                  onFilterChanged: _controller.setFilter,
+                  onSortChanged: (
+                    RemoteFsSortField field,
+                    bool ascending,
+                  ) =>
+                      _controller.setSort(field, ascending: ascending),
+                  onRefresh: _controller.refresh,
+                  onCreateDirectory: _controller.mkdir,
                 ),
-              ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                      itemCount: _entries.length,
-                      itemBuilder: (context, idx) {
-                        final item = _entries[idx];
-                        final name = item['name'] as String;
-                        final isDir = item['isDirectory'] as bool? ?? false;
-
-                        if (!isDir) {
-                          return ListTile(
-                            dense: true,
-                            leading: const Icon(Icons.insert_drive_file),
-                            title: Text(name),
-                            enabled: false,
-                          );
-                        }
-
-                        return ListTile(
-                          dense: true,
-                          leading: const Icon(Icons.folder),
-                          title: Text(name),
-                          onTap: () async {
-                            if (name == '..') {
-                              await _navigateUp();
-                            } else {
-                              await _enterDirectory(name);
-                            }
-                          },
-                        );
-                      },
-                    ),
-            ),
-          ],
+                Expanded(
+                  child: SftpEntryList(
+                    entries: _controller.visibleEntries,
+                    currentPath: _controller.currentPath,
+                    loading: _controller.loading,
+                    error: _controller.error,
+                    directoriesOnly: true,
+                    onOpenEntry: _controller.openEntry,
+                    onRenameEntry: _controller.rename,
+                    onDeleteEntry: _controller.deleteEntry,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
-      actions: [
+      actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _selectCurrentDirectory,
+          onPressed: () => Navigator.pop(context, _controller.currentPath),
           child: const Text('Select'),
         ),
       ],

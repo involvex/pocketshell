@@ -16,6 +16,7 @@ built for Android and desktop.
 - [Getting Started](getting-started.md) — install, run, and build
 - [Features](features.md) — tabs, agents, widgets, and more
 - [Releases](releases.md) — version tags and APK downloads
+- [SFTP explorer plan](superpowers/plans/2026-07-20-sftp-explorer-foundations.md) — foundations-first remote file explorer (source of truth; supersedes external Workstation / SFTP-Optimierungen drafts)
 
 ## Repository
 
