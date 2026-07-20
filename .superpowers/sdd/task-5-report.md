@@ -101,7 +101,7 @@ flutter build windows
 ## Commit
 
 ```text
-PENDING feat(sftp): shared explorer UI with sort, filter, and file ops
+6668b50 feat(sftp): shared explorer UI with sort, filter, and file ops
 ```
 
 ## Concerns / Notes
