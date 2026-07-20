@@ -46,24 +46,40 @@ class SftpController extends ChangeNotifier {
   }
 
   Future<void> init({String? initialPath}) async {
-    final savedSortField = await ConfigService.getSftpSortField();
-    sortField = RemoteFsSortField.values.firstWhere(
-      (field) => field.name == savedSortField,
-      orElse: () => RemoteFsSortField.name,
-    );
-    sortAscending = await ConfigService.getSftpSortAscending();
-    drives = await _helper.listDrives();
+    loading = true;
+    error = null;
+    notifyListeners();
 
-    final savedPath = initialPath ?? await ConfigService.getSftpLastPath();
-    if (savedPath != null && savedPath.isNotEmpty) {
-      currentPath = RemotePath.normalize(savedPath);
-    } else if (drives.isNotEmpty) {
-      currentPath = '${drives.first}:/';
-    } else {
+    try {
+      final savedSortField = await ConfigService.getSftpSortField();
+      sortField = RemoteFsSortField.values.firstWhere(
+        (field) => field.name == savedSortField,
+        orElse: () => RemoteFsSortField.name,
+      );
+      sortAscending = await ConfigService.getSftpSortAscending();
+      drives = await _helper.listDrives();
+
+      final savedPath = initialPath ?? await ConfigService.getSftpLastPath();
+      if (savedPath != null && savedPath.isNotEmpty) {
+        currentPath = RemotePath.normalize(savedPath);
+      } else if (drives.isNotEmpty) {
+        currentPath = '${drives.first}:/';
+      } else {
+        currentPath = '/';
+      }
+    } catch (e) {
+      error = e.toString();
+      drives = <String>[];
       currentPath = '/';
+      _raw = <RemoteFsEntry>[];
+    } finally {
+      loading = false;
+      notifyListeners();
     }
 
-    await refresh();
+    if (error == null) {
+      await refresh();
+    }
   }
 
   Future<void> refresh() async {
@@ -164,9 +180,9 @@ class SftpController extends ChangeNotifier {
     }
 
     final remotePath = RemotePath.join(currentPath, filename);
-    final totalBytes = await localFile.length();
 
     await _runMutation(() async {
+      final totalBytes = await localFile.length();
       _startTransfer(
         label: 'Uploading $filename',
         totalBytes: totalBytes,

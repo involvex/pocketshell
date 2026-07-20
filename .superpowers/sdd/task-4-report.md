@@ -77,3 +77,33 @@ feat(sftp): add session-scoped SftpController
   dependency-isolated tests awkward without first introducing injection seams.
 - Transfer cancellation stops controller state cleanly, but does not attempt to
   roll back partially written local or remote files.
+
+## Review fix — init/upload preflight errors
+
+Addressed Important review findings:
+
+1. **`upload()` preflight** — moved `localFile.length()` inside `_runMutation` so
+   missing/unreadable local files surface via `error` instead of escaping as
+   uncaught async exceptions.
+2. **`init()` drive listing** — wrapped sort/path/drive setup in
+   loading/error/finally; on failure sets `error`, clears `drives`/`_raw`, keeps
+   `currentPath` at `/`, and skips `refresh()`; on success delegates listing to
+   `refresh()` as before.
+
+### Verification (review fix)
+
+```text
+flutter analyze lib/providers/sftp_controller.dart
+flutter test
+```
+
+| Check | Result |
+|-------|--------|
+| `flutter analyze lib/providers/sftp_controller.dart` | `No issues found!` |
+| `flutter test` | **60/60 passed** |
+
+### Commit (review fix)
+
+```text
+fix(sftp): surface init/upload preflight errors via SftpController.error
+```
