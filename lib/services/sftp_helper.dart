@@ -7,6 +7,8 @@ import 'package:ssh_app/utils/remote_path_utils.dart';
 
 typedef SftpProgress = void Function(int bytesTransferred, int? totalBytes);
 
+const int kSftpPreviewMaxBytes = 512 * 1024;
+
 class SftpCancelToken {
   bool isCancelled = false;
 
@@ -142,6 +144,63 @@ class SftpHelper {
     }
   }
 
+  Future<Uint8List> readRemoteBytes(
+    String remotePath, {
+    int maxBytes = kSftpPreviewMaxBytes,
+  }) async {
+    final sftp = await _sftp();
+    final normalizedPath = RemotePath.normalize(remotePath);
+    final int? knownSize = (await sftp.stat(normalizedPath)).size;
+    if (knownSize != null && knownSize > maxBytes) {
+      throw StateError(
+        'Remote file is larger than the ${_formatPreviewLimit(maxBytes)} '
+        'preview limit.',
+      );
+    }
+
+    final remoteFile = await sftp.open(
+      normalizedPath,
+      mode: SftpFileOpenMode.read,
+    );
+    try {
+      final buffer = BytesBuilder(copy: false);
+      var totalBytes = 0;
+      final int readLength = knownSize ?? maxBytes + 1;
+      await for (final chunk in remoteFile.read(length: readLength)) {
+        if (chunk.isEmpty) {
+          continue;
+        }
+        totalBytes += chunk.length;
+        if (totalBytes > maxBytes) {
+          throw StateError(
+            'Remote file is larger than the ${_formatPreviewLimit(maxBytes)} '
+            'preview limit.',
+          );
+        }
+        buffer.add(chunk);
+      }
+      return buffer.takeBytes();
+    } finally {
+      await remoteFile.close();
+    }
+  }
+
+  Future<void> writeRemoteBytes(String remotePath, Uint8List data) async {
+    final sftp = await _sftp();
+    final normalizedPath = RemotePath.normalize(remotePath);
+    final remoteFile = await sftp.open(
+      normalizedPath,
+      mode: SftpFileOpenMode.write |
+          SftpFileOpenMode.create |
+          SftpFileOpenMode.truncate,
+    );
+    try {
+      await remoteFile.writeBytes(data);
+    } finally {
+      await remoteFile.close();
+    }
+  }
+
   Future<String?> readRemoteText(String remotePath) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
@@ -184,4 +243,14 @@ class SftpHelper {
     _drives = drives;
     return List<String>.from(drives);
   }
+}
+
+String _formatPreviewLimit(int maxBytes) {
+  if (maxBytes % (1024 * 1024) == 0) {
+    return '${maxBytes ~/ (1024 * 1024)} MB';
+  }
+  if (maxBytes % 1024 == 0) {
+    return '${maxBytes ~/ 1024} KB';
+  }
+  return '$maxBytes bytes';
 }

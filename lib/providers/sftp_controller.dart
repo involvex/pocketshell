@@ -238,6 +238,31 @@ class SftpController extends ChangeNotifier {
     return success;
   }
 
+  String remotePathForEntry(RemoteFsEntry entry) {
+    return RemotePath.join(currentPath, entry.name);
+  }
+
+  Future<Uint8List> readRemoteBytes(
+    RemoteFsEntry entry, {
+    int maxBytes = kSftpPreviewMaxBytes,
+  }) {
+    if (entry.isDirectory || entry.isParentLink) {
+      throw StateError('Only files can be previewed.');
+    }
+    return _helper.readRemoteBytes(
+      remotePathForEntry(entry),
+      maxBytes: maxBytes,
+    );
+  }
+
+  Future<void> writeRemoteBytes(RemoteFsEntry entry, Uint8List data) async {
+    if (entry.isDirectory || entry.isParentLink) {
+      throw StateError('Only files can be edited.');
+    }
+    await _helper.writeRemoteBytes(remotePathForEntry(entry), data);
+    await refresh();
+  }
+
   void cancelTransfer() {
     _cancel?.cancel();
   }

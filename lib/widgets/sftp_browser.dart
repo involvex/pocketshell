@@ -1,6 +1,7 @@
 // lib/widgets/sftp_browser.dart
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -9,9 +10,12 @@ import 'package:provider/provider.dart';
 import 'package:ssh_app/models/remote_fs_entry.dart';
 import 'package:ssh_app/providers/sftp_controller.dart';
 import 'package:ssh_app/providers/ssh_provider.dart';
+import 'package:ssh_app/services/sftp_helper.dart';
 import 'package:ssh_app/utils/remote_fs_sort.dart';
 import 'package:ssh_app/widgets/sftp/sftp_browser_header.dart';
 import 'package:ssh_app/widgets/sftp/sftp_entry_list.dart';
+import 'package:ssh_app/widgets/sftp/sftp_image_preview.dart';
+import 'package:ssh_app/widgets/sftp/sftp_text_preview.dart';
 import 'package:ssh_app/widgets/sftp/sftp_transfer_banner.dart';
 
 class SftpBrowser extends StatefulWidget {
@@ -121,6 +125,55 @@ class _SftpBrowserState extends State<SftpBrowser> {
     );
   }
 
+  Future<void> _editEntry(RemoteFsEntry entry) async {
+    final SftpController? controller = _controller;
+    if (controller == null) {
+      return;
+    }
+    if (!isSftpTextPreviewExtension(entry.name)) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This file cannot be edited here.')),
+      );
+      return;
+    }
+    await showSftpTextPreviewDialog(
+      context: context,
+      fileName: entry.name,
+      onLoad: () => controller.readRemoteBytes(
+        entry,
+        maxBytes: kSftpPreviewMaxBytes,
+      ),
+      onSave: (Uint8List data) => controller.writeRemoteBytes(entry, data),
+    );
+  }
+
+  Future<void> _previewEntry(RemoteFsEntry entry) async {
+    final SftpController? controller = _controller;
+    if (controller == null) {
+      return;
+    }
+    if (!isSftpImagePreviewExtension(entry.name)) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This file cannot be previewed here.')),
+      );
+      return;
+    }
+    await showSftpImagePreviewDialog(
+      context: context,
+      fileName: entry.name,
+      onLoad: () => controller.readRemoteBytes(
+        entry,
+        maxBytes: kSftpPreviewMaxBytes,
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _controller?.dispose();
@@ -190,6 +243,8 @@ class _SftpBrowserState extends State<SftpBrowser> {
                     error: controller.error,
                     onOpenEntry: controller.openEntry,
                     onDownloadEntry: _download,
+                    onEditEntry: _editEntry,
+                    onPreviewEntry: _previewEntry,
                     onRenameEntry: controller.rename,
                     onDeleteEntry: controller.deleteEntry,
                   ),

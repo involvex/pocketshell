@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import 'package:ssh_app/models/remote_fs_entry.dart';
 import 'package:ssh_app/utils/remote_path_utils.dart';
+import 'package:ssh_app/widgets/sftp/sftp_image_preview.dart';
+import 'package:ssh_app/widgets/sftp/sftp_text_preview.dart';
 
 /// Shared SFTP entry list with directory-only and file-browser modes.
 class SftpEntryList extends StatelessWidget {
@@ -14,6 +16,8 @@ class SftpEntryList extends StatelessWidget {
     this.error,
     this.directoriesOnly = false,
     this.onDownloadEntry,
+    this.onEditEntry,
+    this.onPreviewEntry,
     this.onRenameEntry,
     this.onDeleteEntry,
     super.key,
@@ -26,6 +30,8 @@ class SftpEntryList extends StatelessWidget {
   final bool directoriesOnly;
   final Future<void> Function(RemoteFsEntry entry) onOpenEntry;
   final Future<void> Function(RemoteFsEntry entry)? onDownloadEntry;
+  final Future<void> Function(RemoteFsEntry entry)? onEditEntry;
+  final Future<void> Function(RemoteFsEntry entry)? onPreviewEntry;
   final Future<void> Function(RemoteFsEntry entry, String newName)?
       onRenameEntry;
   final Future<void> Function(RemoteFsEntry entry)? onDeleteEntry;
@@ -80,6 +86,8 @@ class SftpEntryList extends StatelessWidget {
                     directoriesOnly: directoriesOnly,
                     onOpenEntry: onOpenEntry,
                     onDownloadEntry: onDownloadEntry,
+                    onEditEntry: onEditEntry,
+                    onPreviewEntry: onPreviewEntry,
                     onRenameEntry: onRenameEntry,
                     onDeleteEntry: onDeleteEntry,
                   );
@@ -107,6 +115,8 @@ class _EntryTile extends StatelessWidget {
     required this.directoriesOnly,
     required this.onOpenEntry,
     this.onDownloadEntry,
+    this.onEditEntry,
+    this.onPreviewEntry,
     this.onRenameEntry,
     this.onDeleteEntry,
   });
@@ -116,6 +126,8 @@ class _EntryTile extends StatelessWidget {
   final bool directoriesOnly;
   final Future<void> Function(RemoteFsEntry entry) onOpenEntry;
   final Future<void> Function(RemoteFsEntry entry)? onDownloadEntry;
+  final Future<void> Function(RemoteFsEntry entry)? onEditEntry;
+  final Future<void> Function(RemoteFsEntry entry)? onPreviewEntry;
   final Future<void> Function(RemoteFsEntry entry, String newName)?
       onRenameEntry;
   final Future<void> Function(RemoteFsEntry entry)? onDeleteEntry;
@@ -174,6 +186,14 @@ class _EntryTile extends StatelessWidget {
   Future<void> _showEntryActions(BuildContext context) async {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     final String fullPath = RemotePath.join(currentPath, entry.name);
+    final bool canEdit = !entry.isDirectory &&
+        !directoriesOnly &&
+        onEditEntry != null &&
+        isSftpTextPreviewExtension(entry.name);
+    final bool canPreview = !entry.isDirectory &&
+        !directoriesOnly &&
+        onPreviewEntry != null &&
+        isSftpImagePreviewExtension(entry.name);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -204,6 +224,24 @@ class _EntryTile extends StatelessWidget {
                   onTap: () async {
                     Navigator.of(sheetContext).pop();
                     await onDownloadEntry?.call(entry);
+                  },
+                ),
+              if (canEdit)
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Edit'),
+                  onTap: () async {
+                    Navigator.of(sheetContext).pop();
+                    await onEditEntry?.call(entry);
+                  },
+                ),
+              if (canPreview)
+                ListTile(
+                  leading: const Icon(Icons.image_outlined),
+                  title: const Text('Preview'),
+                  onTap: () async {
+                    Navigator.of(sheetContext).pop();
+                    await onPreviewEntry?.call(entry);
                   },
                 ),
               if (onRenameEntry != null)
