@@ -127,6 +127,9 @@ class ConfigService {
   static Future<void> saveSftpLastPath(String path) async =>
       prefs.setString(_sftpLastPathKey, path);
 
+  static Future<void> clearSftpLastPath() async =>
+      prefs.remove(_sftpLastPathKey);
+
   static Future<void> clearAll() async {
     await prefs.clear();
   }

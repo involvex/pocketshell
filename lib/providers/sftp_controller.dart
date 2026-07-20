@@ -11,9 +11,11 @@ import 'package:ssh_app/utils/remote_path_utils.dart';
 
 /// Session-scoped SFTP explorer state and file operations.
 class SftpController extends ChangeNotifier {
-  SftpController({required SSHClient client}) : _helper = SftpHelper(client);
+  SftpController({SSHClient? client, SftpFileSystem? helper})
+      : assert(client != null || helper != null),
+        _helper = helper ?? SftpHelper(client!);
 
-  final SftpHelper _helper;
+  final SftpFileSystem _helper;
 
   String currentPath = '/';
   List<RemoteFsEntry> _raw = <RemoteFsEntry>[];
@@ -60,12 +62,16 @@ class SftpController extends ChangeNotifier {
       drives = await _helper.listDrives();
 
       final savedPath = initialPath ?? await ConfigService.getSftpLastPath();
+      final bool restoredPath = savedPath != null && savedPath.isNotEmpty;
       if (savedPath != null && savedPath.isNotEmpty) {
         currentPath = RemotePath.normalize(savedPath);
       } else if (drives.isNotEmpty) {
         currentPath = '${drives.first}:/';
       } else {
         currentPath = '/';
+      }
+      if (error == null) {
+        await refresh(recoverInvalidPath: restoredPath);
       }
     } catch (e) {
       error = e.toString();
@@ -76,23 +82,25 @@ class SftpController extends ChangeNotifier {
       loading = false;
       notifyListeners();
     }
-
-    if (error == null) {
-      await refresh();
-    }
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool recoverInvalidPath = false}) async {
     loading = true;
     error = null;
     notifyListeners();
 
     try {
-      _raw = await _helper.listDir(currentPath);
-      await ConfigService.saveSftpLastPath(currentPath);
+      await _loadAndPersistCurrentPath();
     } catch (e) {
-      error = e.toString();
-      _raw = <RemoteFsEntry>[];
+      if (recoverInvalidPath && await _tryFallbackPath()) {
+        error = null;
+      } else {
+        if (recoverInvalidPath) {
+          await ConfigService.clearSftpLastPath();
+        }
+        error = e.toString();
+        _raw = <RemoteFsEntry>[];
+      }
     } finally {
       loading = false;
       notifyListeners();
@@ -238,6 +246,18 @@ class SftpController extends ChangeNotifier {
     return success;
   }
 
+  Future<bool> remoteFileExists(String fileName) async {
+    final targetName = fileName.trim();
+    if (targetName.isEmpty) {
+      return false;
+    }
+    return _helper.exists(RemotePath.join(currentPath, targetName));
+  }
+
+  String localDownloadPath(Directory localDirectory, String fileName) {
+    return _joinLocalPath(localDirectory.path, fileName);
+  }
+
   String remotePathForEntry(RemoteFsEntry entry) {
     return RemotePath.join(currentPath, entry.name);
   }
@@ -320,6 +340,36 @@ class SftpController extends ChangeNotifier {
 
   bool _isCancelledError(Object error) {
     return error is StateError && error.message == 'Transfer cancelled';
+  }
+
+  Future<void> _loadAndPersistCurrentPath() async {
+    _raw = await _helper.listDir(currentPath);
+    await ConfigService.saveSftpLastPath(currentPath);
+  }
+
+  Future<bool> _tryFallbackPath() async {
+    for (final candidate in _fallbackPaths()) {
+      try {
+        currentPath = candidate;
+        await _loadAndPersistCurrentPath();
+        return true;
+      } catch (_) {
+        continue;
+      }
+    }
+    return false;
+  }
+
+  Iterable<String> _fallbackPaths() sync* {
+    if (drives.isNotEmpty) {
+      final driveRoot = '${drives.first}:/';
+      if (driveRoot != currentPath) {
+        yield driveRoot;
+      }
+    }
+    if (currentPath != '/') {
+      yield '/';
+    }
   }
 
   String _fileNameFor(File file) {

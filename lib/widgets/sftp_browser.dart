@@ -96,8 +96,25 @@ class _SftpBrowserState extends State<SftpBrowser> {
       return;
     }
 
-    final bool success =
-        await controller.upload(File(result.files.single.path!));
+    final String filename = result.files.single.name.trim();
+    if (filename.isEmpty) {
+      return;
+    }
+
+    final bool remoteExists = await controller.remoteFileExists(filename);
+    if (remoteExists &&
+        !await _confirmOverwrite(
+          title: 'Overwrite remote file?',
+          message: 'A file named "$filename" already exists in this folder. '
+              'Do you want to replace it?',
+        )) {
+      return;
+    }
+
+    final bool success = await controller.upload(
+      File(result.files.single.path!),
+      remoteName: filename,
+    );
     _showOperationSnackBar(
       controller: controller,
       success: success,
@@ -116,13 +133,54 @@ class _SftpBrowserState extends State<SftpBrowser> {
       return;
     }
 
-    final bool success =
-        await controller.download(entry, Directory(pickedDirectory));
+    final Directory localDirectory = Directory(pickedDirectory);
+    final String localPath = controller.localDownloadPath(
+      localDirectory,
+      entry.name,
+    );
+    final bool localExists = await File(localPath).exists();
+    if (localExists &&
+        !await _confirmOverwrite(
+          title: 'Overwrite local file?',
+          message:
+              'A file named "${entry.name}" already exists in this folder. '
+              'Do you want to replace it?',
+        )) {
+      return;
+    }
+
+    final bool success = await controller.download(entry, localDirectory);
     _showOperationSnackBar(
       controller: controller,
       success: success,
       successMessage: 'Downloaded',
     );
+  }
+
+  Future<bool> _confirmOverwrite({
+    required String title,
+    required String message,
+  }) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Overwrite'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
   }
 
   Future<void> _editEntry(RemoteFsEntry entry) async {

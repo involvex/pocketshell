@@ -9,6 +9,36 @@ typedef SftpProgress = void Function(int bytesTransferred, int? totalBytes);
 
 const int kSftpPreviewMaxBytes = 512 * 1024;
 
+abstract interface class SftpFileSystem {
+  Future<List<RemoteFsEntry>> listDir(String path);
+  Future<void> close();
+  Future<void> mkdir(String path);
+  Future<void> rename(String from, String to);
+  Future<void> removeFile(String path);
+  Future<void> removeDir(String path);
+  Future<void> downloadStream(
+    String remotePath,
+    File localFile, {
+    SftpProgress? onProgress,
+    SftpCancelToken? cancelToken,
+    int? knownSize,
+  });
+  Future<void> upload(
+    File localFile,
+    String remotePath, {
+    SftpProgress? onProgress,
+    SftpCancelToken? cancelToken,
+  });
+  Future<bool> exists(String path);
+  Future<Uint8List> readRemoteBytes(
+    String remotePath, {
+    int maxBytes = kSftpPreviewMaxBytes,
+  });
+  Future<void> writeRemoteBytes(String remotePath, Uint8List data);
+  Future<String?> readRemoteText(String remotePath);
+  Future<List<String>> listDrives({bool forceRefresh = false});
+}
+
 class SftpCancelToken {
   bool isCancelled = false;
 
@@ -17,7 +47,7 @@ class SftpCancelToken {
   }
 }
 
-class SftpHelper {
+class SftpHelper implements SftpFileSystem {
   SftpHelper(this.client);
   final SSHClient client;
   SftpClient? _sftpClient;
@@ -31,6 +61,7 @@ class SftpHelper {
     });
   }
 
+  @override
   Future<List<RemoteFsEntry>> listDir(String path) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(path);
@@ -53,6 +84,7 @@ class SftpHelper {
     return entries;
   }
 
+  @override
   Future<void> close() async {
     _sftpFuture = null;
     final c = _sftpClient;
@@ -61,26 +93,46 @@ class SftpHelper {
     _drives = null;
   }
 
+  @override
   Future<void> mkdir(String path) async {
     final sftp = await _sftp();
     await sftp.mkdir(RemotePath.normalize(path));
   }
 
+  @override
   Future<void> rename(String from, String to) async {
     final sftp = await _sftp();
     await sftp.rename(RemotePath.normalize(from), RemotePath.normalize(to));
   }
 
+  @override
   Future<void> removeFile(String path) async {
     final sftp = await _sftp();
     await sftp.remove(RemotePath.normalize(path));
   }
 
+  @override
   Future<void> removeDir(String path) async {
     final sftp = await _sftp();
     await sftp.rmdir(RemotePath.normalize(path));
   }
 
+  @override
+  Future<bool> exists(String path) async {
+    final sftp = await _sftp();
+    final normalizedPath = RemotePath.normalize(path);
+    try {
+      await sftp.stat(normalizedPath);
+      return true;
+    } on SftpStatusError catch (error) {
+      if (error.code == SftpStatusCode.noSuchFile) {
+        return false;
+      }
+      rethrow;
+    }
+  }
+
+  @override
   Future<void> downloadStream(
     String remotePath,
     File localFile, {
@@ -113,6 +165,7 @@ class SftpHelper {
     }
   }
 
+  @override
   Future<void> upload(
     File localFile,
     String remotePath, {
@@ -144,6 +197,7 @@ class SftpHelper {
     }
   }
 
+  @override
   Future<Uint8List> readRemoteBytes(
     String remotePath, {
     int maxBytes = kSftpPreviewMaxBytes,
@@ -185,6 +239,7 @@ class SftpHelper {
     }
   }
 
+  @override
   Future<void> writeRemoteBytes(String remotePath, Uint8List data) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
@@ -201,6 +256,7 @@ class SftpHelper {
     }
   }
 
+  @override
   Future<String?> readRemoteText(String remotePath) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
@@ -224,6 +280,7 @@ class SftpHelper {
     }
   }
 
+  @override
   Future<List<String>> listDrives({bool forceRefresh = false}) async {
     if (_drives != null && !forceRefresh) {
       return List<String>.from(_drives!);
