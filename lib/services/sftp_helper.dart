@@ -51,19 +51,6 @@ class SftpHelper {
     return entries;
   }
 
-  @Deprecated('Use listDir')
-  Future<List<Map<String, dynamic>>> listDirWithType(String path) async {
-    final entries = await listDir(path);
-    return entries
-        .map(
-          (entry) => <String, dynamic>{
-            'name': entry.name,
-            'isDirectory': entry.isDirectory,
-          },
-        )
-        .toList();
-  }
-
   Future<void> close() async {
     _sftpFuture = null;
     final c = _sftpClient;
