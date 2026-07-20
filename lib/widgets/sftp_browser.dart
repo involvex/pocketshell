@@ -54,6 +54,25 @@ class _SftpBrowserState extends State<SftpBrowser> {
     );
   }
 
+  void _showOperationSnackBar({
+    required SftpController controller,
+    required bool success,
+    required String successMessage,
+  }) {
+    if (!mounted) {
+      return;
+    }
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    if (success) {
+      messenger.showSnackBar(SnackBar(content: Text(successMessage)));
+      return;
+    }
+    final String? error = controller.error;
+    if (error != null) {
+      messenger.showSnackBar(SnackBar(content: Text(error)));
+    }
+  }
+
   Future<void> _createDirectory(String name) async {
     final SftpController? controller = _controller;
     if (controller == null) {
@@ -73,12 +92,12 @@ class _SftpBrowserState extends State<SftpBrowser> {
       return;
     }
 
-    await controller.upload(File(result.files.single.path!));
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Uploaded')),
+    final bool success =
+        await controller.upload(File(result.files.single.path!));
+    _showOperationSnackBar(
+      controller: controller,
+      success: success,
+      successMessage: 'Uploaded',
     );
   }
 
@@ -93,12 +112,12 @@ class _SftpBrowserState extends State<SftpBrowser> {
       return;
     }
 
-    await controller.download(entry, Directory(pickedDirectory));
-    if (!mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Downloaded')),
+    final bool success =
+        await controller.download(entry, Directory(pickedDirectory));
+    _showOperationSnackBar(
+      controller: controller,
+      success: success,
+      successMessage: 'Downloaded',
     );
   }
 

@@ -112,3 +112,31 @@ flutter build windows
   shared header and list fit comfortably inside the dialog layout.
 - This Flutter workspace has no `package.json`, so the repo-specific
   `npx eslint .` / `npx prettier . --check` step is not applicable here.
+
+## Review Fix (2026-07-20)
+
+**Finding:** `SftpBrowser` showed `Uploaded` / `Downloaded` SnackBars unconditionally
+after `await controller.upload/download`, even when the transfer was cancelled or
+failed. Cancelled transfers leave `controller.error` unset, so checking error alone
+would still show false success.
+
+**Fix:**
+
+- `SftpController._runMutation()` now returns `Future<bool>` (`true` on success,
+  `false` on error or cancel).
+- `mkdir`, `rename`, `deleteEntry`, `upload`, and `download` return that bool.
+- `SftpBrowser` uses `_showOperationSnackBar()` to show success only when the
+  operation returns `true`, error SnackBar when `controller.error != null`, and
+  silence on cancel (failure with no error).
+
+**Verification after fix:**
+
+```text
+flutter analyze
+→ No issues found!
+
+flutter test
+→ 60 tests passed
+```
+
+**Commit:** `fix(sftp): only show transfer success when controller has no error` (`745ad09`)

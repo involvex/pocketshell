@@ -131,39 +131,39 @@ class SftpController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> mkdir(String name) async {
+  Future<bool> mkdir(String name) async {
     final entryName = name.trim();
     if (entryName.isEmpty) {
-      return;
+      return false;
     }
-    await _runMutation(() async {
+    return _runMutation(() async {
       await _helper.mkdir(RemotePath.join(currentPath, entryName));
     });
   }
 
-  Future<void> rename(RemoteFsEntry entry, String newName) async {
+  Future<bool> rename(RemoteFsEntry entry, String newName) async {
     if (entry.isParentLink) {
-      return;
+      return false;
     }
 
     final targetName = newName.trim();
     if (targetName.isEmpty || targetName == entry.name) {
-      return;
+      return false;
     }
 
-    await _runMutation(() async {
+    return _runMutation(() async {
       final fromPath = RemotePath.join(currentPath, entry.name);
       final toPath = RemotePath.join(currentPath, targetName);
       await _helper.rename(fromPath, toPath);
     });
   }
 
-  Future<void> deleteEntry(RemoteFsEntry entry) async {
+  Future<bool> deleteEntry(RemoteFsEntry entry) async {
     if (entry.isParentLink) {
-      return;
+      return false;
     }
 
-    await _runMutation(() async {
+    return _runMutation(() async {
       final path = RemotePath.join(currentPath, entry.name);
       if (entry.isDirectory) {
         await _helper.removeDir(path);
@@ -173,15 +173,15 @@ class SftpController extends ChangeNotifier {
     });
   }
 
-  Future<void> upload(File localFile, {String? remoteName}) async {
+  Future<bool> upload(File localFile, {String? remoteName}) async {
     final filename = (remoteName ?? _fileNameFor(localFile)).trim();
     if (filename.isEmpty) {
-      return;
+      return false;
     }
 
     final remotePath = RemotePath.join(currentPath, filename);
 
-    await _runMutation(() async {
+    return _runMutation(() async {
       final totalBytes = await localFile.length();
       _startTransfer(
         label: 'Uploading $filename',
@@ -198,25 +198,25 @@ class SftpController extends ChangeNotifier {
     });
   }
 
-  Future<void> download(
+  Future<bool> download(
     RemoteFsEntry entry,
     Directory localDirectory, {
     String? localName,
   }) async {
     if (entry.isDirectory || entry.isParentLink) {
-      return;
+      return false;
     }
 
     final filename = (localName ?? entry.name).trim();
     if (filename.isEmpty) {
-      return;
+      return false;
     }
 
     final remotePath = RemotePath.join(currentPath, entry.name);
     final localPath = _joinLocalPath(localDirectory.path, filename);
     final localFile = File(localPath);
 
-    await _runMutation(() async {
+    return _runMutation(() async {
       _startTransfer(
         label: 'Downloading ${entry.name}',
         totalBytes: entry.size,
@@ -237,7 +237,7 @@ class SftpController extends ChangeNotifier {
     _cancel?.cancel();
   }
 
-  Future<void> _runMutation(
+  Future<bool> _runMutation(
     Future<void> Function() action, {
     bool refreshAfter = true,
   }) async {
@@ -251,10 +251,12 @@ class SftpController extends ChangeNotifier {
         _raw = await _helper.listDir(currentPath);
         await ConfigService.saveSftpLastPath(currentPath);
       }
+      return true;
     } catch (e) {
       if (!_isCancelledError(e)) {
         error = e.toString();
       }
+      return false;
     } finally {
       loading = false;
       _clearTransfer();
