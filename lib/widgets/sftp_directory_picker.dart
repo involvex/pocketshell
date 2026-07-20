@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/material.dart';
-
-import '../services/sftp_helper.dart';
+import 'package:ssh_app/services/sftp_helper.dart';
+import 'package:ssh_app/utils/remote_path_utils.dart';
 
 /// SFTP browser dialog that returns the selected remote directory path.
 class SftpDirectoryPicker extends StatefulWidget {
@@ -22,6 +22,7 @@ class SftpDirectoryPicker extends StatefulWidget {
 
 class _SftpDirectoryPickerState extends State<SftpDirectoryPicker> {
   late String _currentPath;
+  late final SftpHelper _helper;
   List<Map<String, dynamic>> _entries = <Map<String, dynamic>>[];
   List<String> _availableDrives = <String>[];
   bool _loading = true;
@@ -29,13 +30,13 @@ class _SftpDirectoryPickerState extends State<SftpDirectoryPicker> {
   @override
   void initState() {
     super.initState();
+    _helper = SftpHelper(widget.client);
     _currentPath = widget.initialPath ?? '/';
     unawaited(_init());
   }
 
   Future<void> _init() async {
-    final helper = SftpHelper(widget.client);
-    final drives = await helper.listDrives();
+    final drives = await _helper.listDrives();
     if (!mounted) return;
 
     setState(() {
@@ -51,8 +52,7 @@ class _SftpDirectoryPickerState extends State<SftpDirectoryPicker> {
     setState(() => _loading = true);
 
     try {
-      final helper = SftpHelper(widget.client);
-      final out = await helper.listDirWithType(_currentPath);
+      final out = await _helper.listDirWithType(_currentPath);
 
       if (_currentPath != '.' && _currentPath != '/') {
         out.insert(0, <String, dynamic>{'name': '..', 'isDirectory': true});
@@ -76,26 +76,23 @@ class _SftpDirectoryPickerState extends State<SftpDirectoryPicker> {
   }
 
   Future<void> _navigateUp() async {
-    final lastSlash = _currentPath.lastIndexOf('/');
-    if (lastSlash <= 0) {
-      setState(() => _currentPath = lastSlash == 0 ? '/' : '.');
-    } else {
-      setState(() => _currentPath = _currentPath.substring(0, lastSlash));
-    }
+    setState(() => _currentPath = RemotePath.parent(_currentPath));
     await _refresh();
   }
 
   Future<void> _enterDirectory(String name) async {
-    setState(() {
-      _currentPath = (_currentPath == '.' || _currentPath == '/')
-          ? name
-          : '$_currentPath/$name';
-    });
+    setState(() => _currentPath = RemotePath.join(_currentPath, name));
     await _refresh();
   }
 
   void _selectCurrentDirectory() {
     Navigator.pop(context, _currentPath);
+  }
+
+  @override
+  void dispose() {
+    unawaited(_helper.close());
+    super.dispose();
   }
 
   @override

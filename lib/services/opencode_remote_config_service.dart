@@ -1,9 +1,8 @@
 import 'dart:convert';
 
 import 'package:dartssh2/dartssh2.dart';
-
-import '../models/ssh_profile.dart';
-import 'sftp_helper.dart';
+import 'package:ssh_app/models/ssh_profile.dart';
+import 'package:ssh_app/services/sftp_helper.dart';
 
 /// Parsed OpenCode settings discovered on a remote Windows host.
 class RemoteOpenCodeConfig {
@@ -37,21 +36,25 @@ class OpenCodeRemoteConfigService {
     required SSHProfile profile,
   }) async {
     final helper = SftpHelper(client);
-    final username = profile.username;
+    try {
+      final username = profile.username;
 
-    final probeDirs = <String>[
-      'C:/Users/$username/.config/opencode',
-      'C:/Users/$username/AppData/Roaming/opencode',
-    ];
+      final probeDirs = <String>[
+        'C:/Users/$username/.config/opencode',
+        'C:/Users/$username/AppData/Roaming/opencode',
+      ];
 
-    for (final dir in probeDirs) {
-      final config = await _readFirstConfigInDir(helper, dir);
-      if (config != null) {
-        return _parseConfig(config.path, config.contents, profile);
+      for (final dir in probeDirs) {
+        final config = await _readFirstConfigInDir(helper, dir);
+        if (config != null) {
+          return _parseConfig(config.path, config.contents, profile);
+        }
       }
-    }
 
-    return null;
+      return null;
+    } finally {
+      await helper.close();
+    }
   }
 
   Future<({String path, String contents})?> _readFirstConfigInDir(
@@ -59,9 +62,9 @@ class OpenCodeRemoteConfigService {
     String dir,
   ) async {
     try {
-      final entries = await helper.listDirWithType(dir);
+      final entries = await helper.listDir(dir);
       for (final name in _configFileNames) {
-        final match = entries.any((e) => e['name'] == name);
+        final match = entries.any((entry) => entry.name == name);
         if (match) {
           final path = '$dir/$name';
           final text = await helper.readRemoteText(path);
@@ -72,8 +75,8 @@ class OpenCodeRemoteConfigService {
       }
 
       for (final entry in entries) {
-        final fileName = entry['name'] as String;
-        if (entry['isDirectory'] == true) continue;
+        final fileName = entry.name;
+        if (entry.isDirectory) continue;
         if (!fileName.endsWith('.json') && !fileName.endsWith('.toml')) {
           continue;
         }

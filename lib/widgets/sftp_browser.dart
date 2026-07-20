@@ -2,12 +2,13 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dartssh2/dartssh2.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
-import '../providers/ssh_provider.dart';
-import '../services/sftp_helper.dart';
+import 'package:ssh_app/providers/ssh_provider.dart';
+import 'package:ssh_app/services/sftp_helper.dart';
+import 'package:ssh_app/utils/remote_path_utils.dart';
 
 class SftpBrowser extends StatefulWidget {
   final String sessionId;
@@ -22,11 +23,22 @@ class _SftpBrowserState extends State<SftpBrowser> {
   List<Map<String, dynamic>> entries = [];
   bool loading = true;
   List<String> availableDrives = [];
+  SftpHelper? _helper;
+  SSHClient? _helperClient;
 
   @override
   void initState() {
     super.initState();
     unawaited(_detectDrives());
+  }
+
+  SftpHelper _helperFor(SSHClient client) {
+    if (!identical(_helperClient, client)) {
+      unawaited(_helper?.close());
+      _helper = SftpHelper(client);
+      _helperClient = client;
+    }
+    return _helper!;
   }
 
   Future<void> _detectDrives() async {
@@ -36,7 +48,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
     final client = matches.first.client;
     if (client == null) return;
 
-    final helper = SftpHelper(client);
+    final helper = _helperFor(client);
     final drives = await helper.listDrives();
     if (!mounted) return;
 
@@ -63,7 +75,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
       return;
     }
 
-    final helper = SftpHelper(client);
+    final helper = _helperFor(client);
     final out = await helper.listDirWithType(currentPath);
 
     if (currentPath != '.' && currentPath != '/') {
@@ -83,15 +95,13 @@ class _SftpBrowserState extends State<SftpBrowser> {
     final active =
         provider.sessions.firstWhere((s) => s.id == widget.sessionId);
     final client = active.client!;
-    final helper = SftpHelper(client);
+    final helper = _helperFor(client);
 
     final picked = await FilePicker.getDirectoryPath();
     if (picked == null) return;
 
     final local = File('$picked/$remoteFile');
-    final remote = (currentPath == '.' || currentPath == '/')
-        ? remoteFile
-        : '$currentPath/$remoteFile';
+    final remote = RemotePath.join(currentPath, remoteFile);
     await helper.downloadStream(remote, local);
 
     if (!mounted) return;
@@ -104,21 +114,25 @@ class _SftpBrowserState extends State<SftpBrowser> {
     final provider = Provider.of<SSHProvider>(context, listen: false);
     final active =
         provider.sessions.firstWhere((s) => s.id == widget.sessionId);
-    final helper = SftpHelper(active.client!);
+    final helper = _helperFor(active.client!);
     final messenger = ScaffoldMessenger.of(context);
 
     final result = await FilePicker.pickFiles();
     if (result == null) return;
     final path = result.files.single.path!;
     final file = File(path);
-    final remotePath = (currentPath == '.' || currentPath == '/')
-        ? result.files.single.name
-        : '$currentPath/${result.files.single.name}';
+    final remotePath = RemotePath.join(currentPath, result.files.single.name);
     await helper.upload(file, remotePath);
     if (!mounted) return;
     await _refresh();
     if (!mounted) return;
     messenger.showSnackBar(const SnackBar(content: Text('Uploaded')));
+  }
+
+  @override
+  void dispose() {
+    unawaited(_helper?.close());
+    super.dispose();
   }
 
   @override
@@ -176,22 +190,21 @@ class _SftpBrowserState extends State<SftpBrowser> {
                           title: Text(name),
                           onTap: () async {
                             if (name == '..') {
-                              final lastSlash = currentPath.lastIndexOf('/');
-                              if (lastSlash <= 0) {
-                                setState(() =>
-                                    currentPath = lastSlash == 0 ? '/' : '.');
-                              } else {
-                                setState(() => currentPath =
-                                    currentPath.substring(0, lastSlash));
-                              }
+                              setState(
+                                () => currentPath = RemotePath.parent(
+                                  currentPath,
+                                ),
+                              );
                               await _refresh();
                               return;
                             }
                             if (isDir) {
-                              setState(() => currentPath =
-                                  (currentPath == '.' || currentPath == '/')
-                                      ? name
-                                      : '$currentPath/$name');
+                              setState(
+                                () => currentPath = RemotePath.join(
+                                  currentPath,
+                                  name,
+                                ),
+                              );
                               await _refresh();
                             }
                           },

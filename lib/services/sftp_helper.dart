@@ -1,32 +1,115 @@
-// lib/services/sftp_helper.dart
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
+import 'package:ssh_app/models/remote_fs_entry.dart';
+import 'package:ssh_app/utils/remote_path_utils.dart';
+
+typedef SftpProgress = void Function(int bytesTransferred, int? totalBytes);
+
+class SftpCancelToken {
+  bool isCancelled = false;
+
+  void cancel() {
+    isCancelled = true;
+  }
+}
 
 class SftpHelper {
-  final SSHClient client;
   SftpHelper(this.client);
+  final SSHClient client;
+  SftpClient? _sftpClient;
+  List<String>? _drives;
 
+  Future<SftpClient> _sftp() async {
+    return _sftpClient ??= await client.sftp();
+  }
+
+  Future<List<RemoteFsEntry>> listDir(String path) async {
+    final sftp = await _sftp();
+    final normalizedPath = RemotePath.normalize(path);
+    final names = await sftp.listdir(normalizedPath);
+    final entries = <RemoteFsEntry>[];
+    for (final name in names) {
+      final filename = name.filename.toString();
+      if (filename == '.' || filename == '..') {
+        continue;
+      }
+      entries.add(
+        RemoteFsEntry(
+          name: filename,
+          isDirectory: name.attr.isDirectory,
+          size: name.attr.size,
+          modifyTime: name.attr.modifyTime,
+        ),
+      );
+    }
+    return entries;
+  }
+
+  @Deprecated('Use listDir')
   Future<List<Map<String, dynamic>>> listDirWithType(String path) async {
-    final sftp = await client.sftp();
-    final names = await sftp.listdir(path);
-    return names
-        .map((n) => <String, dynamic>{
-              'name': n.filename.toString(),
-              'isDirectory': n.attr.isDirectory,
-            })
+    final entries = await listDir(path);
+    return entries
+        .map(
+          (entry) => <String, dynamic>{
+            'name': entry.name,
+            'isDirectory': entry.isDirectory,
+          },
+        )
         .toList();
   }
 
-  Future<void> downloadStream(String remotePath, File localFile) async {
-    final sftp = await client.sftp();
-    final remoteFile = await sftp.open(remotePath, mode: SftpFileOpenMode.read);
+  Future<void> close() async {
+    _sftpClient?.close();
+    _sftpClient = null;
+    _drives = null;
+  }
+
+  Future<void> mkdir(String path) async {
+    final sftp = await _sftp();
+    await sftp.mkdir(RemotePath.normalize(path));
+  }
+
+  Future<void> rename(String from, String to) async {
+    final sftp = await _sftp();
+    await sftp.rename(RemotePath.normalize(from), RemotePath.normalize(to));
+  }
+
+  Future<void> removeFile(String path) async {
+    final sftp = await _sftp();
+    await sftp.remove(RemotePath.normalize(path));
+  }
+
+  Future<void> removeDir(String path) async {
+    final sftp = await _sftp();
+    await sftp.rmdir(RemotePath.normalize(path));
+  }
+
+  Future<void> downloadStream(
+    String remotePath,
+    File localFile, {
+    SftpProgress? onProgress,
+    SftpCancelToken? cancelToken,
+    int? knownSize,
+  }) async {
+    final sftp = await _sftp();
+    final normalizedPath = RemotePath.normalize(remotePath);
+    final remoteFile = await sftp.open(
+      normalizedPath,
+      mode: SftpFileOpenMode.read,
+    );
     final sink = localFile.openWrite();
+    var transferred = 0;
     try {
       await for (final chunk in remoteFile.read()) {
+        if (cancelToken?.isCancelled == true) {
+          throw StateError('Transfer cancelled');
+        }
         if (chunk.isEmpty) continue;
         sink.add(chunk);
+        transferred += chunk.length;
+        onProgress?.call(transferred, knownSize);
       }
       await sink.flush();
     } finally {
@@ -35,18 +118,31 @@ class SftpHelper {
     }
   }
 
-  Future<void> upload(File localFile, String remotePath) async {
-    final sftp = await client.sftp();
-    final file = await sftp.open(remotePath,
-        mode: SftpFileOpenMode.write |
-            SftpFileOpenMode.create |
-            SftpFileOpenMode.truncate);
+  Future<void> upload(
+    File localFile,
+    String remotePath, {
+    SftpProgress? onProgress,
+    SftpCancelToken? cancelToken,
+  }) async {
+    final sftp = await _sftp();
+    final normalizedPath = RemotePath.normalize(remotePath);
+    final file = await sftp.open(
+      normalizedPath,
+      mode: SftpFileOpenMode.write |
+          SftpFileOpenMode.create |
+          SftpFileOpenMode.truncate,
+    );
+    final totalBytes = await localFile.length();
     try {
       var offset = 0;
       await for (final chunk in localFile.openRead()) {
+        if (cancelToken?.isCancelled == true) {
+          throw StateError('Transfer cancelled');
+        }
         final bytes = Uint8List.fromList(chunk);
         await file.writeBytes(bytes, offset: offset);
         offset += bytes.length;
+        onProgress?.call(offset, totalBytes);
       }
     } finally {
       await file.close();
@@ -54,10 +150,11 @@ class SftpHelper {
   }
 
   Future<String?> readRemoteText(String remotePath) async {
-    final sftp = await client.sftp();
+    final sftp = await _sftp();
+    final normalizedPath = RemotePath.normalize(remotePath);
     try {
       final remoteFile =
-          await sftp.open(remotePath, mode: SftpFileOpenMode.read);
+          await sftp.open(normalizedPath, mode: SftpFileOpenMode.read);
       try {
         final buffer = BytesBuilder();
         await for (final chunk in remoteFile.read()) {
@@ -75,41 +172,23 @@ class SftpHelper {
     }
   }
 
-  Future<List<String>> listDrives() async {
-    final sftp = await client.sftp();
+  Future<List<String>> listDrives({bool forceRefresh = false}) async {
+    if (_drives != null && !forceRefresh) {
+      return List<String>.from(_drives!);
+    }
+    final sftp = await _sftp();
     final drives = <String>[];
-    for (final letter in [
-      'C',
-      'D',
-      'E',
-      'F',
-      'G',
-      'H',
-      'I',
-      'J',
-      'K',
-      'L',
-      'M',
-      'N',
-      'O',
-      'P',
-      'Q',
-      'R',
-      'S',
-      'T',
-      'U',
-      'V',
-      'W',
-      'X',
-      'Y',
-      'Z'
-    ]) {
+    for (var codeUnit = 'C'.codeUnitAt(0);
+        codeUnit <= 'Z'.codeUnitAt(0);
+        codeUnit++) {
+      final letter = String.fromCharCode(codeUnit);
       try {
         final path = '$letter:/';
         await sftp.listdir(path);
         drives.add(letter);
       } catch (_) {}
     }
-    return drives;
+    _drives = drives;
+    return List<String>.from(drives);
   }
 }
