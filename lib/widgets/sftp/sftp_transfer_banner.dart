@@ -18,11 +18,14 @@ class SftpTransferBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final bool hasProgress = totalBytes != null && totalBytes! > 0;
+    final bool hasKnownTotal = totalBytes != null;
     final int currentBytes = transferredBytes ?? 0;
-    final double? progress = hasProgress
-        ? currentBytes.clamp(0, totalBytes!).toDouble() / totalBytes!
-        : null;
+    final int? total = totalBytes;
+    final double? progress = !hasKnownTotal
+        ? null
+        : total == 0
+            ? 1
+            : currentBytes.clamp(0, total!).toDouble() / total;
 
     return Material(
       color: theme.colorScheme.secondaryContainer,
@@ -50,8 +53,8 @@ class SftpTransferBanner extends StatelessWidget {
             LinearProgressIndicator(value: progress),
             const SizedBox(height: 8),
             Text(
-              hasProgress
-                  ? '${_formatBytes(currentBytes)} of ${_formatBytes(totalBytes!)}'
+              hasKnownTotal
+                  ? '${_formatBytes(currentBytes)} of ${_formatBytes(total!)}'
                   : 'Transferring ${_formatBytes(currentBytes)}',
               style: theme.textTheme.bodySmall,
             ),

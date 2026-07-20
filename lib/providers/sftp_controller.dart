@@ -216,7 +216,7 @@ class SftpController extends ChangeNotifier {
     final localPath = _joinLocalPath(localDirectory.path, filename);
     final localFile = File(localPath);
 
-    return _runMutation(() async {
+    final success = await _runMutation(() async {
       _startTransfer(
         label: 'Downloading ${entry.name}',
         totalBytes: entry.size,
@@ -231,6 +231,11 @@ class SftpController extends ChangeNotifier {
         cancelToken: _cancel,
       );
     }, refreshAfter: false);
+
+    if (!success) {
+      await _deletePartialLocalFile(localFile);
+    }
+    return success;
   }
 
   void cancelTransfer() {
@@ -305,6 +310,16 @@ class SftpController extends ChangeNotifier {
       return '$directoryPath$fileName';
     }
     return '$directoryPath${Platform.pathSeparator}$fileName';
+  }
+
+  Future<void> _deletePartialLocalFile(File file) async {
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {
+      // Best-effort cleanup after cancel/failure.
+    }
   }
 
   @override
