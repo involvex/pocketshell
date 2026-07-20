@@ -10,6 +10,9 @@ class ConfigService {
   static const String _agentLastDirectoryKey = 'agent_last_directory';
   static const String _opencodeServerConfigCacheKey =
       'opencode_server_config_cache';
+  static const String _sftpSortFieldKey = 'sftp_sort_field';
+  static const String _sftpSortAscendingKey = 'sftp_sort_ascending';
+  static const String _sftpLastPathKey = 'sftp_last_path';
 
   static SharedPreferences? _prefs;
 
@@ -105,6 +108,24 @@ class ConfigService {
       json.encode(config),
     );
   }
+
+  static Future<String> getSftpSortField() async =>
+      prefs.getString(_sftpSortFieldKey) ?? 'name';
+
+  static Future<void> saveSftpSortField(String field) async =>
+      prefs.setString(_sftpSortFieldKey, field);
+
+  static Future<bool> getSftpSortAscending() async =>
+      prefs.getBool(_sftpSortAscendingKey) ?? true;
+
+  static Future<void> saveSftpSortAscending(bool ascending) async =>
+      prefs.setBool(_sftpSortAscendingKey, ascending);
+
+  static Future<String?> getSftpLastPath() async =>
+      prefs.getString(_sftpLastPathKey);
+
+  static Future<void> saveSftpLastPath(String path) async =>
+      prefs.setString(_sftpLastPathKey, path);
 
   static Future<void> clearAll() async {
     await prefs.clear();
