@@ -6,6 +6,17 @@ Connect to remote hosts with password or private-key auth. The built-in xterm
 terminal supports colors, scrollback, and a shortcut bar for Ctrl, Alt, arrows,
 and custom snippets.
 
+### SFTP (Client + Agents)
+
+From an active Client session, open the SFTP browser (modal) to list drives,
+navigate folders, and upload/download single files. The Agents tab reuses SFTP
+to pick an OpenCode project directory on the same host.
+
+Planned explorer foundations (typed listing, sort/filter, mkdir/rename/delete,
+transfer progress, capped preview/edit) are specified in
+[2026-07-20-sftp-explorer-foundations.md](superpowers/plans/2026-07-20-sftp-explorer-foundations.md).
+Split terminal|files “workstation” layout is **out of scope** for that plan.
+
 ## SSH server (optional)
 
 Enable **Server** tab in Settings to host a local SSH server on your device.
