@@ -35,6 +35,7 @@ abstract interface class SftpFileSystem {
     int maxBytes = kSftpPreviewMaxBytes,
   });
   Future<void> writeRemoteBytes(String remotePath, Uint8List data);
+  Future<void> copyRemoteFile(String fromPath, String toPath);
   Future<String?> readRemoteText(String remotePath);
   Future<List<String>> listDrives({bool forceRefresh = false});
 }
@@ -253,6 +254,31 @@ class SftpHelper implements SftpFileSystem {
       await remoteFile.writeBytes(data);
     } finally {
       await remoteFile.close();
+    }
+  }
+
+  @override
+  Future<void> copyRemoteFile(String fromPath, String toPath) async {
+    final sftp = await _sftp();
+    final sourcePath = RemotePath.normalize(fromPath);
+    final destPath = RemotePath.normalize(toPath);
+    final source = await sftp.open(sourcePath, mode: SftpFileOpenMode.read);
+    final dest = await sftp.open(
+      destPath,
+      mode: SftpFileOpenMode.write |
+          SftpFileOpenMode.create |
+          SftpFileOpenMode.truncate,
+    );
+    try {
+      var offset = 0;
+      await for (final chunk in source.read()) {
+        if (chunk.isEmpty) continue;
+        await dest.writeBytes(Uint8List.fromList(chunk), offset: offset);
+        offset += chunk.length;
+      }
+    } finally {
+      await source.close();
+      await dest.close();
     }
   }
 

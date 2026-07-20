@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/ssh_provider.dart';
 import '../providers/snippet_provider.dart';
 import '../screens/snippet_config_screen.dart';
+import '../utils/terminal_enter_mapping.dart';
 
 class SnippetButtonPanel extends StatefulWidget {
   const SnippetButtonPanel({super.key});
@@ -85,8 +86,14 @@ class _SnippetButtonPanelState extends State<SnippetButtonPanel> {
                                       if (active != null &&
                                           active.isConnected &&
                                           active.shellSession != null) {
-                                        active.shellSession!.stdin
-                                            .add(utf8.encode('${s.content}\r'));
+                                        active.shellSession!.stdin.add(
+                                          utf8.encode(
+                                            withEnterSuffix(
+                                              s.content,
+                                              ssh.terminalEnterSends,
+                                            ),
+                                          ),
+                                        );
                                       }
                                     },
                                     backgroundColor: Theme.of(context)
@@ -211,8 +218,14 @@ class _SnippetSelectionSheet extends StatelessWidget {
                             if (active != null &&
                                 active.isConnected &&
                                 active.shellSession != null) {
-                              active.shellSession!.stdin
-                                  .add(utf8.encode('${snippet.content}\r'));
+                              active.shellSession!.stdin.add(
+                                utf8.encode(
+                                  withEnterSuffix(
+                                    snippet.content,
+                                    ssh.terminalEnterSends,
+                                  ),
+                                ),
+                              );
                             }
                             Navigator.pop(context);
                           },

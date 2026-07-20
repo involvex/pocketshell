@@ -62,6 +62,103 @@ void main() {
 
       expect(exists, isTrue);
     });
+
+    test('recursively downloads a remote directory tree', () async {
+      await loadPrefs();
+      final fake = FakeSftpFileSystem(
+        directories: <String, List<RemoteFsEntry>>{
+          'C:/': const <RemoteFsEntry>[
+            RemoteFsEntry(name: 'proj', isDirectory: true),
+          ],
+          'C:/proj': const <RemoteFsEntry>[
+            RemoteFsEntry(name: 'a.txt', isDirectory: false, size: 3),
+            RemoteFsEntry(name: 'sub', isDirectory: true),
+          ],
+          'C:/proj/sub': const <RemoteFsEntry>[
+            RemoteFsEntry(name: 'b.txt', isDirectory: false, size: 3),
+          ],
+        },
+        fileContents: <String, List<int>>{
+          'C:/proj/a.txt': <int>[1, 2, 3],
+          'C:/proj/sub/b.txt': <int>[4, 5, 6],
+        },
+      );
+      final controller = SftpController(helper: fake);
+      controller.currentPath = 'C:/';
+
+      final Directory temp = await Directory.systemTemp.createTemp(
+        'sftp_dl_',
+      );
+      addTearDown(() async {
+        if (await temp.exists()) {
+          await temp.delete(recursive: true);
+        }
+      });
+
+      final int completed = await controller.downloadDirectory(
+        const RemoteFsEntry(name: 'proj', isDirectory: true),
+        temp,
+      );
+
+      expect(completed, 2);
+      expect(
+        await File('${temp.path}${Platform.pathSeparator}proj'
+                '${Platform.pathSeparator}a.txt')
+            .readAsBytes(),
+        <int>[1, 2, 3],
+      );
+      expect(
+        await File('${temp.path}${Platform.pathSeparator}proj'
+                '${Platform.pathSeparator}sub'
+                '${Platform.pathSeparator}b.txt')
+            .readAsBytes(),
+        <int>[4, 5, 6],
+      );
+    });
+
+    test('recursively uploads a local directory tree', () async {
+      await loadPrefs();
+      final fake = FakeSftpFileSystem(
+        directories: <String, List<RemoteFsEntry>>{
+          'C:/': const <RemoteFsEntry>[],
+        },
+      );
+      final controller = SftpController(helper: fake);
+      controller.currentPath = 'C:/';
+
+      final Directory temp = await Directory.systemTemp.createTemp(
+        'sftp_ul_',
+      );
+      addTearDown(() async {
+        if (await temp.exists()) {
+          await temp.delete(recursive: true);
+        }
+      });
+      final Directory src = Directory(
+        '${temp.path}${Platform.pathSeparator}bundle',
+      );
+      await src.create();
+      await File('${src.path}${Platform.pathSeparator}root.txt')
+          .writeAsBytes(<int>[9]);
+      final Directory nested = Directory(
+        '${src.path}${Platform.pathSeparator}nested',
+      );
+      await nested.create();
+      await File('${nested.path}${Platform.pathSeparator}child.txt')
+          .writeAsBytes(<int>[8, 7]);
+
+      final int completed = await controller.uploadDirectory(src);
+
+      expect(completed, 2);
+      expect(fake.uploadedPaths, containsAll(<String>[
+        'C:/bundle/root.txt',
+        'C:/bundle/nested/child.txt',
+      ]));
+      expect(fake.createdDirs, containsAll(<String>[
+        'C:/bundle',
+        'C:/bundle/nested',
+      ]));
+    });
   });
 }
 
@@ -71,12 +168,17 @@ class FakeSftpFileSystem implements SftpFileSystem {
     Map<String, List<RemoteFsEntry>> directories =
         const <String, List<RemoteFsEntry>>{},
     Set<String> existingPaths = const <String>{},
-  })  : _directories = directories,
-        _existingPaths = existingPaths;
+    Map<String, List<int>> fileContents = const <String, List<int>>{},
+  })  : _directories = Map<String, List<RemoteFsEntry>>.from(directories),
+        _existingPaths = Set<String>.from(existingPaths),
+        _fileContents = Map<String, List<int>>.from(fileContents);
 
   final Map<String, List<RemoteFsEntry>> _directories;
   final Set<String> _existingPaths;
+  final Map<String, List<int>> _fileContents;
   final List<String> drives;
+  final List<String> uploadedPaths = <String>[];
+  final List<String> createdDirs = <String>[];
 
   @override
   Future<void> close() async {}
@@ -88,8 +190,14 @@ class FakeSftpFileSystem implements SftpFileSystem {
     SftpProgress? onProgress,
     SftpCancelToken? cancelToken,
     int? knownSize,
-  }) {
-    throw UnimplementedError();
+  }) async {
+    final bytes = _fileContents[remotePath];
+    if (bytes == null) {
+      throw StateError('Missing remote file: $remotePath');
+    }
+    await localFile.parent.create(recursive: true);
+    await localFile.writeAsBytes(bytes, flush: true);
+    onProgress?.call(bytes.length, knownSize ?? bytes.length);
   }
 
   @override
@@ -101,15 +209,16 @@ class FakeSftpFileSystem implements SftpFileSystem {
     if (entries == null) {
       throw StateError('Missing directory: $path');
     }
-    return entries;
+    return List<RemoteFsEntry>.from(entries);
   }
 
   @override
   Future<List<String>> listDrives({bool forceRefresh = false}) async => drives;
 
   @override
-  Future<void> mkdir(String path) {
-    throw UnimplementedError();
+  Future<void> mkdir(String path) async {
+    createdDirs.add(path);
+    _directories.putIfAbsent(path, () => <RemoteFsEntry>[]);
   }
 
   @override
@@ -146,12 +255,20 @@ class FakeSftpFileSystem implements SftpFileSystem {
     String remotePath, {
     SftpProgress? onProgress,
     SftpCancelToken? cancelToken,
-  }) {
-    throw UnimplementedError();
+  }) async {
+    final bytes = await localFile.readAsBytes();
+    uploadedPaths.add(remotePath);
+    _fileContents[remotePath] = bytes;
+    onProgress?.call(bytes.length, bytes.length);
   }
 
   @override
   Future<void> writeRemoteBytes(String remotePath, Uint8List data) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> copyRemoteFile(String fromPath, String toPath) {
     throw UnimplementedError();
   }
 }

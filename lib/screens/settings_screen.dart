@@ -118,6 +118,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onChanged: settings.setShowServerTab,
                     ),
                     const Divider(height: 1, indent: 16),
+                    SwitchListTile(
+                      title: const Text('Mobile shortcut bar'),
+                      subtitle: const Text(
+                        'Show the configured keyboard shortcut bar on Android/iOS',
+                      ),
+                      value: settings.showMobileShortcutBar,
+                      onChanged: settings.setShowMobileShortcutBar,
+                    ),
+                    const Divider(height: 1, indent: 16),
                     ListTile(
                       title: const Text('Default Agent Port'),
                       subtitle: Text('${settings.defaultAgentPort}'),

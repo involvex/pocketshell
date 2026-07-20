@@ -18,6 +18,7 @@ class SftpBrowserHeader extends StatefulWidget {
     this.drives = const <String>[],
     this.onCreateDirectory,
     this.onUpload,
+    this.onUploadDirectory,
     super.key,
   });
 
@@ -34,6 +35,7 @@ class SftpBrowserHeader extends StatefulWidget {
   final Future<void> Function() onRefresh;
   final Future<void> Function(String name)? onCreateDirectory;
   final Future<void> Function()? onUpload;
+  final Future<void> Function()? onUploadDirectory;
 
   @override
   State<SftpBrowserHeader> createState() => _SftpBrowserHeaderState();
@@ -244,13 +246,31 @@ class _SftpBrowserHeaderState extends State<SftpBrowserHeader> {
                     onPressed: _promptForDirectory,
                     icon: const Icon(Icons.create_new_folder_outlined),
                   ),
-                if (widget.onUpload != null)
-                  IconButton(
+                if (widget.onUpload != null ||
+                    widget.onUploadDirectory != null)
+                  PopupMenuButton<String>(
                     tooltip: 'Upload',
-                    onPressed: () async {
-                      await widget.onUpload?.call();
-                    },
                     icon: const Icon(Icons.upload_file_outlined),
+                    onSelected: (String value) async {
+                      if (value == 'files') {
+                        await widget.onUpload?.call();
+                      } else if (value == 'folder') {
+                        await widget.onUploadDirectory?.call();
+                      }
+                    },
+                    itemBuilder: (BuildContext context) =>
+                        <PopupMenuEntry<String>>[
+                      if (widget.onUpload != null)
+                        const PopupMenuItem<String>(
+                          value: 'files',
+                          child: Text('Upload files'),
+                        ),
+                      if (widget.onUploadDirectory != null)
+                        const PopupMenuItem<String>(
+                          value: 'folder',
+                          child: Text('Upload folder'),
+                        ),
+                    ],
                   ),
               ],
             ),

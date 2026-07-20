@@ -64,14 +64,15 @@ class SSHProfile {
     );
   }
 
-  Map<String, dynamic> toJson() {
+  /// Serializes profile metadata. Passwords are stored via SecureStorageService.
+  Map<String, dynamic> toJson({bool includePassword = false}) {
     return <String, dynamic>{
       'id': id,
       'name': name,
       'host': host,
       'port': port,
       'username': username,
-      'password': password,
+      if (includePassword) 'password': password,
       'privateKey': privateKey,
       'isServer': isServer,
       'startupCommand': startupCommand,

@@ -384,7 +384,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
               body: Column(
                 children: [
-                  if (!_isFullScreen) const KeyboardShortcutBar(),
+                  if (!_isFullScreen)
+                    KeyboardShortcutBar(
+                      forceShowOnMobile: context
+                          .watch<SettingsProvider>()
+                          .showMobileShortcutBar,
+                    ),
                   Expanded(
                     child: IndexedStack(
                       index: _selectedTab.index,
@@ -509,7 +514,7 @@ class _ClientTabState extends State<ClientTab> {
               child: Row(children: chips),
             ),
           ),
-          IconButton(
+              IconButton(
             icon: const Icon(Icons.folder_open),
             tooltip: 'SFTP Browser',
             onPressed: () {
@@ -519,9 +524,15 @@ class _ClientTabState extends State<ClientTab> {
                     content: Text('Connect to a session first')));
                 return;
               }
-              showModalBottomSheet(
-                  context: context,
-                  builder: (_) => SftpBrowser(sessionId: ssh.activeSessionId!));
+              final sessionId = ssh.activeSessionId!;
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('SFTP')),
+                    body: SftpBrowser(sessionId: sessionId),
+                  ),
+                ),
+              );
             },
           ),
         ],
@@ -549,7 +560,11 @@ class _ClientTabState extends State<ClientTab> {
             ? TerminalColorTheme.hacker.toTerminalTheme()
             : settings.terminalColorTheme.toTerminalTheme();
 
-        return Column(
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Column(
           children: <Widget>[
             if (!widget.isFullScreen) _buildSessionTabBar(context),
             Expanded(
@@ -565,6 +580,20 @@ class _ClientTabState extends State<ClientTab> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Text('Not connected'),
+                        if (active.lastError != null) ...[
+                          const SizedBox(height: 12),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: Text(
+                              active.lastError!,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.red.shade300,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -676,6 +705,7 @@ class _ClientTabState extends State<ClientTab> {
                 ),
               ),
           ],
+        ),
         );
       },
     );

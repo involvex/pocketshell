@@ -30,6 +30,43 @@ class SftpController extends ChangeNotifier {
   int? transferTotal;
   String? transferLabel;
   SftpCancelToken? _cancel;
+  final Set<String> selectedNames = <String>{};
+  bool selectionMode = false;
+
+  void toggleSelectionMode([bool? enabled]) {
+    selectionMode = enabled ?? !selectionMode;
+    if (!selectionMode) {
+      selectedNames.clear();
+    }
+    notifyListeners();
+  }
+
+  void toggleSelected(RemoteFsEntry entry) {
+    if (entry.isParentLink) {
+      return;
+    }
+    if (selectedNames.contains(entry.name)) {
+      selectedNames.remove(entry.name);
+    } else {
+      selectedNames.add(entry.name);
+    }
+    if (selectedNames.isEmpty) {
+      selectionMode = false;
+    } else {
+      selectionMode = true;
+    }
+    notifyListeners();
+  }
+
+  void clearSelection() {
+    selectedNames.clear();
+    selectionMode = false;
+    notifyListeners();
+  }
+
+  List<RemoteFsEntry> get selectedEntries => _raw
+      .where((e) => selectedNames.contains(e.name))
+      .toList(growable: false);
 
   List<RemoteFsEntry> get visibleEntries {
     final entries = applyRemoteFsView(
@@ -211,8 +248,13 @@ class SftpController extends ChangeNotifier {
     Directory localDirectory, {
     String? localName,
   }) async {
-    if (entry.isDirectory || entry.isParentLink) {
+    if (entry.isParentLink) {
       return false;
+    }
+
+    if (entry.isDirectory) {
+      final int completed = await downloadDirectory(entry, localDirectory);
+      return completed > 0 && error == null;
     }
 
     final filename = (localName ?? entry.name).trim();
@@ -244,6 +286,148 @@ class SftpController extends ChangeNotifier {
       await _deletePartialLocalFile(localFile);
     }
     return success;
+  }
+
+  /// Recursively downloads [entry] (a remote directory) into [localDirectory].
+  ///
+  /// Returns the number of files transferred (directories are not counted).
+  Future<int> downloadDirectory(
+    RemoteFsEntry entry,
+    Directory localDirectory,
+  ) async {
+    if (!entry.isDirectory || entry.isParentLink) {
+      return 0;
+    }
+
+    final remoteRoot = RemotePath.join(currentPath, entry.name);
+    final localRoot = Directory(
+      _joinLocalPath(localDirectory.path, entry.name),
+    );
+
+    loading = true;
+    error = null;
+    notifyListeners();
+
+    try {
+      await localRoot.create(recursive: true);
+      final int completed = await _downloadTree(
+        remoteDir: remoteRoot,
+        localDir: localRoot,
+      );
+      return completed;
+    } catch (e) {
+      if (!_isCancelledError(e)) {
+        error = e.toString();
+      }
+      return 0;
+    } finally {
+      loading = false;
+      _clearTransfer();
+      notifyListeners();
+    }
+  }
+
+  /// Sequentially downloads selected files and folders into [localDirectory].
+  Future<int> downloadSelected(Directory localDirectory) async {
+    final entries = selectedEntries.toList(growable: false);
+    var completed = 0;
+    for (final entry in entries) {
+      if (entry.isDirectory) {
+        final int n = await downloadDirectory(entry, localDirectory);
+        if (n == 0 && error != null) {
+          break;
+        }
+        completed += n;
+      } else {
+        final ok = await download(entry, localDirectory);
+        if (!ok) {
+          break;
+        }
+        completed++;
+      }
+    }
+    clearSelection();
+    return completed;
+  }
+
+  /// Sequentially uploads [files], stopping on cancel/error.
+  Future<int> uploadMany(List<File> files) async {
+    var completed = 0;
+    for (final file in files) {
+      final ok = await upload(file);
+      if (!ok) {
+        break;
+      }
+      completed++;
+    }
+    return completed;
+  }
+
+  /// Recursively uploads [localDirectory] under the current remote path.
+  ///
+  /// Returns the number of files uploaded.
+  Future<int> uploadDirectory(
+    Directory localDirectory, {
+    String? remoteName,
+  }) async {
+    final folderName =
+        (remoteName ?? _directoryNameFor(localDirectory)).trim();
+    if (folderName.isEmpty) {
+      return 0;
+    }
+
+    final remoteRoot = RemotePath.join(currentPath, folderName);
+
+    loading = true;
+    error = null;
+    notifyListeners();
+
+    try {
+      try {
+        await _helper.mkdir(remoteRoot);
+      } catch (_) {
+        // Directory may already exist; continue uploading into it.
+      }
+      final int completed = await _uploadTree(
+        localDir: localDirectory,
+        remoteDir: remoteRoot,
+      );
+      await _loadAndPersistCurrentPath();
+      return completed;
+    } catch (e) {
+      if (!_isCancelledError(e)) {
+        error = e.toString();
+      }
+      return 0;
+    } finally {
+      loading = false;
+      _clearTransfer();
+      notifyListeners();
+    }
+  }
+
+  /// Moves [entry] to [destinationDir] (same host) via rename.
+  Future<bool> moveEntry(RemoteFsEntry entry, String destinationDir) async {
+    if (entry.isParentLink) {
+      return false;
+    }
+    final fromPath = RemotePath.join(currentPath, entry.name);
+    final toPath = RemotePath.join(destinationDir, entry.name);
+    return _runMutation(() async {
+      await _helper.rename(fromPath, toPath);
+    });
+  }
+
+  /// Copies a file within the remote filesystem (capped stream via helper).
+  Future<bool> copyEntry(RemoteFsEntry entry, String destinationDir) async {
+    if (entry.isDirectory || entry.isParentLink) {
+      return false;
+    }
+    final fromPath = RemotePath.join(currentPath, entry.name);
+    final toPath = RemotePath.join(destinationDir, entry.name);
+    return _runMutation(() async {
+      await _helper.copyRemoteFile(fromPath, toPath);
+    });
   }
 
   Future<bool> remoteFileExists(String fileName) async {
@@ -318,7 +502,7 @@ class SftpController extends ChangeNotifier {
     required String label,
     int? totalBytes,
   }) {
-    _cancel = SftpCancelToken();
+    _cancel ??= SftpCancelToken();
     transferLabel = label;
     transferBytes = 0;
     transferTotal = totalBytes;
@@ -378,6 +562,100 @@ class SftpController extends ChangeNotifier {
       return segments.last;
     }
     return file.path.split(Platform.pathSeparator).last;
+  }
+
+  String _directoryNameFor(Directory directory) {
+    final segments = directory.uri.pathSegments.where((s) => s.isNotEmpty);
+    if (segments.isNotEmpty) {
+      return segments.last;
+    }
+    return directory.path.split(Platform.pathSeparator).last;
+  }
+
+  Future<int> _downloadTree({
+    required String remoteDir,
+    required Directory localDir,
+  }) async {
+    final entries = await _helper.listDir(remoteDir);
+    var completed = 0;
+    for (final entry in entries) {
+      if (_cancel?.isCancelled ?? false) {
+        throw StateError('Transfer cancelled');
+      }
+      final remotePath = RemotePath.join(remoteDir, entry.name);
+      final localPath = _joinLocalPath(localDir.path, entry.name);
+      if (entry.isDirectory) {
+        final subDir = Directory(localPath);
+        await subDir.create(recursive: true);
+        completed += await _downloadTree(
+          remoteDir: remotePath,
+          localDir: subDir,
+        );
+      } else {
+        final localFile = File(localPath);
+        _startTransfer(
+          label: 'Downloading ${entry.name}',
+          totalBytes: entry.size,
+        );
+        try {
+          await _helper.downloadStream(
+            remotePath,
+            localFile,
+            knownSize: entry.size,
+            onProgress: (bytesTransferred, knownTotalBytes) {
+              _updateTransferProgress(bytesTransferred, knownTotalBytes);
+            },
+            cancelToken: _cancel,
+          );
+          completed++;
+        } catch (e) {
+          await _deletePartialLocalFile(localFile);
+          rethrow;
+        }
+      }
+    }
+    return completed;
+  }
+
+  Future<int> _uploadTree({
+    required Directory localDir,
+    required String remoteDir,
+  }) async {
+    var completed = 0;
+    await for (final entity in localDir.list(followLinks: false)) {
+      if (_cancel?.isCancelled ?? false) {
+        throw StateError('Transfer cancelled');
+      }
+      final name = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      final remotePath = RemotePath.join(remoteDir, name);
+      if (entity is Directory) {
+        try {
+          await _helper.mkdir(remotePath);
+        } catch (_) {
+          // May already exist.
+        }
+        completed += await _uploadTree(
+          localDir: entity,
+          remoteDir: remotePath,
+        );
+      } else if (entity is File) {
+        final totalBytes = await entity.length();
+        _startTransfer(
+          label: 'Uploading $name',
+          totalBytes: totalBytes,
+        );
+        await _helper.upload(
+          entity,
+          remotePath,
+          onProgress: (bytesTransferred, knownTotalBytes) {
+            _updateTransferProgress(bytesTransferred, knownTotalBytes);
+          },
+          cancelToken: _cancel,
+        );
+        completed++;
+      }
+    }
+    return completed;
   }
 
   String _joinLocalPath(String directoryPath, String fileName) {

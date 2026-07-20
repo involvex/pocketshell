@@ -16,6 +16,7 @@ class SessionEntry {
   bool isConnected;
   bool disconnectedWhileBackgrounded;
   bool shouldReconnectOnResume;
+  String? lastError;
 
   SessionEntry({
     required this.name,
@@ -26,7 +27,8 @@ class SessionEntry {
         terminal = terminal ?? Terminal(),
         isConnected = false,
         disconnectedWhileBackgrounded = false,
-        shouldReconnectOnResume = false;
+        shouldReconnectOnResume = false,
+        lastError = null;
 
   void disposeRuntime() {
     shellSession?.close();
