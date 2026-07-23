@@ -10,7 +10,6 @@ import 'package:xterm/xterm.dart';
 import '../models/home_toolbar_action.dart';
 import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
-import '../widgets/ssh_server_form.dart';
 import '../widgets/log_viewer.dart';
 import '../widgets/profile_manager.dart';
 import '../widgets/key_manager.dart';
@@ -29,7 +28,7 @@ import '../utils/terminal_themes.dart';
 import '../utils/enter_mapping_input_handler.dart';
 import '../utils/terminal_enter_mapping.dart';
 
-enum AppTab { client, server, agents, logs }
+enum AppTab { client, agents, logs }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.pendingLaunch});
@@ -145,22 +144,13 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       try {
-        if (session.isServer) {
-          await ssh.startServer(
-            port: session.port,
-            username: session.username,
-            password: session.password ?? '',
-            sshKeyType: null,
-          );
-        } else {
-          await ssh.connectClient(
-            host: session.host,
-            port: session.port,
-            username: session.username,
-            password: session.password ?? '',
-            startupCommand: session.startupCommand,
-          );
-        }
+        await ssh.connectClient(
+          host: session.host,
+          port: session.port,
+          username: session.username,
+          password: session.password ?? '',
+          startupCommand: session.startupCommand,
+        );
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -302,31 +292,17 @@ class _HomeScreenState extends State<HomeScreen> {
     return actions;
   }
 
-  List<AppTab> _visibleTabs(SettingsProvider settings) {
-    return <AppTab>[
-      AppTab.client,
-      if (settings.showServerTab) AppTab.server,
-      AppTab.agents,
-      AppTab.logs,
-    ];
-  }
-
-  void _ensureValidTab(SettingsProvider settings) {
-    final tabs = _visibleTabs(settings);
-    if (!tabs.contains(_selectedTab)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _selectedTab = AppTab.client);
-      });
-    }
-  }
+  static const List<AppTab> _tabs = <AppTab>[
+    AppTab.client,
+    AppTab.agents,
+    AppTab.logs,
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Consumer2<SSHProvider, SettingsProvider>(
       builder: (context, ssh, settings, child) {
-        _ensureValidTab(settings);
-        final tabs = _visibleTabs(settings);
-        final navIndex = tabs.indexOf(_selectedTab).clamp(0, tabs.length - 1);
+        final navIndex = _tabs.indexOf(_selectedTab).clamp(0, _tabs.length - 1);
 
         // Automatically exit full screen if no sessions are connected
         if (_isFullScreen && !ssh.sessions.any((s) => s.isConnected)) {
@@ -358,18 +334,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       selectedIndex: navIndex,
                       onDestinationSelected: (index) {
                         setState(() {
-                          _selectedTab = tabs[index];
+                          _selectedTab = _tabs[index];
                         });
                       },
-                      destinations: tabs.map((tab) {
+                      destinations: _tabs.map((tab) {
                         return switch (tab) {
                           AppTab.client => const NavigationDestination(
                               icon: Icon(Icons.computer),
                               label: 'Client',
-                            ),
-                          AppTab.server => const NavigationDestination(
-                              icon: Icon(Icons.dns),
-                              label: 'Server',
                             ),
                           AppTab.agents => const NavigationDestination(
                               icon: Icon(Icons.smart_toy),
@@ -395,7 +367,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       index: _selectedTab.index,
                       children: <Widget>[
                         ClientTab(isFullScreen: _isFullScreen),
-                        const ServerTab(),
                         AgentsTab(
                           key: _agentsTabKey,
                           onChatOpenChanged: (open) {
@@ -772,56 +743,3 @@ class _TerminalLongPressHostState extends State<_TerminalLongPressHost> {
   }
 }
 
-class ServerTab extends StatelessWidget {
-  const ServerTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<SSHProvider>(
-      builder: (context, ssh, child) {
-        return Column(
-          children: <Widget>[
-            if (!ssh.isServerRunning)
-              const Expanded(child: SSHServerForm())
-            else
-              Expanded(
-                child: Center(
-                  child: Card(
-                    margin: const EdgeInsets.all(32),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          const Icon(Icons.check_circle,
-                              color: Colors.green, size: 64),
-                          const SizedBox(height: 16),
-                          Text(
-                            'SSH Server is Running',
-                            style: Theme.of(context).textTheme.headlineSmall,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Address: ${ssh.serverAddress ?? '0.0.0.0'}:${ssh.serverPort}',
-                            style: Theme.of(context).textTheme.bodyLarge,
-                          ),
-                          const SizedBox(height: 32),
-                          FilledButton.icon(
-                            onPressed: () => ssh.stopServer(),
-                            icon: const Icon(Icons.stop),
-                            label: const Text('Stop Server'),
-                            style: FilledButton.styleFrom(
-                                backgroundColor: Colors.red),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
-    );
-  }
-}

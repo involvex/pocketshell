@@ -1,6 +1,6 @@
 # Pocketshell
 
-A powerful and versatile Flutter-based SSH Client and Server application for Mobile and Desktop.
+A powerful and versatile Flutter-based SSH Client application for Mobile and Desktop.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Flutter](https://img.shields.io/badge/flutter-%2302569B.svg?style=flat&logo=flutter&logoColor=white)
@@ -13,12 +13,6 @@ A powerful and versatile Flutter-based SSH Client and Server application for Mob
 - **Full Terminal Emulator**: Built-in `xterm` terminal with full color and interactive support.
 - **Session Persistence**: Keep your connections alive in the background.
 - **Control Panel**: Quick access buttons for Ctrl, Alt, Arrow keys, and more.
-
-### 🏠 SSH Server
-
-- Host a local SSH server directly on your device.
-- Provide secure remote access to your device's shell (CMD on Windows, SH/Bash on Unix-like systems).
-- Configurable port and authentication.
 
 ### 🔑 Key Management
 

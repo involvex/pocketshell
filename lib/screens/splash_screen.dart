@@ -90,7 +90,7 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Secure Shell Client & Server',
+              'Secure Shell Client',
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey[400],

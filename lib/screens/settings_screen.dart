@@ -111,14 +111,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Column(
                   children: [
                     SwitchListTile(
-                      title: const Text('Show Server tab'),
-                      subtitle: const Text(
-                          'Display the local SSH server tab in navigation'),
-                      value: settings.showServerTab,
-                      onChanged: settings.setShowServerTab,
-                    ),
-                    const Divider(height: 1, indent: 16),
-                    SwitchListTile(
                       title: const Text('Mobile shortcut bar'),
                       subtitle: const Text(
                         'Show the configured keyboard shortcut bar on Android/iOS',

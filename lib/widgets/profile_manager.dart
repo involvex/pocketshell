@@ -68,8 +68,8 @@ class _ProfileManagerState extends State<ProfileManager> {
                       itemBuilder: (context, index) {
                         final profile = ssh.profiles[index];
                         return ListTile(
-                          leading: Icon(
-                            profile.isServer ? Icons.dns : Icons.computer,
+                          leading: const Icon(
+                            Icons.computer,
                             color: Colors.blue,
                           ),
                           title: Text(profile.name),
@@ -120,7 +120,6 @@ class _ProfileManagerState extends State<ProfileManager> {
         TextEditingController(text: profile?.password ?? '');
     final startupCommandController =
         TextEditingController(text: profile?.startupCommand ?? '');
-    var isServer = profile?.isServer ?? false;
     var useHttps = profile?.useHttps ?? false;
     var sessionManager = profile?.sessionManager ?? SessionManager.none;
     String? selectedKeyId =
@@ -241,12 +240,6 @@ class _ProfileManagerState extends State<ProfileManager> {
                         ),
                         const SizedBox(height: 8),
                         SwitchListTile(
-                          title: const Text('Server Profile'),
-                          value: isServer,
-                          onChanged: (value) =>
-                              setDialogState(() => isServer = value),
-                        ),
-                        SwitchListTile(
                           title: const Text('Use HTTPS for Agent'),
                           value: useHttps,
                           onChanged: (value) =>
@@ -276,7 +269,6 @@ class _ProfileManagerState extends State<ProfileManager> {
                               ? null
                               : passwordController.text,
                           privateKey: selectedKeyId,
-                          isServer: isServer,
                           startupCommand:
                               startupCommandController.text.isNotEmpty
                                   ? startupCommandController.text
@@ -335,16 +327,8 @@ class _ProfileManagerState extends State<ProfileManager> {
     Navigator.pop(context);
 
     try {
-      if (profile.isServer) {
-        await ssh.startServer(
-          port: profile.port,
-          username: profile.username,
-          password: profile.password ?? '',
-        );
-      } else {
-        final entry = ssh.createSessionFromProfile(profile, name: profile.name);
-        await ssh.connectSession(entry.id);
-      }
+      final entry = ssh.createSessionFromProfile(profile, name: profile.name);
+      await ssh.connectSession(entry.id);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

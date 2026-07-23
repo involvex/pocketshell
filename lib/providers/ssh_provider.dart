@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:xterm/xterm.dart';
-import 'package:network_info_plus/network_info_plus.dart';
 
 import '../models/ssh_profile.dart';
 import '../services/config_service.dart';
@@ -25,9 +24,6 @@ class SSHProvider extends ChangeNotifier {
   /// Synced from [SettingsProvider] for startup / paste newline mapping.
   TerminalEnterSends terminalEnterSends = TerminalEnterSends.cr;
 
-  bool isServerRunning = false;
-  int serverPort = 22;
-  String? serverAddress;
   List<String> connectionLog = [];
 
   List<SSHProfile> profiles = <SSHProfile>[];
@@ -343,34 +339,6 @@ class SSHProvider extends ChangeNotifier {
         startupCommand: startupCommand);
     final entry = createSessionFromProfile(profile);
     await connectSession(entry.id);
-  }
-
-  Future<void> startServer({
-    required int port,
-    required String username,
-    required String password,
-    dynamic sshKeyType,
-  }) async {
-    try {
-      serverPort = port;
-      isServerRunning = true;
-
-      final info = NetworkInfo();
-      serverAddress = await info.getWifiIP();
-
-      addLog('SSH Server running on ${serverAddress ?? '0.0.0.0'}:$port');
-      notifyListeners();
-    } catch (e) {
-      addLog('Failed to start server: $e');
-      isServerRunning = false;
-      rethrow;
-    }
-  }
-
-  void stopServer() {
-    isServerRunning = false;
-    addLog('Server stopped');
-    notifyListeners();
   }
 
   void sendControlCharacter(int charCode) {

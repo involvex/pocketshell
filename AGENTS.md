@@ -4,7 +4,7 @@ Guidelines for agents operating on this Flutter SSH application codebase.
 
 ## Project Overview
 
-- **Type**: Flutter Desktop/Mobile Application (SSH Server & Client)
+- **Type**: Flutter Desktop/Mobile Application (SSH Client)
 - **State Management**: Provider
 - **Persistence**: shared_preferences (via ConfigService)
 - **Architecture**: Separated models, services, providers, screens, and widgets.
@@ -101,7 +101,6 @@ lib/
 
 ### SSHProvider
 - `connectClient({required SSHProfile profile})` - Connect to a remote SSH server using a profile.
-- `startServer({required int port})` - Start local SSH server.
 - `terminal` - The current active `Terminal` instance (xterm).
 - `connectionLog` - List of strings for displaying logs in UI.
 
@@ -130,7 +129,7 @@ lib/
 - Support model and provider configuration via slash commands (`/model`, `/models`, `/connect`) plus a config sheet in the Agents tab chat toolbar.
 - Use the SFTP directory browser for agent project directory selection, not the local FilePicker.
 - Target home-screen quick-connect widgets at Android only; the Agent widget should connect and resume the most recently updated session.
-- Keep the Server tab optional behind a Settings toggle (`showServerTab`).
+- The local SSH Server tab was removed (it was a non-functional stub); do not reintroduce a Server tab without a real host implementation.
 - Use **PocketShell** as the user-facing display name (display-only rename; keep `ssh_app` package/id unchanged).
 - Primary usage is Android client connecting to **Windows** hosts for SSH and OpenCode agents.
 - OpenCode config should use the connected server API (`getConfig`/`updateConfig`) plus remote import from the Windows host over SSH, not local mobile config files.
@@ -138,7 +137,7 @@ lib/
 
 ## Learned Workspace Facts
 
-- Home navigation uses `AppTab` (Client, Server, Agents, Logs) with an `IndexedStack`; Server is omitted when `showServerTab` is false.
+- Home navigation uses `AppTab` (Client, Agents, Logs) with an `IndexedStack`.
 - OpenCode integrates through `opencode_api` and `OpenCodeConnectionService`; sessions are scoped by a `directory` query param; `getConfig`/`updateConfig` exposed for server-side config.
 - `SSHProfile` includes `agentPort` (default 5000) and `useHttps`; `agentBaseUrl` builds the OpenCode URL.
 - `AgentProvider` is a `ChangeNotifierProxyProvider` that routes `onLog` to `SSHProvider.addLog`.

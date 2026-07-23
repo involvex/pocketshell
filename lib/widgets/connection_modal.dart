@@ -25,7 +25,6 @@ class _ConnectionModalState extends State<ConnectionModal> {
   final _passwordController = TextEditingController();
   final _startupCommandController = TextEditingController();
   bool _isLoading = false;
-  bool _isServer = false;
   SessionManager _sessionManager = SessionManager.none;
   String? _selectedKeyId;
   List<SSHKey> _keys = <SSHKey>[];
@@ -54,7 +53,6 @@ class _ConnectionModalState extends State<ConnectionModal> {
       _usernameController.text = session.username;
       _passwordController.text = session.password ?? '';
       _startupCommandController.text = session.startupCommand ?? '';
-      _isServer = session.isServer;
       _sessionManager = session.sessionManager;
       final keyRef = session.privateKey;
       if (keyRef != null && !looksLikePemPrivateKey(keyRef)) {
@@ -80,7 +78,6 @@ class _ConnectionModalState extends State<ConnectionModal> {
           ? null
           : _passwordController.text,
       privateKey: _selectedKeyId,
-      isServer: _isServer,
       startupCommand: _startupCommandController.text.isNotEmpty
           ? _startupCommandController.text
           : null,
@@ -90,18 +87,9 @@ class _ConnectionModalState extends State<ConnectionModal> {
     await ssh.saveLastSession(profile);
 
     try {
-      if (_isServer) {
-        await ssh.startServer(
-          port: profile.port,
-          username: profile.username,
-          password: profile.password ?? '',
-          sshKeyType: null,
-        );
-      } else {
-        final entry = ssh.createSessionFromProfile(profile, name: profile.name);
-        await ssh.connectSession(entry.id);
-        if (mounted) Navigator.pop(context);
-      }
+      final entry = ssh.createSessionFromProfile(profile, name: profile.name);
+      await ssh.connectSession(entry.id);
+      if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -130,14 +118,6 @@ class _ConnectionModalState extends State<ConnectionModal> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                SwitchListTile(
-                  title: const Text('Server Mode'),
-                  value: _isServer,
-                  onChanged: (value) {
-                    setState(() => _isServer = value);
-                  },
-                ),
-                const SizedBox(height: 8),
                 TextFormField(
                   controller: _hostController,
                   decoration: const InputDecoration(
@@ -182,41 +162,40 @@ class _ConnectionModalState extends State<ConnectionModal> {
                   validator: (value) {
                     final hasPassword = value != null && value.isNotEmpty;
                     final hasKey = _selectedKeyId != null;
-                    if (!hasPassword && !hasKey && !_isServer) {
+                    if (!hasPassword && !hasKey) {
                       return 'Password or SSH key required';
                     }
                     return null;
                   },
                 ),
                 const SizedBox(height: 8),
-                if (!_isServer)
-                  DropdownButtonFormField<String?>(
-                    initialValue: _selectedKeyId != null &&
-                            _keys.any((k) => k.id == _selectedKeyId)
-                        ? _selectedKeyId
-                        : null,
-                    decoration: const InputDecoration(
-                      labelText: 'SSH Key (optional)',
+                DropdownButtonFormField<String?>(
+                  initialValue: _selectedKeyId != null &&
+                          _keys.any((k) => k.id == _selectedKeyId)
+                      ? _selectedKeyId
+                      : null,
+                  decoration: const InputDecoration(
+                    labelText: 'SSH Key (optional)',
+                  ),
+                  items: <DropdownMenuItem<String?>>[
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('None (password only)'),
                     ),
-                    items: <DropdownMenuItem<String?>>[
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('None (password only)'),
-                      ),
-                      ..._keys.map(
-                        (k) => DropdownMenuItem<String?>(
-                          value: k.id,
-                          child: Text(
-                            '${k.name} (${k.keyType.displayName})',
-                          ),
+                    ..._keys.map(
+                      (k) => DropdownMenuItem<String?>(
+                        value: k.id,
+                        child: Text(
+                          '${k.name} (${k.keyType.displayName})',
                         ),
                       ),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _selectedKeyId = value);
-                    },
-                  ),
-                if (!_isServer) const SizedBox(height: 8),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() => _selectedKeyId = value);
+                  },
+                ),
+                const SizedBox(height: 8),
                 DropdownButtonFormField<SessionManager>(
                   key: ValueKey(_sessionManager),
                   initialValue: _sessionManager,

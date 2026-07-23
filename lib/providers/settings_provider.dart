@@ -40,7 +40,6 @@ class SettingsProvider extends ChangeNotifier {
   List<KeyboardShortcut> _shortcuts = [];
   bool _isLoaded = false;
   double _terminalFontSize = 12.0;
-  bool _showServerTab = true;
   bool _showMobileShortcutBar = false;
   int _defaultAgentPort = 5000;
   TerminalFontFamily _terminalFontFamily = TerminalFontFamily.monospace;
@@ -63,7 +62,6 @@ class SettingsProvider extends ChangeNotifier {
   List<KeyboardShortcut> get shortcuts => _shortcuts;
   bool get isLoaded => _isLoaded;
   double get terminalFontSize => _terminalFontSize;
-  bool get showServerTab => _showServerTab;
   bool get showMobileShortcutBar => _showMobileShortcutBar;
   int get defaultAgentPort => _defaultAgentPort;
   TerminalFontFamily get terminalFontFamily => _terminalFontFamily;
@@ -140,7 +138,6 @@ class SettingsProvider extends ChangeNotifier {
       _terminalFontSize = (fontSizeVal as num).toDouble();
     }
 
-    _showServerTab = settings['showServerTab'] as bool? ?? true;
     _showMobileShortcutBar =
         settings['showMobileShortcutBar'] as bool? ?? false;
 
@@ -264,12 +261,6 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> setTerminalFontSize(double size) async {
     _terminalFontSize = size;
     await _saveSetting('terminalFontSize', size);
-    notifyListeners();
-  }
-
-  Future<void> setShowServerTab(bool value) async {
-    _showServerTab = value;
-    await _saveSetting('showServerTab', value);
     notifyListeners();
   }
 

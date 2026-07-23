@@ -18,11 +18,6 @@ preview. Spec:
 [2026-07-20-sftp-explorer-foundations.md](superpowers/plans/2026-07-20-sftp-explorer-foundations.md).
 Split terminal|files “workstation” layout remains out of scope.
 
-## SSH server (optional)
-
-Enable **Server** tab in Settings to host a local SSH server on your device.
-Useful on desktop platforms with a real shell backend.
-
 ## Agents (OpenCode)
 
 The **Agents** tab talks to an OpenCode HTTP API on the connected host.
