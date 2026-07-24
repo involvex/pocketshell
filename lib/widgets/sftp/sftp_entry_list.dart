@@ -25,6 +25,7 @@ class SftpEntryList extends StatelessWidget {
     this.onDeleteEntry,
     this.onCopyEntry,
     this.onMoveEntry,
+    this.listBottomPadding = 0,
     super.key,
   });
 
@@ -45,6 +46,7 @@ class SftpEntryList extends StatelessWidget {
   final Future<void> Function(RemoteFsEntry entry)? onDeleteEntry;
   final Future<void> Function(RemoteFsEntry entry)? onCopyEntry;
   final Future<void> Function(RemoteFsEntry entry)? onMoveEntry;
+  final double listBottomPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -87,6 +89,7 @@ class SftpEntryList extends StatelessWidget {
           child: Stack(
             children: <Widget>[
               ListView.builder(
+                padding: EdgeInsets.only(bottom: listBottomPadding),
                 itemCount: visibleEntries.length,
                 itemBuilder: (BuildContext context, int index) {
                   final RemoteFsEntry entry = visibleEntries[index];
@@ -188,16 +191,16 @@ class _EntryTile extends StatelessWidget {
           await onOpenEntry(entry);
         }
       },
-      onLongPress: canShowMenu
+      onLongPress: canShowMenu && !directoriesOnly
           ? () async {
-              if (!directoriesOnly && onToggleSelected != null) {
+              if (onToggleSelected != null) {
                 onToggleSelected!(entry);
                 return;
               }
               await _showEntryActions(context);
             }
           : null,
-      trailing: canShowMenu && !selectionMode
+      trailing: canShowMenu && !selectionMode && !directoriesOnly
           ? Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
