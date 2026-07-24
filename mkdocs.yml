@@ -32,6 +32,11 @@ nav:
   - Features: features.md
   - Releases: releases.md
 
+# Agent planning docs live under docs/ for repo convenience, but are not
+# part of the public GitHub Pages site (and link into lib/ which fails --strict).
+exclude_docs: |
+  superpowers/**
+
 markdown_extensions:
   - admonition
   - pymdownx.highlight

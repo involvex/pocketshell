@@ -15,7 +15,7 @@ to pick an OpenCode project directory on the same host.
 Explorer foundations include typed listings, sort/filter, mkdir/rename/delete,
 transfer progress/cancel, overwrite confirmation, and capped text/image
 preview. Spec:
-[2026-07-20-sftp-explorer-foundations.md](superpowers/plans/2026-07-20-sftp-explorer-foundations.md).
+[2026-07-20-sftp-explorer-foundations.md](https://github.com/involvex/pocketshell/blob/main/docs/superpowers/plans/2026-07-20-sftp-explorer-foundations.md).
 Split terminal|files “workstation” layout remains out of scope.
 
 ## Agents (OpenCode)
