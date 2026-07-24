@@ -19,6 +19,8 @@ class SftpBrowserHeader extends StatefulWidget {
     this.onCreateDirectory,
     this.onUpload,
     this.onUploadDirectory,
+    this.showSectionTitle = true,
+    this.compactWidthBreakpoint = 480,
     super.key,
   });
 
@@ -36,6 +38,8 @@ class SftpBrowserHeader extends StatefulWidget {
   final Future<void> Function(String name)? onCreateDirectory;
   final Future<void> Function()? onUpload;
   final Future<void> Function()? onUploadDirectory;
+  final bool showSectionTitle;
+  final double compactWidthBreakpoint;
 
   @override
   State<SftpBrowserHeader> createState() => _SftpBrowserHeaderState();
@@ -138,6 +142,250 @@ class _SftpBrowserHeaderState extends State<SftpBrowserHeader> {
     }
   }
 
+  Widget _buildToolbar() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        IconButton(
+          tooltip: 'Copy path',
+          onPressed: () async {
+            await _copyPath();
+          },
+          icon: const Icon(Icons.content_copy_outlined),
+        ),
+        IconButton(
+          tooltip: _showSearch ? 'Hide search' : 'Search',
+          onPressed: () {
+            setState(() {
+              _showSearch = !_showSearch;
+              if (!_showSearch && _searchController.text.isNotEmpty) {
+                _searchController.clear();
+                widget.onFilterChanged('');
+              }
+            });
+          },
+          icon: Icon(
+            _showSearch ? Icons.search_off_outlined : Icons.search,
+          ),
+        ),
+        PopupMenuButton<_SortAction>(
+          tooltip: 'Sort',
+          onSelected: (_SortAction action) async {
+            await _handleSortAction(action);
+          },
+          itemBuilder: (BuildContext context) =>
+              <PopupMenuEntry<_SortAction>>[
+            const PopupMenuItem<_SortAction>(
+              value: _SortAction.name,
+              child: Text('Sort by name'),
+            ),
+            const PopupMenuItem<_SortAction>(
+              value: _SortAction.date,
+              child: Text('Sort by date'),
+            ),
+            const PopupMenuItem<_SortAction>(
+              value: _SortAction.size,
+              child: Text('Sort by size'),
+            ),
+            const PopupMenuItem<_SortAction>(
+              value: _SortAction.type,
+              child: Text('Sort by type'),
+            ),
+            const PopupMenuDivider(),
+            const PopupMenuItem<_SortAction>(
+              value: _SortAction.ascending,
+              child: Text('Ascending'),
+            ),
+            const PopupMenuItem<_SortAction>(
+              value: _SortAction.descending,
+              child: Text('Descending'),
+            ),
+          ],
+          icon: const Icon(Icons.sort),
+        ),
+        IconButton(
+          tooltip: 'Refresh',
+          onPressed: () async {
+            await widget.onRefresh();
+          },
+          icon: const Icon(Icons.refresh),
+        ),
+        if (widget.onCreateDirectory != null)
+          IconButton(
+            tooltip: 'New folder',
+            onPressed: _promptForDirectory,
+            icon: const Icon(Icons.create_new_folder_outlined),
+          ),
+        if (widget.onUpload != null || widget.onUploadDirectory != null)
+          PopupMenuButton<String>(
+            tooltip: 'Upload',
+            icon: const Icon(Icons.upload_file_outlined),
+            onSelected: (String value) async {
+              if (value == 'files') {
+                await widget.onUpload?.call();
+              } else if (value == 'folder') {
+                await widget.onUploadDirectory?.call();
+              }
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              if (widget.onUpload != null)
+                const PopupMenuItem<String>(
+                  value: 'files',
+                  child: Text('Upload files'),
+                ),
+              if (widget.onUploadDirectory != null)
+                const PopupMenuItem<String>(
+                  value: 'folder',
+                  child: Text('Upload folder'),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDriveDropdown(String selectedDrive) {
+    return DropdownButtonFormField<String>(
+      initialValue: selectedDrive.isEmpty ? null : selectedDrive,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Drive',
+        border: OutlineInputBorder(),
+        isDense: true,
+      ),
+      items: widget.drives
+          .map(
+            (String drive) => DropdownMenuItem<String>(
+              value: drive,
+              child: Text('$drive:/'),
+            ),
+          )
+          .toList(),
+      onChanged: (String? value) {
+        if (value == null) {
+          return;
+        }
+        widget.onDriveSelected(value);
+      },
+    );
+  }
+
+  Widget _buildSearchFieldInput() {
+    return TextField(
+      controller: _searchController,
+      onChanged: (String value) {
+        widget.onFilterChanged(value);
+        setState(() {});
+      },
+      decoration: InputDecoration(
+        labelText: 'Search',
+        border: const OutlineInputBorder(),
+        isDense: true,
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: _searchController.text.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Clear search',
+                onPressed: () {
+                  _searchController.clear();
+                  widget.onFilterChanged('');
+                  setState(() {});
+                },
+                icon: const Icon(Icons.clear),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildSearchField({int flex = 1}) {
+    return Expanded(
+      flex: flex,
+      child: _buildSearchFieldInput(),
+    );
+  }
+
+  Widget _buildStandardHeader({
+    required ThemeData theme,
+    required String selectedDrive,
+    required bool hasDriveSelection,
+    required bool showSecondaryRow,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  if (widget.showSectionTitle)
+                    Text(
+                      'Remote files',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                  if (widget.showSectionTitle) const SizedBox(height: 2),
+                  Text(
+                    widget.currentPath,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            _buildToolbar(),
+          ],
+        ),
+        if (showSecondaryRow) ...<Widget>[
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              if (hasDriveSelection)
+                Expanded(child: _buildDriveDropdown(selectedDrive)),
+              if (hasDriveSelection && _showSearch) const SizedBox(width: 12),
+              if (_showSearch) _buildSearchField(flex: hasDriveSelection ? 2 : 1),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCompactHeader({
+    required ThemeData theme,
+    required String selectedDrive,
+    required bool hasDriveSelection,
+    required bool showSecondaryRow,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (widget.showSectionTitle)
+          Text('Remote files', style: theme.textTheme.titleMedium),
+        Text(
+          widget.currentPath,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        if (hasDriveSelection) _buildDriveDropdown(selectedDrive),
+        if (hasDriveSelection) const SizedBox(height: 8),
+        if (_showSearch) ...<Widget>[
+          _buildSearchFieldInput(),
+          const SizedBox(height: 8),
+        ],
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: _buildToolbar(),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -150,196 +398,27 @@ class _SftpBrowserHeaderState extends State<SftpBrowserHeader> {
 
     return Material(
       color: theme.colorScheme.surfaceContainerLow,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        'Remote files',
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        widget.currentPath,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final bool compact =
+              constraints.maxWidth < widget.compactWidthBreakpoint;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+            child: compact
+                ? _buildCompactHeader(
+                    theme: theme,
+                    selectedDrive: selectedDrive,
+                    hasDriveSelection: hasDriveSelection,
+                    showSecondaryRow: showSecondaryRow,
+                  )
+                : _buildStandardHeader(
+                    theme: theme,
+                    selectedDrive: selectedDrive,
+                    hasDriveSelection: hasDriveSelection,
+                    showSecondaryRow: showSecondaryRow,
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Copy path',
-                  onPressed: () async {
-                    await _copyPath();
-                  },
-                  icon: const Icon(Icons.content_copy_outlined),
-                ),
-                IconButton(
-                  tooltip: _showSearch ? 'Hide search' : 'Search',
-                  onPressed: () {
-                    setState(() {
-                      _showSearch = !_showSearch;
-                      if (!_showSearch && _searchController.text.isNotEmpty) {
-                        _searchController.clear();
-                        widget.onFilterChanged('');
-                      }
-                    });
-                  },
-                  icon: Icon(
-                    _showSearch ? Icons.search_off_outlined : Icons.search,
-                  ),
-                ),
-                PopupMenuButton<_SortAction>(
-                  tooltip: 'Sort',
-                  onSelected: (_SortAction action) async {
-                    await _handleSortAction(action);
-                  },
-                  itemBuilder: (BuildContext context) =>
-                      <PopupMenuEntry<_SortAction>>[
-                    const PopupMenuItem<_SortAction>(
-                      value: _SortAction.name,
-                      child: Text('Sort by name'),
-                    ),
-                    const PopupMenuItem<_SortAction>(
-                      value: _SortAction.date,
-                      child: Text('Sort by date'),
-                    ),
-                    const PopupMenuItem<_SortAction>(
-                      value: _SortAction.size,
-                      child: Text('Sort by size'),
-                    ),
-                    const PopupMenuItem<_SortAction>(
-                      value: _SortAction.type,
-                      child: Text('Sort by type'),
-                    ),
-                    const PopupMenuDivider(),
-                    const PopupMenuItem<_SortAction>(
-                      value: _SortAction.ascending,
-                      child: Text('Ascending'),
-                    ),
-                    const PopupMenuItem<_SortAction>(
-                      value: _SortAction.descending,
-                      child: Text('Descending'),
-                    ),
-                  ],
-                  icon: const Icon(Icons.sort),
-                ),
-                IconButton(
-                  tooltip: 'Refresh',
-                  onPressed: () async {
-                    await widget.onRefresh();
-                  },
-                  icon: const Icon(Icons.refresh),
-                ),
-                if (widget.onCreateDirectory != null)
-                  IconButton(
-                    tooltip: 'New folder',
-                    onPressed: _promptForDirectory,
-                    icon: const Icon(Icons.create_new_folder_outlined),
-                  ),
-                if (widget.onUpload != null ||
-                    widget.onUploadDirectory != null)
-                  PopupMenuButton<String>(
-                    tooltip: 'Upload',
-                    icon: const Icon(Icons.upload_file_outlined),
-                    onSelected: (String value) async {
-                      if (value == 'files') {
-                        await widget.onUpload?.call();
-                      } else if (value == 'folder') {
-                        await widget.onUploadDirectory?.call();
-                      }
-                    },
-                    itemBuilder: (BuildContext context) =>
-                        <PopupMenuEntry<String>>[
-                      if (widget.onUpload != null)
-                        const PopupMenuItem<String>(
-                          value: 'files',
-                          child: Text('Upload files'),
-                        ),
-                      if (widget.onUploadDirectory != null)
-                        const PopupMenuItem<String>(
-                          value: 'folder',
-                          child: Text('Upload folder'),
-                        ),
-                    ],
-                  ),
-              ],
-            ),
-            if (showSecondaryRow) ...<Widget>[
-              const SizedBox(height: 12),
-              Row(
-                children: <Widget>[
-                  if (hasDriveSelection)
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue:
-                            selectedDrive.isEmpty ? null : selectedDrive,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Drive',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        items: widget.drives
-                            .map(
-                              (String drive) => DropdownMenuItem<String>(
-                                value: drive,
-                                child: Text('$drive:/'),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (String? value) {
-                          if (value == null) {
-                            return;
-                          }
-                          widget.onDriveSelected(value);
-                        },
-                      ),
-                    ),
-                  if (hasDriveSelection && _showSearch)
-                    const SizedBox(width: 12),
-                  if (_showSearch)
-                    Expanded(
-                      flex: hasDriveSelection ? 2 : 1,
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (String value) {
-                          widget.onFilterChanged(value);
-                          setState(() {});
-                        },
-                        decoration: InputDecoration(
-                          labelText: 'Search',
-                          border: const OutlineInputBorder(),
-                          isDense: true,
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _searchController.text.isEmpty
-                              ? null
-                              : IconButton(
-                                  tooltip: 'Clear search',
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    widget.onFilterChanged('');
-                                    setState(() {});
-                                  },
-                                  icon: const Icon(Icons.clear),
-                                ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ],
-        ),
+          );
+        },
       ),
     );
   }
