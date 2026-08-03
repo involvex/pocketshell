@@ -10,6 +10,7 @@ import 'package:xterm/xterm.dart';
 import '../models/home_toolbar_action.dart';
 import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
+import '../providers/snippet_provider.dart';
 import '../widgets/log_viewer.dart';
 import '../widgets/profile_manager.dart';
 import '../widgets/key_manager.dart';
@@ -485,7 +486,7 @@ class _ClientTabState extends State<ClientTab> {
               child: Row(children: chips),
             ),
           ),
-              IconButton(
+          IconButton(
             icon: const Icon(Icons.folder_open),
             tooltip: 'SFTP Browser',
             onPressed: () {
@@ -506,6 +507,17 @@ class _ClientTabState extends State<ClientTab> {
               );
             },
           ),
+          if (ssh.activeSession?.isConnected ?? false)
+            IconButton(
+              icon: const Icon(Icons.power_settings_new, color: Colors.red),
+              tooltip: 'Disconnect',
+              onPressed: () async {
+                final active = ssh.activeSession;
+                if (active != null) {
+                  await ssh.disconnectSession(active.id);
+                }
+              },
+            ),
         ],
       );
     });
@@ -536,147 +548,158 @@ class _ClientTabState extends State<ClientTab> {
             bottom: MediaQuery.viewInsetsOf(context).bottom,
           ),
           child: Column(
-          children: <Widget>[
-            if (!widget.isFullScreen) _buildSessionTabBar(context),
-            Expanded(
-              child: Consumer<SSHProvider>(builder: (context, ssh, child) {
-                final active = ssh.activeSession;
-                if (active == null) {
-                  return const Center(
-                      child: Text('No session. Click + to connect'));
-                }
-                if (!active.isConnected) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text('Not connected'),
-                        if (active.lastError != null) ...[
-                          const SizedBox(height: 12),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Text(
-                              active.lastError!,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.red.shade300,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            FilledButton.icon(
-                              onPressed: () async {
-                                try {
-                                  await ssh.connectSession(active.id);
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Reconnect failed: $e'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reconnect'),
-                            ),
-                            const SizedBox(width: 16),
-                            OutlinedButton.icon(
-                              onPressed: () => ssh.removeSession(active.id),
-                              icon: const Icon(Icons.close),
-                              label: const Text('Close'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red),
+            children: <Widget>[
+              if (!widget.isFullScreen) _buildSessionTabBar(context),
+              Expanded(
+                child: Consumer<SSHProvider>(builder: (context, ssh, child) {
+                  final active = ssh.activeSession;
+                  if (active == null) {
+                    return const Center(
+                        child: Text('No session. Click + to connect'));
+                  }
+                  if (!active.isConnected) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('Not connected'),
+                          if (active.lastError != null) ...[
+                            const SizedBox(height: 12),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 24),
+                              child: Text(
+                                active.lastError!,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.red.shade300,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
                           ],
-                        ),
-                      ],
-                    ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              FilledButton.icon(
+                                onPressed: () async {
+                                  try {
+                                    await ssh.connectSession(active.id);
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text('Reconnect failed: $e'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Reconnect'),
+                              ),
+                              const SizedBox(width: 16),
+                              OutlinedButton.icon(
+                                onPressed: () => ssh.removeSession(active.id),
+                                icon: const Icon(Icons.close),
+                                label: const Text('Close'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  _applyEnterMapping(
+                    active.terminal,
+                    settings.terminalEnterSends,
                   );
-                }
+                  final controller = _controllerFor(
+                    active.id,
+                    settings.sendMouseTaps,
+                  );
 
-                _applyEnterMapping(
-                  active.terminal,
-                  settings.terminalEnterSends,
-                );
-                final controller = _controllerFor(
-                  active.id,
-                  settings.sendMouseTaps,
-                );
-
-                return Container(
-                  color: terminalTheme.background,
-                  child: _TerminalLongPressHost(
-                    onLongPress: () {
-                      active.terminal.keyInput(
-                        TerminalKey.f10,
-                        shift: true,
-                      );
-                    },
-                    child: TerminalView(
-                      active.terminal,
-                      controller: controller,
-                      padding: const EdgeInsets.all(8),
-                      theme: terminalTheme,
-                      textStyle:
-                          TerminalStyleBuilder.buildTerminalStyle(settings),
-                      autoResize: true,
-                      onSecondaryTapDown: (_, __) {
+                  return Container(
+                    color: terminalTheme.background,
+                    child: _TerminalLongPressHost(
+                      onLongPress: () {
                         active.terminal.keyInput(
                           TerminalKey.f10,
                           shift: true,
                         );
                       },
+                      child: TerminalView(
+                        active.terminal,
+                        controller: controller,
+                        padding: const EdgeInsets.all(8),
+                        theme: terminalTheme,
+                        textStyle:
+                            TerminalStyleBuilder.buildTerminalStyle(settings),
+                        autoResize: true,
+                        onSecondaryTapDown: (_, __) {
+                          active.terminal.keyInput(
+                            TerminalKey.f10,
+                            shift: true,
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              if (ssh.sessions.any((s) => s.isConnected))
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8.0, vertical: 4.0),
+                      child: Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          Consumer<SnippetProvider>(
+                            builder: (context, snippets, child) {
+                              if (!snippets.showSnippetPanel) {
+                                return IconButton(
+                                  icon: const Icon(
+                                    Icons.visibility,
+                                    size: 20,
+                                    color: Colors.grey,
+                                  ),
+                                  onPressed: snippets.toggleShowSnippetPanel,
+                                  visualDensity: VisualDensity.compact,
+                                  tooltip: 'Show snippets panel',
+                                );
+                              }
+                              return const SnippetButtonPanel();
+                            },
+                          ),
+                          const CtrlButtonPanel(),
+                        ],
+                      ),
                     ),
                   ),
-                );
-              }),
-            ),
-            if (ssh.sessions.any((s) => s.isConnected))
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    CtrlButtonPanel(),
-                    SnippetButtonPanel(),
-                  ],
                 ),
-              ),
-            if (ssh.sessions.any((s) => s.isConnected) && !widget.isFullScreen)
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final active =
-                        Provider.of<SSHProvider>(context, listen: false)
-                            .activeSession;
-                    if (active != null) {
-                      await Provider.of<SSHProvider>(context, listen: false)
-                          .disconnectSession(active.id);
-                    }
-                  },
-                  icon: const Icon(Icons.close),
-                  label: const Text('Disconnect'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(color: Colors.red),
-                  ),
-                ),
-              ),
-          ],
-        ),
+            ],
+          ),
         );
       },
     );
@@ -742,4 +765,3 @@ class _TerminalLongPressHostState extends State<_TerminalLongPressHost> {
     );
   }
 }
-

@@ -13,7 +13,7 @@ import 'profile_manager.dart';
 import 'network_discovery.dart';
 import 'key_manager.dart';
 
-class KeyboardShortcutBar extends StatelessWidget {
+class KeyboardShortcutBar extends StatefulWidget {
   final int? showRow;
   final bool forceShowOnMobile;
 
@@ -21,9 +21,43 @@ class KeyboardShortcutBar extends StatelessWidget {
       {super.key, this.showRow, this.forceShowOnMobile = false});
 
   @override
+  State<KeyboardShortcutBar> createState() => _KeyboardShortcutBarState();
+}
+
+class _KeyboardShortcutBarState extends State<KeyboardShortcutBar> {
+  bool _isCollapsed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.forceShowOnMobile) {
+      final settings = context.read<SettingsProvider>();
+      _isCollapsed = !settings.showMobileShortcutBar;
+    }
+  }
+
+  void _toggleCollapsed() {
+    setState(() => _isCollapsed = !_isCollapsed);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!forceShowOnMobile && (Platform.isAndroid || Platform.isIOS)) {
+    if (!widget.forceShowOnMobile && (Platform.isAndroid || Platform.isIOS)) {
       return const SizedBox.shrink();
+    }
+
+    if (_isCollapsed) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: IconButton(
+          icon: const Icon(Icons.expand_more, size: 20, color: Colors.grey),
+          onPressed: _toggleCollapsed,
+          visualDensity: VisualDensity.compact,
+          tooltip: 'Show shortcuts',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        ),
+      );
     }
 
     return Consumer2<SettingsProvider, SSHProvider>(
@@ -33,27 +67,57 @@ class KeyboardShortcutBar extends StatelessWidget {
         }
 
         final maxRow = settings.maxRow;
+        final isMobile = Platform.isAndroid || Platform.isIOS;
 
-        if (showRow != null) {
-          final rowIndex = showRow! <= maxRow ? showRow! : maxRow;
-          final shortcuts = settings.getShortcutsByRow(rowIndex);
-          final active = ssh.activeSession;
-          return _ShortcutRow(
-            rowIndex: rowIndex,
-            shortcuts: shortcuts,
-            isConnected: active != null && active.isConnected,
-          );
-        }
-
-        return Column(
-          children: List.generate(maxRow + 1, (rowIndex) {
+        Widget buildRows() {
+          if (widget.showRow != null) {
+            final rowIndex =
+                widget.showRow! <= maxRow ? widget.showRow! : maxRow;
             final shortcuts = settings.getShortcutsByRow(rowIndex);
+            final active = ssh.activeSession;
             return _ShortcutRow(
               rowIndex: rowIndex,
               shortcuts: shortcuts,
-              isConnected: ssh.activeSession?.isConnected ?? false,
+              isConnected: active != null && active.isConnected,
             );
-          }),
+          }
+
+          return Column(
+            children: List.generate(maxRow + 1, (rowIndex) {
+              final shortcuts = settings.getShortcutsByRow(rowIndex);
+              return _ShortcutRow(
+                rowIndex: rowIndex,
+                shortcuts: shortcuts,
+                isConnected: ssh.activeSession?.isConnected ?? false,
+              );
+            }),
+          );
+        }
+
+        if (!isMobile) {
+          return buildRows();
+        }
+
+        return Stack(
+          children: [
+            buildRows(),
+            Positioned(
+              left: 4,
+              top: 4,
+              child: IconButton(
+                icon: const Icon(
+                  Icons.expand_less,
+                  size: 18,
+                  color: Colors.grey,
+                ),
+                onPressed: _toggleCollapsed,
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Hide shortcuts',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              ),
+            ),
+          ],
         );
       },
     );
@@ -73,12 +137,13 @@ class _ShortcutRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF16213E),
+        color: theme.colorScheme.surfaceContainerHighest,
         border: Border(
-          bottom: BorderSide(color: Colors.grey.shade800),
+          bottom: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
       ),
       child: SingleChildScrollView(

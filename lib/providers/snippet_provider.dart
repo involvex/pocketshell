@@ -5,9 +5,16 @@ import '../services/config_service.dart';
 class SnippetProvider extends ChangeNotifier {
   List<Snippet> _snippets = [];
   bool _isLoaded = false;
+  bool _showSnippetPanel = true;
 
   List<Snippet> get snippets => _snippets;
   bool get isLoaded => _isLoaded;
+  bool get showSnippetPanel => _showSnippetPanel;
+
+  void toggleShowSnippetPanel() {
+    _showSnippetPanel = !_showSnippetPanel;
+    notifyListeners();
+  }
 
   List<String> get categories {
     final cats = _snippets.map((s) => s.category).toSet().toList();
