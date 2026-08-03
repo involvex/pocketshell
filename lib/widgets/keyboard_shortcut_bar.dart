@@ -30,8 +30,11 @@ class _KeyboardShortcutBarState extends State<KeyboardShortcutBar> {
   @override
   void initState() {
     super.initState();
-    if (!widget.forceShowOnMobile) {
-      final settings = context.read<SettingsProvider>();
+    final settings = context.read<SettingsProvider>();
+    final isMobile = Platform.isAndroid || Platform.isIOS;
+    if (widget.forceShowOnMobile) {
+      _isCollapsed = false;
+    } else if (isMobile) {
       _isCollapsed = !settings.showMobileShortcutBar;
     }
   }
@@ -40,22 +43,33 @@ class _KeyboardShortcutBarState extends State<KeyboardShortcutBar> {
     setState(() => _isCollapsed = !_isCollapsed);
   }
 
+  Widget _buildCollapseButton(BuildContext context, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 4, top: 2, bottom: 2),
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        shape: const CircleBorder(),
+        elevation: 2,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: _toggleCollapsed,
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(icon, size: 18, color: Colors.grey),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (!widget.forceShowOnMobile && (Platform.isAndroid || Platform.isIOS)) {
-      return const SizedBox.shrink();
-    }
-
     if (_isCollapsed) {
       return Align(
         alignment: Alignment.centerLeft,
-        child: IconButton(
-          icon: const Icon(Icons.expand_more, size: 20, color: Colors.grey),
-          onPressed: _toggleCollapsed,
-          visualDensity: VisualDensity.compact,
-          tooltip: 'Show shortcuts',
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        child: Tooltip(
+          message: 'Show shortcuts',
+          child: _buildCollapseButton(context, Icons.expand_more),
         ),
       );
     }
@@ -79,6 +93,9 @@ class _KeyboardShortcutBarState extends State<KeyboardShortcutBar> {
               rowIndex: rowIndex,
               shortcuts: shortcuts,
               isConnected: active != null && active.isConnected,
+              collapseButton: isMobile
+                  ? _buildCollapseButton(context, Icons.expand_less)
+                  : null,
             );
           }
 
@@ -89,36 +106,15 @@ class _KeyboardShortcutBarState extends State<KeyboardShortcutBar> {
                 rowIndex: rowIndex,
                 shortcuts: shortcuts,
                 isConnected: ssh.activeSession?.isConnected ?? false,
+                collapseButton: (isMobile && rowIndex == 0)
+                    ? _buildCollapseButton(context, Icons.expand_less)
+                    : null,
               );
             }),
           );
         }
 
-        if (!isMobile) {
-          return buildRows();
-        }
-
-        return Stack(
-          children: [
-            buildRows(),
-            Positioned(
-              left: 4,
-              top: 4,
-              child: IconButton(
-                icon: const Icon(
-                  Icons.expand_less,
-                  size: 18,
-                  color: Colors.grey,
-                ),
-                onPressed: _toggleCollapsed,
-                visualDensity: VisualDensity.compact,
-                tooltip: 'Hide shortcuts',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-              ),
-            ),
-          ],
-        );
+        return buildRows();
       },
     );
   }
@@ -128,36 +124,53 @@ class _ShortcutRow extends StatelessWidget {
   final int rowIndex;
   final List<KeyboardShortcut> shortcuts;
   final bool isConnected;
+  final Widget? collapseButton;
 
   const _ShortcutRow({
     required this.rowIndex,
     required this.shortcuts,
     required this.isConnected,
+    this.collapseButton,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isFirstRow = rowIndex == 0;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        border: Border(
-          bottom: BorderSide(color: theme.colorScheme.outlineVariant),
-        ),
+      padding: EdgeInsets.symmetric(
+        horizontal: 8,
+        vertical: isFirstRow ? 6 : 4,
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            ...shortcuts.map((s) => _ShortcutChip(
-                  shortcut: s,
-                  isConnected: isConnected,
-                )),
-            if (rowIndex == 0 && isConnected) const AiCommandButton(),
-            const SizedBox(width: 8),
-          ],
-        ),
+      decoration: BoxDecoration(
+        border: isFirstRow
+            ? Border(
+                bottom: BorderSide(
+                  color: theme.colorScheme.outlineVariant,
+                  width: 0.5,
+                ),
+              )
+            : null,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ...shortcuts.map((s) => _ShortcutChip(
+                        shortcut: s,
+                        isConnected: isConnected,
+                      )),
+                  if (isFirstRow && isConnected) const AiCommandButton(),
+                  const SizedBox(width: 8),
+                ],
+              ),
+            ),
+          ),
+          if (collapseButton != null) collapseButton!,
+        ],
       ),
     );
   }
@@ -174,17 +187,22 @@ class _ShortcutChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final chipBg = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
+    final chipBorder = isDark ? Colors.grey.shade600 : Colors.grey.shade400;
+    final descColor = isDark ? Colors.grey.shade300 : Colors.grey.shade700;
     return Padding(
       padding: const EdgeInsets.only(right: 4, left: 0),
       child: InkWell(
         onTap: () => _handleTap(context),
-        borderRadius: BorderRadius.circular(0.5),
+        borderRadius: BorderRadius.circular(4),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           decoration: BoxDecoration(
-            color: Colors.grey[700],
-            borderRadius: BorderRadius.circular(0.25),
-            border: Border.all(color: Colors.grey.shade600),
+            color: chipBg,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: chipBorder),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -195,21 +213,21 @@ class _ShortcutChip extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                   style: const TextStyle(
-                    fontSize: 7,
+                    fontSize: 10,
                     fontFamily: 'monospace',
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-              const SizedBox(width: 2),
+              const SizedBox(width: 4),
               Flexible(
                 child: Text(
                   shortcut.description,
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                   style: TextStyle(
-                    fontSize: 7,
-                    color: Colors.grey.shade400,
+                    fontSize: 10,
+                    color: descColor,
                   ),
                 ),
               ),

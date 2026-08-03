@@ -31,9 +31,6 @@ class _SnippetButtonPanelState extends State<SnippetButtonPanel> {
         if (active == null || !active.isConnected || !snippets.isLoaded) {
           return const SizedBox.shrink();
         }
-        if (!snippets.showSnippetPanel) {
-          return const SizedBox.shrink();
-        }
 
         final displaySnippets = snippets.snippets.take(5).toList();
 
@@ -118,16 +115,6 @@ class _SnippetButtonPanelState extends State<SnippetButtonPanel> {
                         ),
                       ),
                     ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.visibility_off,
-                      size: 20,
-                      color: Colors.grey,
-                    ),
-                    onPressed: snippets.toggleShowSnippetPanel,
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Hide snippets panel',
-                  ),
                 ],
               ),
             ],

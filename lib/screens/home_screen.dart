@@ -10,7 +10,6 @@ import 'package:xterm/xterm.dart';
 import '../models/home_toolbar_action.dart';
 import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
-import '../providers/snippet_provider.dart';
 import '../widgets/log_viewer.dart';
 import '../widgets/profile_manager.dart';
 import '../widgets/key_manager.dart';
@@ -44,9 +43,14 @@ class _HomeScreenState extends State<HomeScreen> {
   AppTab _selectedTab = AppTab.client;
   bool _isFullScreen = false;
   bool _agentsChatOpen = false;
+  bool _accessoryVisible = true;
   StreamSubscription<Uri?>? _widgetClickSub;
   final FocusNode _keyboardFocusNode = FocusNode();
   final GlobalKey<AgentsTabState> _agentsTabKey = GlobalKey<AgentsTabState>();
+
+  void _toggleAccessory() {
+    setState(() => _accessoryVisible = !_accessoryVisible);
+  }
 
   @override
   void initState() {
@@ -230,12 +234,60 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, ssh, child) {
           if (ssh.sessions.any((s) => s.isConnected) &&
               _selectedTab == AppTab.client) {
-            return IconButton(
-              icon: Icon(
-                _isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
-              ),
-              tooltip: _isFullScreen ? 'Exit Full Screen' : 'Full Screen',
-              onPressed: () => setState(() => _isFullScreen = !_isFullScreen),
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: Icon(
+                    _isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                  ),
+                  tooltip: _isFullScreen ? 'Exit Full Screen' : 'Full Screen',
+                  onPressed: () =>
+                      setState(() => _isFullScreen = !_isFullScreen),
+                ),
+                IconButton(
+                  icon: Icon(
+                    _accessoryVisible ? Icons.keyboard_hide : Icons.keyboard,
+                  ),
+                  tooltip: _accessoryVisible
+                      ? 'Hide accessory panels'
+                      : 'Show accessory panels',
+                  onPressed: _toggleAccessory,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.folder_open),
+                  tooltip: 'SFTP Browser',
+                  onPressed: () {
+                    if (ssh.activeSession == null ||
+                        !ssh.activeSession!.isConnected) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Connect to a session first')));
+                      return;
+                    }
+                    final sessionId = ssh.activeSessionId!;
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => Scaffold(
+                          appBar: AppBar(title: const Text('SFTP')),
+                          body: SftpBrowser(sessionId: sessionId),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                if (ssh.activeSession?.isConnected ?? false)
+                  IconButton(
+                    icon:
+                        const Icon(Icons.power_settings_new, color: Colors.red),
+                    tooltip: 'Disconnect',
+                    onPressed: () async {
+                      final active = ssh.activeSession;
+                      if (active != null) {
+                        await ssh.disconnectSession(active.id);
+                      }
+                    },
+                  ),
+              ],
             );
           }
           return const SizedBox.shrink();
@@ -357,17 +409,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
               body: Column(
                 children: [
-                  if (!_isFullScreen)
-                    KeyboardShortcutBar(
-                      forceShowOnMobile: context
-                          .watch<SettingsProvider>()
-                          .showMobileShortcutBar,
-                    ),
+                  if (!_isFullScreen) const KeyboardShortcutBar(),
                   Expanded(
                     child: IndexedStack(
                       index: _selectedTab.index,
                       children: <Widget>[
-                        ClientTab(isFullScreen: _isFullScreen),
+                        ClientTab(
+                          isFullScreen: _isFullScreen,
+                          accessoryVisible: _accessoryVisible,
+                        ),
                         AgentsTab(
                           key: _agentsTabKey,
                           onChatOpenChanged: (open) {
@@ -392,7 +442,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class ClientTab extends StatefulWidget {
   final bool isFullScreen;
-  const ClientTab({required this.isFullScreen, super.key});
+  final bool accessoryVisible;
+  const ClientTab({
+    required this.isFullScreen,
+    required this.accessoryVisible,
+    super.key,
+  });
 
   @override
   State<ClientTab> createState() => _ClientTabState();
@@ -478,6 +533,8 @@ class _ClientTabState extends State<ClientTab> {
         ),
       );
 
+      final hasConnectedSession = ssh.sessions.any((s) => s.isConnected);
+
       return Row(
         children: [
           Expanded(
@@ -486,37 +543,14 @@ class _ClientTabState extends State<ClientTab> {
               child: Row(children: chips),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.folder_open),
-            tooltip: 'SFTP Browser',
-            onPressed: () {
-              if (ssh.activeSession == null ||
-                  !ssh.activeSession!.isConnected) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Connect to a session first')));
-                return;
-              }
-              final sessionId = ssh.activeSessionId!;
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('SFTP')),
-                    body: SftpBrowser(sessionId: sessionId),
-                  ),
-                ),
-              );
-            },
-          ),
-          if (ssh.activeSession?.isConnected ?? false)
+          if (hasConnectedSession)
             IconButton(
-              icon: const Icon(Icons.power_settings_new, color: Colors.red),
-              tooltip: 'Disconnect',
-              onPressed: () async {
-                final active = ssh.activeSession;
-                if (active != null) {
-                  await ssh.disconnectSession(active.id);
-                }
-              },
+              icon: const Icon(Icons.add_circle_outline),
+              tooltip: 'New connection',
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (c) => const ConnectionModal(),
+              ),
             ),
         ],
       );
@@ -655,53 +689,52 @@ class _ClientTabState extends State<ClientTab> {
                   );
                 }),
               ),
-              if (ssh.sessions.any((s) => s.isConnected))
+              if (ssh.sessions.any((s) => s.isConnected) &&
+                  widget.accessoryVisible)
                 AnimatedSize(
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeInOut,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8.0, vertical: 4.0),
-                      child: Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          Consumer<SnippetProvider>(
-                            builder: (context, snippets, child) {
-                              if (!snippets.showSnippetPanel) {
-                                return IconButton(
-                                  icon: const Icon(
-                                    Icons.visibility,
-                                    size: 20,
-                                    color: Colors.grey,
-                                  ),
-                                  onPressed: snippets.toggleShowSnippetPanel,
-                                  visualDensity: VisualDensity.compact,
-                                  tooltip: 'Show snippets panel',
-                                );
-                              }
-                              return const SnippetButtonPanel();
-                            },
-                          ),
-                          const CtrlButtonPanel(),
-                        ],
-                      ),
-                    ),
+                  alignment: Alignment.topCenter,
+                  child: _AccessoryArea(
+                    theme: Theme.of(context),
+                    ssh: ssh,
                   ),
                 ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+/// Renders the snippet + ctrl button panels with a single top-border line,
+/// only when at least one panel has visible content.  Prevents the empty
+/// area from rendering a stray divider line on cold-start.
+class _AccessoryArea extends StatelessWidget {
+  const _AccessoryArea({required this.theme, required this.ssh});
+
+  final ThemeData theme;
+  final SSHProvider ssh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      child: const Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          SnippetButtonPanel(),
+          CtrlButtonPanel(),
+        ],
+      ),
     );
   }
 }
