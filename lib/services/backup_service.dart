@@ -10,6 +10,7 @@ import 'widget_profile_service.dart';
 
 class BackupService {
   static const int _backupVersion = 1;
+  static const int _maxBackupSizeBytes = 5 * 1024 * 1024; // 5 MB
 
   static Future<void> export() async {
     final settings = SecureStorageService.stripApiKeys(
@@ -37,6 +38,9 @@ class BackupService {
         subject: '$kAppDisplayName Backup',
       ),
     );
+
+    // Cleanup temp file after sharing
+    await file.delete();
   }
 
   static Future<String> import() async {
@@ -45,12 +49,19 @@ class BackupService {
       allowedExtensions: ['json'],
     );
 
-    if (result == null || result.files.isEmpty) return 'Import cancelled';
+    if (result.isEmpty) return 'Import cancelled';
 
-    final path = result.files.single.path;
+    final path = result.first.path;
     if (path == null) throw Exception('Could not read selected file');
 
-    final jsonString = await File(path).readAsString();
+    final file = File(path);
+    final fileSize = await file.length();
+    if (fileSize > _maxBackupSizeBytes) {
+      throw const FormatException(
+          'Backup file too large (max ${_maxBackupSizeBytes ~/ (1024 * 1024)} MB)');
+    }
+
+    final jsonString = await file.readAsString();
     final data = json.decode(jsonString) as Map<String, dynamic>;
 
     final version = data['version'] as int?;
@@ -58,6 +69,10 @@ class BackupService {
       throw FormatException('Unsupported backup version: $version');
     }
 
+    // Validate all data before applying (transactional)
+    _validateBackupData(data);
+
+    // Apply all changes atomically
     if (data['profiles'] is List) {
       await ConfigService.saveProfiles(
         (data['profiles'] as List<dynamic>)
@@ -95,5 +110,52 @@ class BackupService {
     await WidgetProfileService.syncFromConfig();
 
     return 'Import successful';
+  }
+
+  static void _validateBackupData(Map<String, dynamic> data) {
+    if (data['profiles'] is List) {
+      for (final profile in data['profiles'] as List) {
+        final map = profile as Map<String, dynamic>;
+        if (map['host'] == null || map['username'] == null) {
+          throw const FormatException(
+              'Invalid profile: missing host or username');
+        }
+        if (map['port'] != null && map['port'] is! int) {
+          throw const FormatException('Invalid profile: port must be int');
+        }
+        if (map['agentPort'] != null && map['agentPort'] is! int) {
+          throw const FormatException('Invalid profile: agentPort must be int');
+        }
+      }
+    }
+    if (data['sshKeys'] is List) {
+      for (final key in data['sshKeys'] as List) {
+        final map = key as Map<String, dynamic>;
+        if (map['keyType'] == null) {
+          throw const FormatException('Invalid SSH key: missing keyType');
+        }
+      }
+    }
+    if (data['snippets'] is List) {
+      for (final snippet in data['snippets'] as List) {
+        final map = snippet as Map<String, dynamic>;
+        if (map['content'] == null) {
+          throw const FormatException('Invalid snippet: missing content');
+        }
+      }
+    }
+    if (data['settings'] is Map) {
+      final settings = data['settings'] as Map<String, dynamic>;
+      if (settings['terminalFontSize'] != null &&
+          settings['terminalFontSize'] is! num) {
+        throw const FormatException(
+            'Invalid settings: terminalFontSize must be num');
+      }
+      if (settings['defaultAgentPort'] != null &&
+          settings['defaultAgentPort'] is! int) {
+        throw const FormatException(
+            'Invalid settings: defaultAgentPort must be int');
+      }
+    }
   }
 }

@@ -26,7 +26,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.involvex.pocketshell"
+        applicationId = "com.involvex.ssh_app_flutter"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
