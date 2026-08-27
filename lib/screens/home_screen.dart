@@ -708,9 +708,8 @@ class _ClientTabState extends State<ClientTab> {
   }
 }
 
-/// Renders the snippet + ctrl button panels with a single top-border line,
-/// only when at least one panel has visible content.  Prevents the empty
-/// area from rendering a stray divider line on cold-start.
+/// Renders the snippet + ctrl button panels. The snippet panel collapses to
+/// a single chip when toggled off, letting AnimatedSize shrink the area.
 class _AccessoryArea extends StatelessWidget {
   const _AccessoryArea({required this.theme, required this.ssh});
 
@@ -720,12 +719,7 @@ class _AccessoryArea extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: theme.colorScheme.outlineVariant),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
       child: const Wrap(
         alignment: WrapAlignment.center,
         spacing: 8,

@@ -35,7 +35,7 @@ class _SnippetButtonPanelState extends State<SnippetButtonPanel> {
         final displaySnippets = snippets.snippets.take(5).toList();
 
         return Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
+          margin: const EdgeInsets.symmetric(vertical: 2),
           decoration: BoxDecoration(
             color: Theme.of(context)
                 .colorScheme
@@ -46,24 +46,15 @@ class _SnippetButtonPanelState extends State<SnippetButtonPanel> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      _isExpanded ? Icons.expand_more : Icons.chevron_right,
-                      size: 20,
-                      color: Colors.grey,
+              if (_isExpanded)
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.expand_more, size: 20),
+                      onPressed: _toggleExpanded,
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Hide snippets',
                     ),
-                    onPressed: _toggleExpanded,
-                    visualDensity: VisualDensity.compact,
-                    tooltip: _isExpanded ? 'Hide snippets' : 'Show snippets',
-                  ),
-                  if (!_isExpanded)
-                    const Text(
-                      'Snippets',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  if (_isExpanded)
                     Expanded(
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -115,8 +106,30 @@ class _SnippetButtonPanelState extends State<SnippetButtonPanel> {
                         ),
                       ),
                     ),
-                ],
-              ),
+                  ],
+                ),
+              if (!_isExpanded)
+                ActionChip(
+                  avatar: Icon(
+                    Icons.code,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  ),
+                  label: const Text(
+                    'Snippets',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onPressed: _toggleExpanded,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.secondaryContainer,
+                  labelStyle: TextStyle(
+                    color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  ),
+                  tooltip: 'Expand snippets',
+                ),
             ],
           ),
         );
