@@ -5,7 +5,7 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:xterm/xterm.dart';
 
 import '../models/ssh_profile.dart';
-import '../services/config_service.dart';
+import '../services/config_repository.dart';
 import '../services/network_discovery_service.dart';
 import '../services/app_lifecycle_service.dart';
 import '../services/secure_storage_service.dart';
@@ -17,6 +17,11 @@ import '../utils/terminal_context.dart';
 import '../utils/terminal_enter_mapping.dart';
 
 class SSHProvider extends ChangeNotifier {
+  SSHProvider({ConfigRepository? config})
+      : _config = config ?? ConfigServiceRepository();
+
+  final ConfigRepository _config;
+
   // sessions container
   final List<SessionEntry> sessions = <SessionEntry>[];
   String? activeSessionId;
@@ -32,11 +37,11 @@ class SSHProvider extends ChangeNotifier {
   bool isScanning = false;
 
   Future<void> loadConfig() async {
-    var profileData = await ConfigService.getProfiles();
+    var profileData = await _config.getProfiles();
     final migratedProfiles =
         await SecureStorageService.migrateProfilePasswords(profileData);
     if (!identical(migratedProfiles, profileData)) {
-      await ConfigService.saveProfiles(migratedProfiles);
+      await _config.saveProfiles(migratedProfiles);
       profileData = migratedProfiles;
     }
 
@@ -45,14 +50,16 @@ class SSHProvider extends ChangeNotifier {
       profiles.add(await _hydrateProfile(SSHProfile.fromJson(raw)));
     }
 
-    final keyData = await ConfigService.getSSHKeys();
+    final keyData = await _config.getSSHKeys();
     final migratedKeys =
         await SecureStorageService.migrateKeyPassphrases(keyData);
-    if (!identical(migratedKeys, keyData)) {
-      await ConfigService.saveSSHKeys(migratedKeys);
+    final migratedPrivKeys =
+        await SecureStorageService.migratePrivateKeys(migratedKeys);
+    if (!identical(migratedPrivKeys, keyData)) {
+      await _config.saveSSHKeys(migratedPrivKeys);
     }
 
-    final sessionData = await ConfigService.getLastSession();
+    final sessionData = await _config.getLastSession();
     if (sessionData != null) {
       lastSession = await _hydrateProfile(SSHProfile.fromJson(sessionData));
     }
@@ -82,7 +89,7 @@ class SSHProvider extends ChangeNotifier {
       profile.id,
       profile.password,
     );
-    await ConfigService.saveProfiles(profiles.map((e) => e.toJson()).toList());
+    await _config.saveProfiles(profiles.map((e) => e.toJson()).toList());
     await WidgetProfileService.syncProfiles(profiles);
     notifyListeners();
   }
@@ -90,7 +97,7 @@ class SSHProvider extends ChangeNotifier {
   Future<void> deleteProfile(String id) async {
     profiles.removeWhere((p) => p.id == id);
     await SecureStorageService.deleteProfilePassword(id);
-    await ConfigService.saveProfiles(profiles.map((e) => e.toJson()).toList());
+    await _config.saveProfiles(profiles.map((e) => e.toJson()).toList());
     await WidgetProfileService.syncProfiles(profiles);
     notifyListeners();
   }
@@ -101,7 +108,7 @@ class SSHProvider extends ChangeNotifier {
       profile.id,
       profile.password,
     );
-    await ConfigService.saveLastSession(profile.toJson());
+    await _config.saveLastSession(profile.toJson());
     notifyListeners();
   }
 
@@ -200,9 +207,7 @@ class SSHProvider extends ChangeNotifier {
         socket,
         username: profile.username,
         identities: auth.identities,
-        onPasswordRequest: auth.hasPasswordAuth
-            ? () => auth.password!
-            : null,
+        onPasswordRequest: auth.hasPasswordAuth ? () => auth.password! : null,
         keepAliveInterval: const Duration(seconds: 15),
       );
 

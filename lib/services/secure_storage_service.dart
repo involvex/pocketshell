@@ -40,6 +40,24 @@ class SecureStorageService {
     return _impl.readKeyPassphrase(keyId);
   }
 
+  static Future<String?> readPrivateKey(String keyId) async {
+    return _impl.readPrivateKey(keyId);
+  }
+
+  static Future<void> writePrivateKey(String keyId, String? pem) async {
+    return _impl.writePrivateKey(keyId, pem);
+  }
+
+  static Future<void> deletePrivateKey(String keyId) async {
+    return _impl.deletePrivateKey(keyId);
+  }
+
+  static Future<List<Map<String, dynamic>>> migratePrivateKeys(
+    List<Map<String, dynamic>> keys,
+  ) async {
+    return _impl.migratePrivateKeys(keys);
+  }
+
   static Future<void> writeKeyPassphrase(
     String keyId,
     String? passphrase,

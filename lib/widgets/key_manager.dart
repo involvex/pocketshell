@@ -23,17 +23,22 @@ class _KeyManagerState extends State<KeyManager> {
 
   Future<void> _loadKeys() async {
     final keyData = await ConfigService.getSSHKeys();
-    final migrated =
+    final migratedPass =
         await SecureStorageService.migrateKeyPassphrases(keyData);
-    if (!identical(migrated, keyData)) {
-      await ConfigService.saveSSHKeys(migrated);
+    final migratedPriv =
+        await SecureStorageService.migratePrivateKeys(migratedPass);
+    if (!identical(migratedPriv, keyData)) {
+      await ConfigService.saveSSHKeys(migratedPriv);
     }
     final keys = <SSHKey>[];
-    for (final raw in migrated) {
-      final key = SSHKey.fromJson(raw);
-      final passphrase =
-          await SecureStorageService.readKeyPassphrase(key.id) ??
-              key.passphrase;
+    for (final raw in migratedPriv) {
+      final keyId = raw['id'] as String;
+      final privateKey = await SecureStorageService.readPrivateKey(keyId) ??
+          (raw['privateKey'] as String? ?? '');
+      final passphrase = await SecureStorageService.readKeyPassphrase(keyId) ??
+          raw['passphrase'] as String?;
+
+      final key = SSHKey.fromJson(raw, privateKeyOverride: privateKey);
       keys.add(
         passphrase == null || passphrase == key.passphrase
             ? key
@@ -56,15 +61,18 @@ class _KeyManagerState extends State<KeyManager> {
   Future<void> _saveKeys() async {
     for (final key in _keys) {
       await SecureStorageService.writeKeyPassphrase(key.id, key.passphrase);
+      await SecureStorageService.writePrivateKey(key.id, key.privateKey);
     }
-    await ConfigService.saveSSHKeys(_keys.map((e) => e.toJson()).toList());
+    await ConfigService.saveSSHKeys(
+      _keys.map((e) => e.toJson(includePrivateKey: false)).toList(),
+    );
   }
 
   Future<void> _generateKey(SSHKeyType keyType, String name) async {
     setState(() => _isLoading = true);
 
     try {
-      final key = SSHKeyGenerator.generateKeySync(keyType, name);
+      final key = await SSHKeyGenerator.generateKey(keyType, name);
       setState(() {
         _keys.add(key);
       });
@@ -133,7 +141,11 @@ class _KeyManagerState extends State<KeyManager> {
     );
   }
 
-  void _showKeyDetails(SSHKey key) {
+  Future<void> _showKeyDetails(SSHKey key) async {
+    final privateKey =
+        await SecureStorageService.readPrivateKey(key.id) ?? key.privateKey;
+    if (!mounted) return;
+    // ignore: unawaited_futures
     showDialog<void>(
       context: context,
       builder: (dialogContext) {
@@ -159,7 +171,7 @@ class _KeyManagerState extends State<KeyManager> {
                 const Text('Private Key:',
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 SelectableText(
-                  key.privateKey,
+                  privateKey,
                   style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
                 ),
               ],
@@ -191,11 +203,14 @@ class _KeyManagerState extends State<KeyManager> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () {
+              onPressed: () async {
                 setState(() {
                   _keys.removeWhere((k) => k.id == id);
                 });
-                _saveKeys();
+                await SecureStorageService.deletePrivateKey(id);
+                await SecureStorageService.deleteKeyPassphrase(id);
+                await _saveKeys();
+                if (!context.mounted) return;
                 Navigator.pop(dialogContext);
               },
               child: const Text('Delete'),

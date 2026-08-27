@@ -16,15 +16,32 @@ class BackupService {
     final settings = SecureStorageService.stripApiKeys(
       await ConfigService.getSettings(),
     );
+    final rawKeys = await ConfigService.getSSHKeys();
+    final fullKeys = <Map<String, dynamic>>[];
+    for (final raw in rawKeys) {
+      final map = Map<String, dynamic>.from(raw);
+      final id = map['id'] as String?;
+      if (id != null) {
+        final pem = await SecureStorageService.readPrivateKey(id);
+        if (pem != null && pem.isNotEmpty) {
+          map['privateKey'] = pem;
+        }
+        final passphrase = await SecureStorageService.readKeyPassphrase(id);
+        if (passphrase != null && passphrase.isNotEmpty) {
+          map['passphrase'] = passphrase;
+        }
+      }
+      fullKeys.add(map);
+    }
+
     final data = <String, dynamic>{
       'version': _backupVersion,
       'exportedAt': DateTime.now().toIso8601String(),
       'profiles': await ConfigService.getProfiles(),
-      'sshKeys': await ConfigService.getSSHKeys(),
+      'sshKeys': fullKeys,
       'snippets': await ConfigService.getSnippets(),
       'settings': settings,
-      'lastSession': await ConfigService
-          .getLastSession(), // nullable; serialized as null if absent
+      'lastSession': await ConfigService.getLastSession(),
     };
 
     final jsonString = const JsonEncoder.withIndent('  ').convert(data);
@@ -81,11 +98,26 @@ class BackupService {
       );
     }
     if (data['sshKeys'] is List) {
-      await ConfigService.saveSSHKeys(
-        (data['sshKeys'] as List<dynamic>)
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList(),
-      );
+      final keyMaps = <Map<String, dynamic>>[];
+      for (final raw in data['sshKeys'] as List<dynamic>) {
+        final map = Map<String, dynamic>.from(raw as Map);
+        final id = map['id'] as String?;
+        final pem = map['privateKey'] as String?;
+        final passphrase = map['passphrase'] as String?;
+        if (id != null) {
+          if (pem != null && pem.isNotEmpty) {
+            await SecureStorageService.writePrivateKey(id, pem);
+          }
+          if (passphrase != null && passphrase.isNotEmpty) {
+            await SecureStorageService.writeKeyPassphrase(id, passphrase);
+          }
+        }
+        // Exclude privateKey and passphrase from SharedPreferences blob
+        map.remove('privateKey');
+        map.remove('passphrase');
+        keyMaps.add(map);
+      }
+      await ConfigService.saveSSHKeys(keyMaps);
     }
     if (data['snippets'] is List) {
       await ConfigService.saveSnippets(

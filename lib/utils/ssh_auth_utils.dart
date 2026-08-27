@@ -70,9 +70,9 @@ Future<List<SSHKeyPair>?> _resolveIdentities(SSHProfile profile) async {
       return null;
     }
     final key = SSHKey.fromJson(match);
-    pem = key.privateKey;
-    passphrase = await SecureStorageService.readKeyPassphrase(key.id) ??
-        key.passphrase;
+    pem = await SecureStorageService.readPrivateKey(key.id) ?? key.privateKey;
+    passphrase =
+        await SecureStorageService.readKeyPassphrase(key.id) ?? key.passphrase;
   }
 
   if (pem.isEmpty) {

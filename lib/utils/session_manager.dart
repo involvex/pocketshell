@@ -6,6 +6,7 @@ enum SessionManager {
   zellij,
   screen,
   byobu,
+  wt,
 }
 
 extension SessionManagerX on SessionManager {
@@ -16,6 +17,7 @@ extension SessionManagerX on SessionManager {
         SessionManager.zellij => 'zellij',
         SessionManager.screen => 'screen',
         SessionManager.byobu => 'byobu',
+        SessionManager.wt => 'Windows Terminal',
       };
 
   /// Startup command to attach or create a session, or `null` when none.
@@ -30,6 +32,8 @@ extension SessionManagerX on SessionManager {
         SessionManager.zellij => 'zellij attach -c main',
         SessionManager.screen => 'screen -d -RR main',
         SessionManager.byobu => 'byobu',
+        SessionManager.wt =>
+          r'wt -w 0 new-tab --title "PocketShell" -- pwsh -NoExit',
       };
 
   static SessionManager fromStorage(String? value) {

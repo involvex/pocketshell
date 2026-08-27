@@ -7,12 +7,17 @@ import 'package:uuid/uuid.dart';
 import '../models/agent_connection.dart';
 import '../models/agent_permission_request.dart';
 import '../models/ssh_profile.dart';
-import '../services/config_service.dart';
+import '../services/config_repository.dart';
 import '../services/opencode_connection_service.dart';
 import '../utils/agent_prompt_utils.dart';
 import '../utils/agent_session_utils.dart';
 
 class AgentProvider extends ChangeNotifier {
+  AgentProvider({ConfigRepository? config})
+      : _config = config ?? ConfigServiceRepository();
+
+  final ConfigRepository _config;
+
   final List<AgentConnection> _connections = [];
   String? _activeConnectionId;
   AgentPermissionRequest? _pendingPermission;
@@ -117,7 +122,7 @@ class AgentProvider extends ChangeNotifier {
     try {
       await service.connect();
 
-      String? directory = await ConfigService.getAgentLastDirectory();
+      String? directory = await _config.getAgentLastDirectory();
       if (directory == null || directory.isEmpty) {
         directory = await service.getServerPath();
       }
@@ -160,7 +165,7 @@ class AgentProvider extends ChangeNotifier {
     if (connection == null) return;
 
     connection.selectedDirectory = path;
-    await ConfigService.saveAgentLastDirectory(path);
+    await _config.saveAgentLastDirectory(path);
     await refreshSessions(connectionId);
     onLog?.call('Agent directory set: $path');
   }
