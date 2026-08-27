@@ -1,82 +1,75 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 
 import 'package:ssh_app/models/remote_fs_entry.dart';
-import 'package:ssh_app/services/config_service.dart';
+import 'package:ssh_app/services/config_repository.dart';
 import 'package:ssh_app/services/sftp_helper.dart';
 import 'package:ssh_app/utils/remote_fs_sort.dart';
 import 'package:ssh_app/utils/remote_path_utils.dart';
 
 /// Session-scoped SFTP explorer state and file operations.
 class SftpController extends ChangeNotifier {
-  SftpController({SSHClient? client, SftpFileSystem? helper})
-      : assert(client != null || helper != null),
-        _helper = helper ?? SftpHelper(client!);
+  SftpController({
+    SSHClient? client,
+    SftpFileSystem? helper,
+    ConfigRepository? config,
+  })  : assert(client != null || helper != null),
+        _helper = helper ?? SftpHelper(client!),
+        _config = config ?? ConfigServiceRepository();
 
   final SftpFileSystem _helper;
+  final ConfigRepository _config;
 
-  String currentPath = '/';
-  List<RemoteFsEntry> _raw = <RemoteFsEntry>[];
-  List<String> drives = <String>[];
-  bool loading = false;
-  String? error;
-  String filterTerm = '';
-  RemoteFsSortField sortField = RemoteFsSortField.name;
-  bool sortAscending = true;
+  String _currentPath = '/';
+  final List<RemoteFsEntry> _raw = <RemoteFsEntry>[];
+  final List<String> _drives = <String>[];
+  bool _loading = false;
+  String? _error;
+  String _filterTerm = '';
+  RemoteFsSortField _sortField = RemoteFsSortField.name;
+  bool _sortAscending = true;
 
-  int? transferBytes;
-  int? transferTotal;
-  String? transferLabel;
+  int? _transferBytes;
+  int? _transferTotal;
+  String? _transferLabel;
   SftpCancelToken? _cancel;
-  final Set<String> selectedNames = <String>{};
-  bool selectionMode = false;
+  final Set<String> _selectedNames = <String>{};
+  bool _selectionMode = false;
 
-  void toggleSelectionMode([bool? enabled]) {
-    selectionMode = enabled ?? !selectionMode;
-    if (!selectionMode) {
-      selectedNames.clear();
-    }
-    notifyListeners();
-  }
+  Timer? _progressThrottleTimer;
+  bool _disposed = false;
 
-  void toggleSelected(RemoteFsEntry entry) {
-    if (entry.isParentLink) {
-      return;
-    }
-    if (selectedNames.contains(entry.name)) {
-      selectedNames.remove(entry.name);
-    } else {
-      selectedNames.add(entry.name);
-    }
-    if (selectedNames.isEmpty) {
-      selectionMode = false;
-    } else {
-      selectionMode = true;
-    }
-    notifyListeners();
-  }
+  String get currentPath => _currentPath;
+  List<String> get drives => List<String>.unmodifiable(_drives);
+  bool get loading => _loading;
+  String? get error => _error;
+  String get filterTerm => _filterTerm;
+  RemoteFsSortField get sortField => _sortField;
+  bool get sortAscending => _sortAscending;
 
-  void clearSelection() {
-    selectedNames.clear();
-    selectionMode = false;
-    notifyListeners();
-  }
+  int? get transferBytes => _transferBytes;
+  int? get transferTotal => _transferTotal;
+  String? get transferLabel => _transferLabel;
+
+  Set<String> get selectedNames => Set<String>.unmodifiable(_selectedNames);
+  bool get selectionMode => _selectionMode;
 
   List<RemoteFsEntry> get selectedEntries => _raw
-      .where((e) => selectedNames.contains(e.name))
+      .where((e) => _selectedNames.contains(e.name))
       .toList(growable: false);
 
   List<RemoteFsEntry> get visibleEntries {
     final entries = applyRemoteFsView(
       _raw,
-      filter: filterTerm,
-      field: sortField,
-      ascending: sortAscending,
+      filter: _filterTerm,
+      field: _sortField,
+      ascending: _sortAscending,
     );
-    if (RemotePath.isRoot(currentPath)) {
-      return entries;
+    if (RemotePath.isRoot(_currentPath)) {
+      return List<RemoteFsEntry>.unmodifiable(entries);
     }
     return <RemoteFsEntry>[
       const RemoteFsEntry(name: '..', isDirectory: true),
@@ -85,68 +78,70 @@ class SftpController extends ChangeNotifier {
   }
 
   Future<void> init({String? initialPath}) async {
-    loading = true;
-    error = null;
+    _loading = true;
+    _error = null;
     notifyListeners();
 
     try {
-      final savedSortField = await ConfigService.getSftpSortField();
-      sortField = RemoteFsSortField.values.firstWhere(
+      final savedSortField = await _config.getSftpSortField();
+      _sortField = RemoteFsSortField.values.firstWhere(
         (field) => field.name == savedSortField,
         orElse: () => RemoteFsSortField.name,
       );
-      sortAscending = await ConfigService.getSftpSortAscending();
-      drives = await _helper.listDrives();
+      _sortAscending = await _config.getSftpSortAscending();
+      _drives
+        ..clear()
+        ..addAll(await _helper.listDrives());
 
-      final savedPath = initialPath ?? await ConfigService.getSftpLastPath();
+      final savedPath = initialPath ?? await _config.getSftpLastPath();
       final bool restoredPath = savedPath != null && savedPath.isNotEmpty;
       if (savedPath != null && savedPath.isNotEmpty) {
-        currentPath = RemotePath.normalize(savedPath);
-      } else if (drives.isNotEmpty) {
-        currentPath = '${drives.first}:/';
+        _currentPath = RemotePath.normalize(savedPath);
+      } else if (_drives.isNotEmpty) {
+        _currentPath = '${_drives.first}:/';
       } else {
-        currentPath = '/';
+        _currentPath = '/';
       }
-      if (error == null) {
+      if (_error == null) {
         await refresh(recoverInvalidPath: restoredPath);
       }
     } catch (e) {
-      error = e.toString();
-      drives = <String>[];
-      currentPath = '/';
-      _raw = <RemoteFsEntry>[];
+      _error = e.toString();
+      _drives.clear();
+      _currentPath = '/';
+      _raw.clear();
     } finally {
-      loading = false;
+      _loading = false;
       notifyListeners();
     }
   }
 
   Future<void> refresh({bool recoverInvalidPath = false}) async {
-    loading = true;
-    error = null;
+    _loading = true;
+    _error = null;
     notifyListeners();
 
     try {
       await _loadAndPersistCurrentPath();
     } catch (e) {
       if (recoverInvalidPath && await _tryFallbackPath()) {
-        error = null;
+        _error = null;
       } else {
         if (recoverInvalidPath) {
-          await ConfigService.clearSftpLastPath();
+          await _config.clearSftpLastPath();
         }
-        error = e.toString();
-        _raw = <RemoteFsEntry>[];
+        _error = e.toString();
+        _raw.clear();
       }
     } finally {
-      loading = false;
+      _loading = false;
       notifyListeners();
     }
   }
 
   Future<void> navigateTo(String path) async {
-    currentPath = RemotePath.normalize(path);
-    filterTerm = '';
+    _currentPath = RemotePath.normalize(path);
+    _filterTerm = '';
     await refresh();
   }
 
@@ -155,24 +150,24 @@ class SftpController extends ChangeNotifier {
       return;
     }
     if (entry.isParentLink) {
-      await navigateTo(RemotePath.parent(currentPath));
+      await navigateTo(RemotePath.parent(_currentPath));
       return;
     }
-    await navigateTo(RemotePath.join(currentPath, entry.name));
+    await navigateTo(RemotePath.join(_currentPath, entry.name));
   }
 
   void setFilter(String value) {
-    filterTerm = value;
+    _filterTerm = value;
     notifyListeners();
   }
 
   Future<void> setSort(RemoteFsSortField field, {bool? ascending}) async {
-    sortField = field;
+    _sortField = field;
     if (ascending != null) {
-      sortAscending = ascending;
+      _sortAscending = ascending;
     }
-    await ConfigService.saveSftpSortField(field.name);
-    await ConfigService.saveSftpSortAscending(sortAscending);
+    await _config.saveSftpSortField(field.name);
+    await _config.saveSftpSortAscending(_sortAscending);
     notifyListeners();
   }
 
@@ -182,7 +177,7 @@ class SftpController extends ChangeNotifier {
       return false;
     }
     return _runMutation(() async {
-      await _helper.mkdir(RemotePath.join(currentPath, entryName));
+      await _helper.mkdir(RemotePath.join(_currentPath, entryName));
     });
   }
 
@@ -197,8 +192,8 @@ class SftpController extends ChangeNotifier {
     }
 
     return _runMutation(() async {
-      final fromPath = RemotePath.join(currentPath, entry.name);
-      final toPath = RemotePath.join(currentPath, targetName);
+      final fromPath = RemotePath.join(_currentPath, entry.name);
+      final toPath = RemotePath.join(_currentPath, targetName);
       await _helper.rename(fromPath, toPath);
     });
   }
@@ -209,7 +204,7 @@ class SftpController extends ChangeNotifier {
     }
 
     return _runMutation(() async {
-      final path = RemotePath.join(currentPath, entry.name);
+      final path = RemotePath.join(_currentPath, entry.name);
       if (entry.isDirectory) {
         await _helper.removeDir(path);
       } else {
@@ -224,7 +219,7 @@ class SftpController extends ChangeNotifier {
       return false;
     }
 
-    final remotePath = RemotePath.join(currentPath, filename);
+    final remotePath = RemotePath.join(_currentPath, filename);
 
     return _runMutation(() async {
       final totalBytes = await localFile.length();
@@ -254,7 +249,7 @@ class SftpController extends ChangeNotifier {
 
     if (entry.isDirectory) {
       final int completed = await downloadDirectory(entry, localDirectory);
-      return completed > 0 && error == null;
+      return completed > 0 && _error == null;
     }
 
     final filename = (localName ?? entry.name).trim();
@@ -262,7 +257,7 @@ class SftpController extends ChangeNotifier {
       return false;
     }
 
-    final remotePath = RemotePath.join(currentPath, entry.name);
+    final remotePath = RemotePath.join(_currentPath, entry.name);
     final localPath = _joinLocalPath(localDirectory.path, filename);
     final localFile = File(localPath);
 
@@ -299,13 +294,13 @@ class SftpController extends ChangeNotifier {
       return 0;
     }
 
-    final remoteRoot = RemotePath.join(currentPath, entry.name);
+    final remoteRoot = RemotePath.join(_currentPath, entry.name);
     final localRoot = Directory(
       _joinLocalPath(localDirectory.path, entry.name),
     );
 
-    loading = true;
-    error = null;
+    _loading = true;
+    _error = null;
     notifyListeners();
 
     try {
@@ -317,11 +312,11 @@ class SftpController extends ChangeNotifier {
       return completed;
     } catch (e) {
       if (!_isCancelledError(e)) {
-        error = e.toString();
+        _error = e.toString();
       }
       return 0;
     } finally {
-      loading = false;
+      _loading = false;
       _clearTransfer();
       notifyListeners();
     }
@@ -334,7 +329,7 @@ class SftpController extends ChangeNotifier {
     for (final entry in entries) {
       if (entry.isDirectory) {
         final int n = await downloadDirectory(entry, localDirectory);
-        if (n == 0 && error != null) {
+        if (n == 0 && _error != null) {
           break;
         }
         completed += n;
@@ -370,16 +365,15 @@ class SftpController extends ChangeNotifier {
     Directory localDirectory, {
     String? remoteName,
   }) async {
-    final folderName =
-        (remoteName ?? _directoryNameFor(localDirectory)).trim();
+    final folderName = (remoteName ?? _directoryNameFor(localDirectory)).trim();
     if (folderName.isEmpty) {
       return 0;
     }
 
-    final remoteRoot = RemotePath.join(currentPath, folderName);
+    final remoteRoot = RemotePath.join(_currentPath, folderName);
 
-    loading = true;
-    error = null;
+    _loading = true;
+    _error = null;
     notifyListeners();
 
     try {
@@ -396,11 +390,11 @@ class SftpController extends ChangeNotifier {
       return completed;
     } catch (e) {
       if (!_isCancelledError(e)) {
-        error = e.toString();
+        _error = e.toString();
       }
       return 0;
     } finally {
-      loading = false;
+      _loading = false;
       _clearTransfer();
       notifyListeners();
     }
@@ -411,7 +405,7 @@ class SftpController extends ChangeNotifier {
     if (entry.isParentLink) {
       return false;
     }
-    final fromPath = RemotePath.join(currentPath, entry.name);
+    final fromPath = RemotePath.join(_currentPath, entry.name);
     final toPath = RemotePath.join(destinationDir, entry.name);
     return _runMutation(() async {
       await _helper.rename(fromPath, toPath);
@@ -423,7 +417,7 @@ class SftpController extends ChangeNotifier {
     if (entry.isDirectory || entry.isParentLink) {
       return false;
     }
-    final fromPath = RemotePath.join(currentPath, entry.name);
+    final fromPath = RemotePath.join(_currentPath, entry.name);
     final toPath = RemotePath.join(destinationDir, entry.name);
     return _runMutation(() async {
       await _helper.copyRemoteFile(fromPath, toPath);
@@ -435,7 +429,7 @@ class SftpController extends ChangeNotifier {
     if (targetName.isEmpty) {
       return false;
     }
-    return _helper.exists(RemotePath.join(currentPath, targetName));
+    return _helper.exists(RemotePath.join(_currentPath, targetName));
   }
 
   String localDownloadPath(Directory localDirectory, String fileName) {
@@ -443,7 +437,7 @@ class SftpController extends ChangeNotifier {
   }
 
   String remotePathForEntry(RemoteFsEntry entry) {
-    return RemotePath.join(currentPath, entry.name);
+    return RemotePath.join(_currentPath, entry.name);
   }
 
   Future<Uint8List> readRemoteBytes(
@@ -471,28 +465,61 @@ class SftpController extends ChangeNotifier {
     _cancel?.cancel();
   }
 
+  void toggleSelectionMode([bool? enabled]) {
+    _selectionMode = enabled ?? !_selectionMode;
+    if (!_selectionMode) {
+      _selectedNames.clear();
+    }
+    notifyListeners();
+  }
+
+  void toggleSelected(RemoteFsEntry entry) {
+    if (entry.isParentLink) {
+      return;
+    }
+    if (_selectedNames.contains(entry.name)) {
+      _selectedNames.remove(entry.name);
+    } else {
+      _selectedNames.add(entry.name);
+    }
+    if (_selectedNames.isEmpty) {
+      _selectionMode = false;
+    } else {
+      _selectionMode = true;
+    }
+    notifyListeners();
+  }
+
+  void clearSelection() {
+    _selectedNames.clear();
+    _selectionMode = false;
+    notifyListeners();
+  }
+
   Future<bool> _runMutation(
     Future<void> Function() action, {
     bool refreshAfter = true,
   }) async {
-    loading = true;
-    error = null;
+    _loading = true;
+    _error = null;
     notifyListeners();
 
     try {
       await action();
       if (refreshAfter) {
-        _raw = await _helper.listDir(currentPath);
-        await ConfigService.saveSftpLastPath(currentPath);
+        _raw
+          ..clear()
+          ..addAll(await _helper.listDir(_currentPath));
+        await _config.saveSftpLastPath(_currentPath);
       }
       return true;
     } catch (e) {
       if (!_isCancelledError(e)) {
-        error = e.toString();
+        _error = e.toString();
       }
       return false;
     } finally {
-      loading = false;
+      _loading = false;
       _clearTransfer();
       notifyListeners();
     }
@@ -503,23 +530,34 @@ class SftpController extends ChangeNotifier {
     int? totalBytes,
   }) {
     _cancel ??= SftpCancelToken();
-    transferLabel = label;
-    transferBytes = 0;
-    transferTotal = totalBytes;
+    _transferLabel = label;
+    _transferBytes = 0;
+    _transferTotal = totalBytes;
     notifyListeners();
   }
 
   void _updateTransferProgress(int bytesTransferred, int? totalBytes) {
-    transferBytes = bytesTransferred;
-    transferTotal = totalBytes;
-    notifyListeners();
+    _transferBytes = bytesTransferred;
+    _transferTotal = totalBytes;
+
+    // Throttle notifyListeners to max 100ms to avoid jank
+    if (_progressThrottleTimer?.isActive ?? false) {
+      return;
+    }
+    _progressThrottleTimer = Timer(const Duration(milliseconds: 100), () {
+      if (!_disposed) {
+        notifyListeners();
+      }
+    });
   }
 
   void _clearTransfer() {
+    _progressThrottleTimer?.cancel();
+    _progressThrottleTimer = null;
     _cancel = null;
-    transferBytes = null;
-    transferTotal = null;
-    transferLabel = null;
+    _transferBytes = null;
+    _transferTotal = null;
+    _transferLabel = null;
   }
 
   bool _isCancelledError(Object error) {
@@ -527,14 +565,16 @@ class SftpController extends ChangeNotifier {
   }
 
   Future<void> _loadAndPersistCurrentPath() async {
-    _raw = await _helper.listDir(currentPath);
-    await ConfigService.saveSftpLastPath(currentPath);
+    _raw
+      ..clear()
+      ..addAll(await _helper.listDir(_currentPath));
+    await _config.saveSftpLastPath(_currentPath);
   }
 
   Future<bool> _tryFallbackPath() async {
     for (final candidate in _fallbackPaths()) {
       try {
-        currentPath = candidate;
+        _currentPath = candidate;
         await _loadAndPersistCurrentPath();
         return true;
       } catch (_) {
@@ -545,13 +585,13 @@ class SftpController extends ChangeNotifier {
   }
 
   Iterable<String> _fallbackPaths() sync* {
-    if (drives.isNotEmpty) {
-      final driveRoot = '${drives.first}:/';
-      if (driveRoot != currentPath) {
+    if (_drives.isNotEmpty) {
+      final driveRoot = '${_drives.first}:/';
+      if (driveRoot != _currentPath) {
         yield driveRoot;
       }
     }
-    if (currentPath != '/') {
+    if (_currentPath != '/') {
       yield '/';
     }
   }
@@ -677,6 +717,8 @@ class SftpController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _progressThrottleTimer?.cancel();
     _cancel?.cancel();
     _helper.close();
     super.dispose();

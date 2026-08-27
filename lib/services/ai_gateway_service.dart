@@ -22,6 +22,13 @@ class AiGatewayService {
       AiProviderDefaults.opencodeZenModel;
   static const String defaultKiloModel = AiProviderDefaults.kiloModel;
 
+  static const int _maxContextChars = 4000;
+  static const Duration _retryDelay = Duration(seconds: 2);
+
+  static late final Dio _opencodeDio;
+  static late final Dio _kiloDio;
+  static bool _initialized = false;
+
   static String baseUrlFor(AiProvider provider) {
     return switch (provider) {
       AiProvider.opencodeZen => opencodeZenBaseUrl,
@@ -36,13 +43,92 @@ class AiGatewayService {
     };
   }
 
+  static void _initDioClients() {
+    if (_initialized) return;
+
+    final opencodeHeaders = <String, dynamic>{
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      'x-opencode-client': 'cli',
+    };
+    _opencodeDio = Dio(
+      BaseOptions(
+        baseUrl: opencodeZenBaseUrl,
+        headers: opencodeHeaders,
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 120),
+      ),
+    );
+
+    final kiloHeaders = <String, dynamic>{
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    };
+    _kiloDio = Dio(
+      BaseOptions(
+        baseUrl: kiloGatewayBaseUrl,
+        headers: kiloHeaders,
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 120),
+      ),
+    );
+
+    // Add retry interceptor
+    final retryInterceptor = InterceptorsWrapper(
+      onError: (error, handler) async {
+        if (_shouldRetry(error)) {
+          await Future.delayed(_retryDelay);
+          return handler.resolve(await _retryRequest(error));
+        }
+        handler.next(error);
+      },
+    );
+    _opencodeDio.interceptors.add(retryInterceptor);
+    _kiloDio.interceptors.add(retryInterceptor);
+
+    _initialized = true;
+  }
+
+  static bool _shouldRetry(DioException error) {
+    if (error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.connectionError) {
+      return true;
+    }
+    if (error.response?.statusCode != null) {
+      final code = error.response!.statusCode!;
+      return code >= 500 || code == 429;
+    }
+    return false;
+  }
+
+  static Future<Response<dynamic>> _retryRequest(DioException error) {
+    final options = error.requestOptions;
+    final dio = options.baseUrl == opencodeZenBaseUrl ? _opencodeDio : _kiloDio;
+    return dio.fetch(options);
+  }
+
+  static Dio _getDio(AiProvider provider) {
+    _initDioClients();
+    return provider == AiProvider.opencodeZen ? _opencodeDio : _kiloDio;
+  }
+
   static Future<List<String>> fetchModels({
     required AiProvider provider,
     required String apiKey,
   }) async {
-    final dio = _createDio(provider: provider, apiKey: apiKey);
+    if (apiKey.trim().isEmpty) {
+      throw AiGatewayException('API key is required for the selected provider');
+    }
+
+    final dio = _getDio(provider);
+    final authOptions = Options(headers: {'Authorization': 'Bearer $apiKey'});
+
     try {
-      final response = await dio.get<Map<String, dynamic>>('/models');
+      final response = await dio.get<Map<String, dynamic>>(
+        '/models',
+        options: authOptions,
+      );
       final data = response.data?['data'];
       if (data is! List) {
         throw AiGatewayException('Unexpected models response format');
@@ -110,9 +196,16 @@ class AiGatewayService {
       throw AiGatewayException('Describe the command you want to generate');
     }
 
-    final dio = _createDio(provider: provider, apiKey: apiKey);
-    final contextBlock = terminalContext != null && terminalContext.isNotEmpty
-        ? '\n\nRecent terminal output:\n$terminalContext'
+    final dio = _getDio(provider);
+
+    // Truncate terminal context to prevent token blow-up
+    final truncatedContext =
+        terminalContext != null && terminalContext.isNotEmpty
+            ? _truncateContext(terminalContext)
+            : null;
+
+    final contextBlock = truncatedContext != null
+        ? '\n\nRecent terminal output:\n$truncatedContext'
         : '';
 
     try {
@@ -136,7 +229,10 @@ class AiGatewayService {
             },
           ],
         },
-        options: Options(responseType: ResponseType.stream),
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: {'Authorization': 'Bearer $apiKey'},
+        ),
       );
 
       final body = response.data;
@@ -153,11 +249,17 @@ class AiGatewayService {
     }
   }
 
+  static String _truncateContext(String context) {
+    if (context.length <= _maxContextChars) return context;
+    return context.substring(context.length - _maxContextChars);
+  }
+
   static Stream<String> _parseSseStream(Stream<List<int>> byteStream) async* {
     final pending = StringBuffer();
 
     await for (final bytes in byteStream) {
-      pending.write(utf8.decode(bytes));
+      // Use utf8.decode with allowMalformed to handle multi-byte boundaries
+      pending.write(utf8.decode(bytes, allowMalformed: true));
       var content = pending.toString();
 
       while (true) {
@@ -177,13 +279,46 @@ class AiGatewayService {
             continue;
           }
           final payload = line.substring(5).trim();
-          if (payload.isEmpty || payload == '[DONE]') {
+          if (payload.isEmpty) {
             continue;
+          }
+          if (payload == '[DONE]') {
+            return;
+          }
+
+          // Handle error events
+          if (payload.startsWith('{')) {
+            try {
+              final decoded = jsonDecode(payload);
+              if (decoded is Map &&
+                  decoded['error'] is Map &&
+                  decoded['error']['message'] is String) {
+                throw AiGatewayException(
+                    'AI provider error: ${decoded['error']['message']}');
+              }
+            } catch (_) {
+              // Not a JSON error event, continue
+            }
           }
 
           final delta = _extractDeltaContent(payload);
           if (delta != null && delta.isNotEmpty) {
             yield delta;
+          }
+        }
+      }
+    }
+    // Flush any remaining content
+    final remaining = pending.toString();
+    if (remaining.isNotEmpty) {
+      for (final line in remaining.split('\n')) {
+        if (line.startsWith('data:')) {
+          final payload = line.substring(5).trim();
+          if (payload.isNotEmpty && payload != '[DONE]') {
+            final delta = _extractDeltaContent(payload);
+            if (delta != null && delta.isNotEmpty) {
+              yield delta;
+            }
           }
         }
       }
@@ -215,36 +350,12 @@ class AiGatewayService {
     }
   }
 
-  static Dio _createDio({
-    required AiProvider provider,
-    required String apiKey,
-  }) {
-    final headers = <String, dynamic>{
-      'Content-Type': 'application/json',
-      'Accept': 'text/event-stream',
-    };
-    if (apiKey.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $apiKey';
-    }
-    if (provider == AiProvider.opencodeZen) {
-      headers['x-opencode-client'] = 'cli';
-    }
-
-    return Dio(
-      BaseOptions(
-        baseUrl: baseUrlFor(provider),
-        headers: headers,
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(seconds: 120),
-      ),
-    );
-  }
-
   static String _stripCommand(String raw) {
     var command = raw.trim();
     if (command.startsWith('```')) {
-      command = command.replaceFirst(RegExp(r'^```[\w]*\n?'), '');
-      command = command.replaceFirst(RegExp(r'\n?```$'), '');
+      // Handle ```lang\ncontent\n``` or ```\ncontent\n``` with optional lang
+      command = command.replaceFirst(RegExp(r'^```\w*\s*\n?'), '');
+      command = command.replaceFirst(RegExp(r'\n?\s*```$'), '');
     }
     return command.trim();
   }

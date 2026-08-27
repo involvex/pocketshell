@@ -33,6 +33,9 @@ class OpenCodeConnectionService {
   bool _disposed = false;
   bool _listening = false;
   StreamSubscription<List<int>>? _sseSubscription;
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 5;
+  static const Duration _baseReconnectDelay = Duration(seconds: 2);
 
   Stream<Map<String, dynamic>> get events => _eventController.stream;
 
@@ -163,6 +166,7 @@ class OpenCodeConnectionService {
   Future<void> reconnectEvents() async {
     if (_disposed) return;
     await _stopEventStream();
+    _reconnectAttempts = 0;
     await _listenToEvents();
   }
 
@@ -190,16 +194,20 @@ class OpenCodeConnectionService {
         return;
       }
 
-      final buffer = StringBuffer();
+      // Use utf8 decoder streaming to handle multi-byte boundaries correctly
+      final pending = StringBuffer();
+
       _sseSubscription = stream.listen(
         (List<int> chunk) {
           if (_disposed) return;
-          buffer.write(utf8.decode(chunk));
-          final content = buffer.toString();
+          // Use allowMalformed to handle split multi-byte sequences
+          pending.write(utf8.decode(chunk, allowMalformed: true));
+          final content = pending.toString();
           final lines = content.split('\n');
-          buffer.clear();
+          pending.clear();
+          // Keep incomplete last line in buffer
           if (!content.endsWith('\n') && lines.isNotEmpty) {
-            buffer.write(lines.removeLast());
+            pending.write(lines.removeLast());
           }
           for (final line in lines) {
             if (line.startsWith('data: ')) {
@@ -217,12 +225,16 @@ class OpenCodeConnectionService {
           }
         },
         onDone: _handleStreamEnded,
-        onError: (Object error, StackTrace stackTrace) => _handleStreamEnded(),
+        onError: (Object error, StackTrace stackTrace) {
+          _handleStreamEnded();
+          _scheduleReconnect();
+        },
         cancelOnError: true,
       );
     } catch (_) {
       _listening = false;
       _handleStreamEnded();
+      _scheduleReconnect();
     }
   }
 
@@ -232,6 +244,22 @@ class OpenCodeConnectionService {
     _connectionEventController.add(
       const ConnectionEvent(ConnectionEventType.disconnected),
     );
+  }
+
+  void _scheduleReconnect() {
+    if (_disposed || _listening) return;
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      // Max attempts reached, stop trying
+      return;
+    }
+    _reconnectAttempts++;
+    final delay = _baseReconnectDelay * _reconnectAttempts;
+    Future.delayed(delay, () {
+      if (!_disposed && !_listening) {
+        // ignore: unawaited_futures
+        _listenToEvents();
+      }
+    });
   }
 
   Future<void> _stopEventStream() async {

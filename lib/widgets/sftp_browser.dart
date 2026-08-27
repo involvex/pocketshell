@@ -92,15 +92,13 @@ class _SftpBrowserState extends State<SftpBrowser> {
     }
 
     // pickFiles defaults to multi-select in file_picker 12+.
-    final FilePickerResult? result = await FilePicker.pickFiles();
-    if (result == null || result.files.isEmpty) {
+    final result = await FilePicker.pickFiles();
+    if (result.isEmpty) {
       return;
     }
 
-    final files = result.files
-        .where((f) => f.path != null)
-        .map((f) => File(f.path!))
-        .toList();
+    final files =
+        result.where((f) => f.path != null).map((f) => File(f.path!)).toList();
     if (files.isEmpty) {
       return;
     }
@@ -109,9 +107,8 @@ class _SftpBrowserState extends State<SftpBrowser> {
     _showOperationSnackBar(
       controller: controller,
       success: completed > 0 && controller.error == null,
-      successMessage: completed == 1
-          ? 'Uploaded'
-          : 'Uploaded $completed file(s)',
+      successMessage:
+          completed == 1 ? 'Uploaded' : 'Uploaded $completed file(s)',
     );
   }
 

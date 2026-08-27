@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/ai_provider.dart';
 import '../models/home_toolbar_action.dart';
 import '../models/keyboard_shortcut.dart';
-import '../services/config_service.dart';
+import '../services/config_repository.dart';
 import '../services/secure_storage_service.dart';
 import '../utils/terminal_enter_mapping.dart';
 import '../utils/terminal_themes.dart';
@@ -34,6 +34,10 @@ enum TerminalFontStyle {
 }
 
 class SettingsProvider extends ChangeNotifier {
+  final ConfigRepository _config;
+
+  SettingsProvider({ConfigRepository? config})
+      : _config = config ?? ConfigServiceRepository();
   ThemeMode _themeMode = ThemeMode.dark;
   AppTheme _appTheme = AppTheme.dark;
   Color _accentColor = Colors.blue;
@@ -99,7 +103,7 @@ class SettingsProvider extends ChangeNotifier {
       : _shortcuts.map((s) => s.row).reduce((a, b) => a > b ? a : b);
 
   Future<void> loadSettings() async {
-    final settings = await ConfigService.getSettings();
+    final settings = await _config.getSettings();
 
     final themeStr = settings['appTheme'] as String? ?? 'dark';
     _appTheme = AppTheme.values.firstWhere(
@@ -171,7 +175,7 @@ class SettingsProvider extends ChangeNotifier {
     );
 
     if (await SecureStorageService.migrateApiKeysFromSettings(settings)) {
-      await ConfigService.saveSettings(settings);
+      await _config.saveSettings(settings);
     }
 
     _opencodeZenApiKey = await SecureStorageService.readOpencodeZenApiKey();
@@ -392,8 +396,8 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   Future<void> _saveSetting(String key, dynamic value) async {
-    final settings = await ConfigService.getSettings();
+    final settings = await _config.getSettings();
     settings[key] = value;
-    await ConfigService.saveSettings(settings);
+    await _config.saveSettings(settings);
   }
 }

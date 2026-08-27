@@ -1,18 +1,22 @@
 import 'package:flutter/foundation.dart';
 import '../models/snippet.dart';
-import '../services/config_service.dart';
+import '../services/config_repository.dart';
 
 class SnippetProvider extends ChangeNotifier {
+  final ConfigRepository _config;
+
+  SnippetProvider({ConfigRepository? config})
+      : _config = config ?? ConfigServiceRepository();
+
   List<Snippet> _snippets = [];
   bool _isLoaded = false;
 
-  List<Snippet> get snippets => _snippets;
+  List<Snippet> get snippets => List<Snippet>.unmodifiable(_snippets);
   bool get isLoaded => _isLoaded;
 
   List<String> get categories {
-    final cats = _snippets.map((s) => s.category).toSet().toList();
-    cats.sort();
-    return cats;
+    final cats = _snippets.map((s) => s.category).toSet().toList()..sort();
+    return List<String>.unmodifiable(cats);
   }
 
   List<Snippet> getSnippetsByCategory(String category) {
@@ -20,12 +24,16 @@ class SnippetProvider extends ChangeNotifier {
   }
 
   Future<void> loadSnippets() async {
-    final data = await ConfigService.getSnippets();
-    if (data.isNotEmpty) {
-      _snippets = data
-          .map((e) => Snippet.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList();
-    } else {
+    try {
+      final data = await _config.getSnippets();
+      if (data.isNotEmpty) {
+        _snippets = data
+            .map((e) => Snippet.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+      } else {
+        _snippets = Snippet.defaults;
+      }
+    } catch (_) {
       _snippets = Snippet.defaults;
     }
     _isLoaded = true;
@@ -60,6 +68,6 @@ class SnippetProvider extends ChangeNotifier {
   }
 
   Future<void> _saveSnippets() async {
-    await ConfigService.saveSnippets(_snippets.map((s) => s.toJson()).toList());
+    await _config.saveSnippets(_snippets.map((s) => s.toJson()).toList());
   }
 }

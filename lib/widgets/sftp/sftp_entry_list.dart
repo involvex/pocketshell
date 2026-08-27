@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 import 'package:ssh_app/models/remote_fs_entry.dart';
 import 'package:ssh_app/utils/remote_path_utils.dart';
@@ -163,79 +164,84 @@ class _EntryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool canShowMenu = !entry.isParentLink;
-    final bool canDownload =
-        !directoriesOnly && !entry.isDirectory && onDownloadEntry != null;
 
-    return ListTile(
-      selected: selected,
-      leading: selectionMode && !entry.isParentLink
-          ? Checkbox(
-              value: selected,
-              onChanged: (_) => onToggleSelected?.call(entry),
-            )
-          : Icon(
-              entry.isParentLink
-                  ? Icons.arrow_upward
-                  : entry.isDirectory
-                      ? Icons.folder_outlined
-                      : Icons.insert_drive_file_outlined,
-            ),
-      title: Text(entry.name),
-      subtitle: Text(_buildSubtitle(entry)),
-      onTap: () async {
-        if (selectionMode && !entry.isParentLink) {
-          onToggleSelected?.call(entry);
-          return;
-        }
-        if (entry.isDirectory) {
-          await onOpenEntry(entry);
-        }
-      },
-      onLongPress: canShowMenu && !directoriesOnly
-          ? () async {
-              if (onToggleSelected != null) {
-                onToggleSelected!(entry);
-                return;
+    return Semantics(
+      label: entry.name,
+      hint: entry.isDirectory ? 'Folder' : 'File, ${_formatBytes(entry.size)}',
+      child: ListTile(
+        selected: selected,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        minLeadingWidth: 48,
+        minVerticalPadding: 16,
+        leading: selectionMode && !entry.isParentLink
+            ? Checkbox(
+                value: selected,
+                onChanged: (_) => onToggleSelected?.call(entry),
+              )
+            : Icon(
+                entry.isParentLink
+                    ? Icons.arrow_upward
+                    : entry.isDirectory
+                        ? Icons.folder_outlined
+                        : Icons.insert_drive_file_outlined,
+              ),
+        title: Text(entry.name),
+        subtitle: Text(_buildSubtitle(entry)),
+        onTap: () async {
+          if (selectionMode && !entry.isParentLink) {
+            onToggleSelected?.call(entry);
+            return;
+          }
+          if (entry.isDirectory) {
+            await onOpenEntry(entry);
+          }
+        },
+        onLongPress: canShowMenu && !directoriesOnly
+            ? () async {
+                if (onToggleSelected != null) {
+                  onToggleSelected!(entry);
+                  return;
+                }
+                await _showEntryActions(context);
               }
-              await _showEntryActions(context);
-            }
-          : null,
-      trailing: canShowMenu && !selectionMode && !directoriesOnly
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                if (canDownload)
-                  IconButton(
-                    tooltip: 'Download',
-                    onPressed: () async {
-                      await onDownloadEntry?.call(entry);
-                    },
-                    icon: const Icon(Icons.download_outlined),
+            : null,
+        trailing: canShowMenu && !selectionMode && !directoriesOnly
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  if (onDownloadEntry != null && !entry.isDirectory)
+                    Semantics(
+                      label: 'Download ${entry.name}',
+                      button: true,
+                      child: IconButton(
+                        tooltip: 'Download',
+                        onPressed: () async {
+                          await onDownloadEntry?.call(entry);
+                        },
+                        icon: const Icon(Icons.download_outlined),
+                      ),
+                    ),
+                  Semantics(
+                    label: 'More actions for ${entry.name}',
+                    button: true,
+                    child: IconButton(
+                      tooltip: 'More actions',
+                      onPressed: () async {
+                        await _showEntryActions(context);
+                      },
+                      icon: const Icon(Icons.more_vert),
+                    ),
                   ),
-                IconButton(
-                  tooltip: 'More actions',
-                  onPressed: () async {
-                    await _showEntryActions(context);
-                  },
-                  icon: const Icon(Icons.more_vert),
-                ),
-              ],
-            )
-          : null,
+                ],
+              )
+            : null,
+      ),
     );
   }
 
   Future<void> _showEntryActions(BuildContext context) async {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     final String fullPath = RemotePath.join(currentPath, entry.name);
-    final bool canEdit = !entry.isDirectory &&
-        !directoriesOnly &&
-        onEditEntry != null &&
-        isSftpTextPreviewExtension(entry.name);
-    final bool canPreview = !entry.isDirectory &&
-        !directoriesOnly &&
-        onPreviewEntry != null &&
-        isSftpImagePreviewExtension(entry.name);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -268,7 +274,10 @@ class _EntryTile extends StatelessWidget {
                     await onDownloadEntry?.call(entry);
                   },
                 ),
-              if (canEdit)
+              if (!entry.isDirectory &&
+                  !directoriesOnly &&
+                  onEditEntry != null &&
+                  isSftpTextPreviewExtension(entry.name))
                 ListTile(
                   leading: const Icon(Icons.edit_outlined),
                   title: const Text('Edit'),
@@ -277,7 +286,10 @@ class _EntryTile extends StatelessWidget {
                     await onEditEntry?.call(entry);
                   },
                 ),
-              if (canPreview)
+              if (!entry.isDirectory &&
+                  !directoriesOnly &&
+                  onPreviewEntry != null &&
+                  isSftpImagePreviewExtension(entry.name))
                 ListTile(
                   leading: const Icon(Icons.image_outlined),
                   title: const Text('Preview'),
@@ -434,9 +446,5 @@ String _formatModifyTime(int secondsSinceEpoch) {
   final DateTime dateTime = DateTime.fromMillisecondsSinceEpoch(
     secondsSinceEpoch * 1000,
   ).toLocal();
-  final String month = dateTime.month.toString().padLeft(2, '0');
-  final String day = dateTime.day.toString().padLeft(2, '0');
-  final String hour = dateTime.hour.toString().padLeft(2, '0');
-  final String minute = dateTime.minute.toString().padLeft(2, '0');
-  return '${dateTime.year}-$month-$day $hour:$minute';
+  return DateFormat.yMd().add_Hm().format(dateTime);
 }

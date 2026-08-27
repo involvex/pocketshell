@@ -8,10 +8,16 @@ import '../providers/ssh_provider.dart';
 import 'connection_foreground_service.dart';
 
 /// Observes app lifecycle and reconnects SSH/agent sessions on resume.
+/// Does NOT hold BuildContext - instead uses callbacks to access providers.
 class AppLifecycleService with WidgetsBindingObserver {
-  AppLifecycleService(this._context);
+  AppLifecycleService({
+    required this.onResumed,
+    required this.onPaused,
+  });
 
-  final BuildContext _context;
+  final Future<void> Function(DateTime?) onResumed;
+  final VoidCallback onPaused;
+
   DateTime? _backgroundedAt;
 
   static bool isInBackground = false;
@@ -31,23 +37,63 @@ class AppLifecycleService with WidgetsBindingObserver {
       case AppLifecycleState.inactive:
         isInBackground = true;
         _backgroundedAt ??= DateTime.now();
+        onPaused();
       case AppLifecycleState.resumed:
         isInBackground = false;
         final backgrounded = _backgroundedAt;
         _backgroundedAt = null;
         // ignore: unawaited_futures
-        _onResumed(backgrounded);
+        onResumed(backgrounded);
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
         break;
     }
   }
+}
+
+/// Host widget that wires [AppLifecycleService] above [MaterialApp].
+class AppLifecycleHost extends StatefulWidget {
+  const AppLifecycleHost({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  State<AppLifecycleHost> createState() => _AppLifecycleHostState();
+}
+
+class _AppLifecycleHostState extends State<AppLifecycleHost> {
+  AppLifecycleService? _lifecycle;
+  SSHProvider? _ssh;
+  AgentProvider? _agents;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _lifecycle ??= AppLifecycleService(
+      onResumed: _onResumed,
+      onPaused: _onPaused,
+    )..attach();
+
+    final ssh = Provider.of<SSHProvider>(context, listen: false);
+    final agents = Provider.of<AgentProvider>(context, listen: false);
+    if (!identical(_ssh, ssh)) {
+      _ssh?.removeListener(_syncForeground);
+      _ssh = ssh..addListener(_syncForeground);
+    }
+    if (!identical(_agents, agents)) {
+      _agents?.removeListener(_syncForeground);
+      _agents = agents..addListener(_syncForeground);
+    }
+    // ignore: unawaited_futures
+    _syncForeground();
+  }
 
   Future<void> _onResumed(DateTime? backgroundedAt) async {
-    if (!_context.mounted) return;
+    if (!mounted) return;
 
-    final ssh = Provider.of<SSHProvider>(_context, listen: false);
-    final agents = Provider.of<AgentProvider>(_context, listen: false);
+    final ssh = _ssh;
+    final agents = _agents;
+    if (ssh == null || agents == null) return;
 
     if (backgroundedAt != null) {
       final seconds = DateTime.now().difference(backgroundedAt).inSeconds;
@@ -57,6 +103,10 @@ class AppLifecycleService with WidgetsBindingObserver {
     await _reconnectSshSessions(ssh);
     await agents.reconnectDisconnectedAgents();
     await syncForegroundService(ssh, agents);
+  }
+
+  void _onPaused() {
+    // Can add pause-specific logic here if needed
   }
 
   Future<void> _reconnectSshSessions(SSHProvider ssh) async {
@@ -87,48 +137,13 @@ class AppLifecycleService with WidgetsBindingObserver {
       sshCount + agentCount,
     );
   }
-}
-
-/// Host widget that wires [AppLifecycleService] above [MaterialApp].
-class AppLifecycleHost extends StatefulWidget {
-  const AppLifecycleHost({required this.child, super.key});
-
-  final Widget child;
-
-  @override
-  State<AppLifecycleHost> createState() => _AppLifecycleHostState();
-}
-
-class _AppLifecycleHostState extends State<AppLifecycleHost> {
-  AppLifecycleService? _lifecycle;
-  SSHProvider? _ssh;
-  AgentProvider? _agents;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _lifecycle ??= AppLifecycleService(context)..attach();
-
-    final ssh = Provider.of<SSHProvider>(context, listen: false);
-    final agents = Provider.of<AgentProvider>(context, listen: false);
-    if (!identical(_ssh, ssh)) {
-      _ssh?.removeListener(_syncForeground);
-      _ssh = ssh..addListener(_syncForeground);
-    }
-    if (!identical(_agents, agents)) {
-      _agents?.removeListener(_syncForeground);
-      _agents = agents..addListener(_syncForeground);
-    }
-    // ignore: unawaited_futures
-    _syncForeground();
-  }
 
   void _syncForeground() {
     final ssh = _ssh;
     final agents = _agents;
     if (ssh == null || agents == null) return;
     // ignore: unawaited_futures
-    AppLifecycleService.syncForegroundService(ssh, agents);
+    syncForegroundService(ssh, agents);
   }
 
   @override

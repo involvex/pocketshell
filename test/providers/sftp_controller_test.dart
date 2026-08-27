@@ -56,7 +56,7 @@ void main() {
           existingPaths: const <String>{'C:/docs/readme.txt'},
         ),
       );
-      controller.currentPath = 'C:/docs';
+      await controller.navigateTo('C:/docs');
 
       final exists = await controller.remoteFileExists('readme.txt');
 
@@ -84,7 +84,7 @@ void main() {
         },
       );
       final controller = SftpController(helper: fake);
-      controller.currentPath = 'C:/';
+      await controller.navigateTo('C:/');
 
       final Directory temp = await Directory.systemTemp.createTemp(
         'sftp_dl_',
@@ -124,7 +124,7 @@ void main() {
         },
       );
       final controller = SftpController(helper: fake);
-      controller.currentPath = 'C:/';
+      await controller.navigateTo('C:/');
 
       final Directory temp = await Directory.systemTemp.createTemp(
         'sftp_ul_',
@@ -150,14 +150,18 @@ void main() {
       final int completed = await controller.uploadDirectory(src);
 
       expect(completed, 2);
-      expect(fake.uploadedPaths, containsAll(<String>[
-        'C:/bundle/root.txt',
-        'C:/bundle/nested/child.txt',
-      ]));
-      expect(fake.createdDirs, containsAll(<String>[
-        'C:/bundle',
-        'C:/bundle/nested',
-      ]));
+      expect(
+          fake.uploadedPaths,
+          containsAll(<String>[
+            'C:/bundle/root.txt',
+            'C:/bundle/nested/child.txt',
+          ]));
+      expect(
+          fake.createdDirs,
+          containsAll(<String>[
+            'C:/bundle',
+            'C:/bundle/nested',
+          ]));
     });
   });
 }

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -8,6 +9,7 @@ import 'package:ssh_app/utils/remote_path_utils.dart';
 typedef SftpProgress = void Function(int bytesTransferred, int? totalBytes);
 
 const int kSftpPreviewMaxBytes = 512 * 1024;
+const Duration _drivesCacheTtl = Duration(minutes: 5);
 
 abstract interface class SftpFileSystem {
   Future<List<RemoteFsEntry>> listDir(String path);
@@ -54,6 +56,7 @@ class SftpHelper implements SftpFileSystem {
   SftpClient? _sftpClient;
   Future<SftpClient>? _sftpFuture;
   List<String>? _drives;
+  DateTime? _drivesFetchedAt;
 
   Future<SftpClient> _sftp() {
     return _sftpFuture ??= client.sftp().then((SftpClient c) {
@@ -66,6 +69,7 @@ class SftpHelper implements SftpFileSystem {
   Future<List<RemoteFsEntry>> listDir(String path) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(path);
+    _validatePathTraversal(normalizedPath);
     final names = await sftp.listdir(normalizedPath);
     final entries = <RemoteFsEntry>[];
     for (final name in names) {
@@ -92,6 +96,7 @@ class SftpHelper implements SftpFileSystem {
     _sftpClient = null;
     c?.close();
     _drives = null;
+    _drivesFetchedAt = null;
   }
 
   @override
@@ -143,6 +148,7 @@ class SftpHelper implements SftpFileSystem {
   }) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
+    _validatePathTraversal(normalizedPath);
     final remoteFile = await sftp.open(
       normalizedPath,
       mode: SftpFileOpenMode.read,
@@ -175,6 +181,7 @@ class SftpHelper implements SftpFileSystem {
   }) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
+    _validatePathTraversal(normalizedPath);
     final file = await sftp.open(
       normalizedPath,
       mode: SftpFileOpenMode.write |
@@ -205,6 +212,7 @@ class SftpHelper implements SftpFileSystem {
   }) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
+    _validatePathTraversal(normalizedPath);
     final int? knownSize = (await sftp.stat(normalizedPath)).size;
     if (knownSize != null && knownSize > maxBytes) {
       throw StateError(
@@ -244,6 +252,7 @@ class SftpHelper implements SftpFileSystem {
   Future<void> writeRemoteBytes(String remotePath, Uint8List data) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
+    _validatePathTraversal(normalizedPath);
     final remoteFile = await sftp.open(
       normalizedPath,
       mode: SftpFileOpenMode.write |
@@ -262,6 +271,8 @@ class SftpHelper implements SftpFileSystem {
     final sftp = await _sftp();
     final sourcePath = RemotePath.normalize(fromPath);
     final destPath = RemotePath.normalize(toPath);
+    _validatePathTraversal(sourcePath);
+    _validatePathTraversal(destPath);
     final source = await sftp.open(sourcePath, mode: SftpFileOpenMode.read);
     final dest = await sftp.open(
       destPath,
@@ -286,6 +297,7 @@ class SftpHelper implements SftpFileSystem {
   Future<String?> readRemoteText(String remotePath) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
+    _validatePathTraversal(normalizedPath);
     try {
       final remoteFile =
           await sftp.open(normalizedPath, mode: SftpFileOpenMode.read);
@@ -297,7 +309,8 @@ class SftpHelper implements SftpFileSystem {
           }
         }
         if (buffer.length == 0) return null;
-        return String.fromCharCodes(buffer.toBytes());
+        // Use utf8.decode with allowMalformed to handle multi-byte boundaries
+        return utf8.decode(buffer.toBytes(), allowMalformed: true);
       } finally {
         await remoteFile.close();
       }
@@ -308,23 +321,79 @@ class SftpHelper implements SftpFileSystem {
 
   @override
   Future<List<String>> listDrives({bool forceRefresh = false}) async {
-    if (_drives != null && !forceRefresh) {
+    // Windows-only operation
+    if (!Platform.isWindows) {
+      return <String>[];
+    }
+
+    if (!forceRefresh &&
+        _drives != null &&
+        _drivesFetchedAt != null &&
+        DateTime.now().difference(_drivesFetchedAt!) < _drivesCacheTtl) {
       return List<String>.from(_drives!);
     }
+
     final sftp = await _sftp();
     final drives = <String>[];
+
+    // Parallelize drive checks with limited concurrency
+    const int concurrency = 8;
+    final futures = <Future<String?>>[];
+
     for (var codeUnit = 'C'.codeUnitAt(0);
         codeUnit <= 'Z'.codeUnitAt(0);
         codeUnit++) {
       final letter = String.fromCharCode(codeUnit);
-      try {
-        final path = '$letter:/';
-        await sftp.listdir(path);
-        drives.add(letter);
-      } catch (_) {}
+      futures.add(_checkDrive(sftp, letter));
+
+      if (futures.length >= concurrency) {
+        final results = await Future.wait(futures);
+        futures.clear();
+        for (final result in results) {
+          if (result != null) drives.add(result);
+        }
+      }
     }
+
+    if (futures.isNotEmpty) {
+      final results = await Future.wait(futures);
+      for (final result in results) {
+        if (result != null) drives.add(result);
+      }
+    }
+
     _drives = drives;
+    _drivesFetchedAt = DateTime.now();
     return List<String>.from(drives);
+  }
+
+  static Future<String?> _checkDrive(SftpClient sftp, String letter) async {
+    try {
+      final path = '$letter:/';
+      await sftp.listdir(path);
+      return letter;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Validates that [path] does not escape the intended root (traversal guard).
+  /// Call with RemotePath.normalize(path) result.
+  static void _validatePathTraversal(String path) {
+    // On Windows, allow absolute paths like C:/...
+    if (Platform.isWindows) {
+      if (!RegExp(r'^[A-Za-z]:/').hasMatch(path)) {
+        // Not an absolute Windows path - treat as relative
+        if (path.contains('..')) {
+          throw StateError('Path traversal detected: $path');
+        }
+      }
+    } else {
+      // Unix-like: must not contain .. segments after normalization
+      if (path.split('/').contains('..')) {
+        throw StateError('Path traversal detected: $path');
+      }
+    }
   }
 }
 
