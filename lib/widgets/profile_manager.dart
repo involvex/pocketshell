@@ -122,10 +122,10 @@ class _ProfileManagerState extends State<ProfileManager> {
         TextEditingController(text: profile?.startupCommand ?? '');
     var useHttps = profile?.useHttps ?? false;
     var sessionManager = profile?.sessionManager ?? SessionManager.none;
-    String? selectedKeyId =
-        profile?.privateKey != null && !looksLikePemPrivateKey(profile!.privateKey!)
-            ? profile.privateKey
-            : null;
+    String? selectedKeyId = profile?.privateKey != null &&
+            !looksLikePemPrivateKey(profile!.privateKey!)
+        ? profile.privateKey
+        : null;
 
     showDialog<void>(
       context: context,
@@ -140,8 +140,7 @@ class _ProfileManagerState extends State<ProfileManager> {
               builder: (context, setDialogState) {
                 return AlertDialog(
                   backgroundColor: const Color(0xFF16213E),
-                  title:
-                      Text(profile == null ? 'Add Profile' : 'Edit Profile'),
+                  title: Text(profile == null ? 'Add Profile' : 'Edit Profile'),
                   content: SingleChildScrollView(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -155,8 +154,7 @@ class _ProfileManagerState extends State<ProfileManager> {
                         const SizedBox(height: 8),
                         TextField(
                           controller: hostController,
-                          decoration:
-                              const InputDecoration(labelText: 'Host'),
+                          decoration: const InputDecoration(labelText: 'Host'),
                         ),
                         const SizedBox(height: 8),
                         TextField(
@@ -204,7 +202,8 @@ class _ProfileManagerState extends State<ProfileManager> {
                             ...keys.map(
                               (k) => DropdownMenuItem<String?>(
                                 value: k.id,
-                                child: Text('${k.name} (${k.keyType.displayName})'),
+                                child: Text(
+                                    '${k.name} (${k.keyType.displayName})'),
                               ),
                             ),
                           ],

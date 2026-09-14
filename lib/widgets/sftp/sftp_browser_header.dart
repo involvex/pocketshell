@@ -173,8 +173,7 @@ class _SftpBrowserHeaderState extends State<SftpBrowserHeader> {
           onSelected: (_SortAction action) async {
             await _handleSortAction(action);
           },
-          itemBuilder: (BuildContext context) =>
-              <PopupMenuEntry<_SortAction>>[
+          itemBuilder: (BuildContext context) => <PopupMenuEntry<_SortAction>>[
             const PopupMenuItem<_SortAction>(
               value: _SortAction.name,
               child: Text('Sort by name'),
@@ -345,7 +344,8 @@ class _SftpBrowserHeaderState extends State<SftpBrowserHeader> {
               if (hasDriveSelection)
                 Expanded(child: _buildDriveDropdown(selectedDrive)),
               if (hasDriveSelection && _showSearch) const SizedBox(width: 12),
-              if (_showSearch) _buildSearchField(flex: hasDriveSelection ? 2 : 1),
+              if (_showSearch)
+                _buildSearchField(flex: hasDriveSelection ? 2 : 1),
             ],
           ),
         ],

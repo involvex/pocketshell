@@ -43,8 +43,7 @@ class _CtrlButtonPanelState extends State<CtrlButtonPanel> {
                   children: <Widget>[
                     _NavButton(
                       label: 'Esc',
-                      onTap: () =>
-                          active.terminal.keyInput(TerminalKey.escape),
+                      onTap: () => active.terminal.keyInput(TerminalKey.escape),
                     ),
                     _NavButton(
                       label: 'Tab',
@@ -95,8 +94,7 @@ class _CtrlButtonPanelState extends State<CtrlButtonPanel> {
                   children: <Widget>[
                     _NavButton(
                       label: 'Home',
-                      onTap: () =>
-                          _sendKey(active.terminal, TerminalKey.home),
+                      onTap: () => _sendKey(active.terminal, TerminalKey.home),
                     ),
                     _NavButton(
                       label: 'End',

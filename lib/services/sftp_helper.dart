@@ -94,7 +94,7 @@ class SftpHelper implements SftpFileSystem {
     _sftpFuture = null;
     final c = _sftpClient;
     _sftpClient = null;
-    c?.close();
+    await c?.close();
     _drives = null;
     _drivesFetchedAt = null;
   }

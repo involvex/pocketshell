@@ -74,9 +74,8 @@ class _ConnectionModalState extends State<ConnectionModal> {
       host: _hostController.text,
       port: int.tryParse(_portController.text) ?? 22,
       username: _usernameController.text,
-      password: _passwordController.text.isEmpty
-          ? null
-          : _passwordController.text,
+      password:
+          _passwordController.text.isEmpty ? null : _passwordController.text,
       privateKey: _selectedKeyId,
       startupCommand: _startupCommandController.text.isNotEmpty
           ? _startupCommandController.text
