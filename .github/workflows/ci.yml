@@ -17,14 +17,14 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Java
-        uses: actions/setup-java@3e3f93e6cfaa173f5e58a4c9c4b470c731e38f96 # v4.5.0
+        uses: actions/setup-java@v4 # v4.5.0
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
           cache: gradle
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@e05e99e68e2e44511d8e6a3c4c4d0e6c8c4c4c4c # v2.20.0
+        uses: subosito/flutter-action@v2 # v2.20.0
         with:
           channel: stable
           cache: true
@@ -54,14 +54,14 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Java
-        uses: actions/setup-java@3e3f93e6cfaa173f5e58a4c9c4b470c731e38f96 # v4.5.0
+        uses: actions/setup-java@v4 # v4.5.0
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
           cache: gradle
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@e05e99e68e2e44511d8e6a3c4c4d0e6c8c4c4c4c # v2.20.0
+        uses: subosito/flutter-action@v2 # v2.20.0
         with:
           channel: stable
           cache: true
