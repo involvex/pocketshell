@@ -5,11 +5,13 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:xterm/xterm.dart';
 
 import '../models/ssh_profile.dart';
+import '../models/known_host.dart';
 import '../services/config_repository.dart';
 import '../services/network_discovery_service.dart';
 import '../services/app_lifecycle_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/widget_profile_service.dart';
+import '../services/host_key_verification_service.dart';
 import '../models/session_entry.dart';
 import '../utils/session_manager.dart';
 import '../utils/ssh_auth_utils.dart';
@@ -21,6 +23,16 @@ class SSHProvider extends ChangeNotifier {
       : _config = config ?? ConfigServiceRepository();
 
   final ConfigRepository _config;
+  Timer? _idleTimer;
+
+  /// Starts the periodic idle check lazily so widget tests that instantiate
+  /// a provider without sessions never leave a pending timer.
+  void _ensureIdleTimer() {
+    _idleTimer ??= Timer.periodic(const Duration(minutes: 1), (_) {
+      // ignore: unawaited_futures
+      checkIdleTimeouts();
+    });
+  }
 
   // sessions container
   final List<SessionEntry> sessions = <SessionEntry>[];
@@ -35,6 +47,21 @@ class SSHProvider extends ChangeNotifier {
   SSHProfile? lastSession;
   List<String> discoveredHosts = <String>[];
   bool isScanning = false;
+
+  /// UI hook for first-trust decisions. Set by screens that have a
+  /// [BuildContext] (e.g. HomeScreen). When null, unknown keys are still
+  /// trusted once (TOFU) so background reconnects keep working, but mismatches
+  /// always fail closed.
+  Future<bool> Function(KnownHostPrompt prompt)? onVerifyHostKeyPrompt;
+
+  /// UI hook invoked when a changed host key blocks a connection, so the
+  /// active screen can show the warning dialog.
+  void Function({
+    required String host,
+    required int port,
+    required String expectedFingerprint,
+    required String presentedFingerprint,
+  })? onHostKeyMismatch;
 
   Future<void> loadConfig() async {
     var profileData = await _config.getProfiles();
@@ -143,6 +170,7 @@ class SSHProvider extends ChangeNotifier {
     if (sessions.length >= 4) {
       throw StateError('Maximum number of sessions (4) reached');
     }
+    _ensureIdleTimer();
     final entry = SessionEntry(name: name ?? profile.name, profile: profile);
     sessions.add(entry);
     activeSessionId = entry.id;
@@ -209,6 +237,57 @@ class SSHProvider extends ChangeNotifier {
         identities: auth.identities,
         onPasswordRequest: auth.hasPasswordAuth ? () => auth.password! : null,
         keepAliveInterval: const Duration(seconds: 15),
+        onVerifyHostKey: (type, fingerprintBytes) async {
+          final fingerprint = String.fromCharCodes(fingerprintBytes);
+          final verifier = HostKeyVerificationService(_config);
+          final stored = await verifier.loadHosts();
+          final decision = verifier.evaluate(
+            stored: stored,
+            host: profile.host,
+            port: profile.port,
+            keyType: type,
+            fingerprint: fingerprint,
+          );
+          switch (decision) {
+            case HostKeyDecision.trusted:
+              return true;
+            case HostKeyDecision.mismatch:
+              final expected = stored
+                  .where((h) => h.matches(profile.host, profile.port))
+                  .map((h) => h.fingerprint)
+                  .join(', ');
+              addLog(
+                'Host key changed for ${profile.host}:${profile.port} — connection blocked',
+              );
+              onHostKeyMismatch?.call(
+                host: profile.host,
+                port: profile.port,
+                expectedFingerprint: expected.isEmpty ? '(unknown)' : expected,
+                presentedFingerprint: fingerprint,
+              );
+              return false;
+            case HostKeyDecision.unknown:
+              final prompt = KnownHostPrompt(
+                host: profile.host,
+                port: profile.port,
+                keyType: type,
+                fingerprint: fingerprint,
+              );
+              final hook = onVerifyHostKeyPrompt;
+              final trusted = hook != null ? await hook(prompt) : true;
+              if (trusted) {
+                await verifier.trustHost(prompt);
+                addLog(
+                  'Trusted new host key for ${profile.host}:${profile.port} ($type $fingerprint)',
+                );
+                return true;
+              }
+              addLog(
+                'Rejected unknown host key for ${profile.host}:${profile.port}',
+              );
+              return false;
+          }
+        },
       );
 
       final shell = await client.shell(
@@ -225,6 +304,7 @@ class SSHProvider extends ChangeNotifier {
         entry.terminal.write(utf8.decode(data));
       });
       entry.terminal.onOutput = (data) {
+        entry.touch();
         shell.stdin.add(utf8.encode(data));
       };
 
@@ -245,6 +325,7 @@ class SSHProvider extends ChangeNotifier {
       entry.isConnected = true;
       entry.lastError = null;
       entry.shouldReconnectOnResume = true;
+      entry.touch();
       addLog('Connected: ${entry.name}');
       notifyListeners();
 
@@ -327,6 +408,23 @@ class SSHProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<List<KnownHost>> getKnownHosts() async {
+    return HostKeyVerificationService(_config).loadHosts();
+  }
+
+  Future<String?> getTrustedFingerprint(String host, int port) async {
+    final hosts = await getKnownHosts();
+    final matches = hosts.where((h) => h.matches(host, port)).toList();
+    if (matches.isEmpty) return null;
+    return matches.first.fingerprint;
+  }
+
+  Future<void> forgetKnownHost(String host, int port) async {
+    await HostKeyVerificationService(_config).removeHost(host, port);
+    addLog('Forgot trusted host key for $host:$port');
+    notifyListeners();
+  }
+
   Future<void> connectClient({
     required String host,
     required int port,
@@ -402,8 +500,47 @@ class SSHProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Reads the idle-timeout setting directly so background checks work
+  /// without a [SettingsProvider] reference. Returns 0 when disabled.
+  Future<int> _idleTimeoutMinutes() async {
+    try {
+      final settings = await _config.getSettings();
+      return (settings['sessionIdleTimeoutMinutes'] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Disconnects sessions idle longer than the configured timeout.
+  /// Returns the number of sessions disconnected. Public for testing.
+  Future<int> checkIdleTimeouts({DateTime? now}) async {
+    final timeout = await _idleTimeoutMinutes();
+    if (timeout <= 0) return 0;
+    final current = now ?? DateTime.now();
+    var disconnected = 0;
+    for (final session in List<SessionEntry>.of(sessions)) {
+      if (!session.isConnected) continue;
+      final last = session.lastActivityAt;
+      if (last == null) continue;
+      if (current.difference(last).inMinutes >= timeout) {
+        session.shellSession?.close();
+        session.client?.close();
+        session.isConnected = false;
+        session.shouldReconnectOnResume = false;
+        session.shellSession = null;
+        session.client = null;
+        disconnected++;
+        addLog(
+          'Idle timeout (${timeout}m): disconnected ${session.name}',
+        );
+      }
+    }
+    return disconnected;
+  }
+
   @override
   void dispose() {
+    _idleTimer?.cancel();
     for (final s in sessions) {
       s.disposeRuntime();
     }

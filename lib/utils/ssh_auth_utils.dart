@@ -25,9 +25,23 @@ bool looksLikePemPrivateKey(String value) {
   return trimmed.startsWith('-----BEGIN') && trimmed.contains('PRIVATE KEY');
 }
 
+/// Reads the opt-in "require passphrase for keys" setting directly from
+/// [ConfigService] so all SSH entry points are enforced without threading a
+/// provider through every caller.
+Future<bool> shouldRequireKeyPassphrase() async {
+  try {
+    final settings = await ConfigService.getSettings();
+    return settings['requireKeyPassphrase'] as bool? ?? false;
+  } catch (_) {
+    return false;
+  }
+}
+
 /// Loads auth material for [profile].
 ///
 /// [SSHProfile.privateKey] may be a PEM blob or an [SSHKey.id] reference.
+/// Decrypted PEM strings are scoped to this call and never logged; only the
+/// parsed [SSHKeyPair] is returned to the caller.
 Future<SshAuthMaterial> resolveSshAuthMaterial(SSHProfile profile) async {
   final password = await _resolvePassword(profile);
   final identities = await _resolveIdentities(profile);
@@ -77,6 +91,14 @@ Future<List<SSHKeyPair>?> _resolveIdentities(SSHProfile profile) async {
 
   if (pem.isEmpty) {
     return null;
+  }
+
+  if (passphrase == null || passphrase.isEmpty) {
+    if (await shouldRequireKeyPassphrase()) {
+      throw StateError(
+        'SSH key requires a passphrase (enable one in Key Manager or turn off "Require passphrase for keys" in Settings)',
+      );
+    }
   }
 
   try {

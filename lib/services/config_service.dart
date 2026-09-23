@@ -13,6 +13,7 @@ class ConfigService {
   static const String _sftpSortFieldKey = 'sftp_sort_field';
   static const String _sftpSortAscendingKey = 'sftp_sort_ascending';
   static const String _sftpLastPathKey = 'sftp_last_path';
+  static const String _knownHostsKey = 'known_hosts';
 
   static SharedPreferences? _prefs;
 
@@ -129,6 +130,19 @@ class ConfigService {
 
   static Future<void> clearSftpLastPath() async =>
       prefs.remove(_sftpLastPathKey);
+
+  static Future<List<Map<String, dynamic>>> getKnownHosts() async {
+    final String? data = prefs.getString(_knownHostsKey);
+    if (data == null) return <Map<String, dynamic>>[];
+    final List<dynamic> decoded = json.decode(data) as List<dynamic>;
+    return decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  static Future<void> saveKnownHosts(
+    List<Map<String, dynamic>> hosts,
+  ) async {
+    await prefs.setString(_knownHostsKey, json.encode(hosts));
+  }
 
   static Future<void> clearAll() async {
     await prefs.clear();

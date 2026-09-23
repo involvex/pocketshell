@@ -117,6 +117,11 @@ class _KeyManagerState extends State<KeyManager> {
                       });
                     },
                   ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Generated keys have no passphrase. Set one afterwards from the key list for protection.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                 ],
               ),
               actions: <Widget>[
@@ -141,6 +146,61 @@ class _KeyManagerState extends State<KeyManager> {
     );
   }
 
+  bool _hasPassphrase(SSHKey key) {
+    return key.passphrase != null && key.passphrase!.isNotEmpty;
+  }
+
+  Future<void> _showSetPassphraseDialog(SSHKey key) async {
+    final controller = TextEditingController();
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: Text('Set passphrase for ${key.name}'),
+          content: TextField(
+            controller: controller,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'Passphrase',
+              hintText: 'Minimum 8 characters recommended',
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (saved == null || saved.isEmpty || !mounted) return;
+    final updated = SSHKey(
+      id: key.id,
+      name: key.name,
+      keyType: key.keyType,
+      publicKey: key.publicKey,
+      privateKey: key.privateKey,
+      passphrase: saved,
+      createdAt: key.createdAt,
+    );
+    setState(() {
+      final index = _keys.indexWhere((k) => k.id == key.id);
+      if (index >= 0) _keys[index] = updated;
+    });
+    await _saveKeys();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Passphrase set for ${key.name}')),
+    );
+  }
+
   Future<void> _showKeyDetails(SSHKey key) async {
     final privateKey =
         await SecureStorageService.readPrivateKey(key.id) ?? key.privateKey;
@@ -160,6 +220,28 @@ class _KeyManagerState extends State<KeyManager> {
                 Text('Type: ${key.keyType.displayName}'),
                 const SizedBox(height: 8),
                 Text('Created: ${key.createdAt.toLocal()}'),
+                const SizedBox(height: 8),
+                if (!_hasPassphrase(key))
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      children: <Widget>[
+                        Icon(Icons.warning_amber,
+                            color: Colors.amber, size: 20),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'No passphrase set. Anyone with access to this device can use this key.',
+                            style: TextStyle(color: Colors.amber, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: 16),
                 const Text('Public Key:',
                     style: TextStyle(fontWeight: FontWeight.bold)),
@@ -178,6 +260,14 @@ class _KeyManagerState extends State<KeyManager> {
             ),
           ),
           actions: <Widget>[
+            if (!_hasPassphrase(key))
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _showSetPassphraseDialog(key);
+                },
+                child: const Text('Set passphrase'),
+              ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Close'),
@@ -274,13 +364,37 @@ class _KeyManagerState extends State<KeyManager> {
                         itemCount: _keys.length,
                         itemBuilder: (context, index) {
                           final key = _keys[index];
+                          final hasPassphrase = _hasPassphrase(key);
                           return ListTile(
                             leading: const Icon(Icons.key, color: Colors.amber),
-                            title: Text(key.name),
-                            subtitle: Text(key.keyType.displayName),
+                            title: Row(
+                              children: <Widget>[
+                                Expanded(child: Text(key.name)),
+                                if (!hasPassphrase)
+                                  const Tooltip(
+                                    message:
+                                        'No passphrase — anyone with device access can use this key',
+                                    child: Icon(Icons.warning_amber,
+                                        color: Colors.amber, size: 18),
+                                  ),
+                              ],
+                            ),
+                            subtitle: Text(
+                              hasPassphrase
+                                  ? key.keyType.displayName
+                                  : '${key.keyType.displayName} • No passphrase',
+                            ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: <Widget>[
+                                if (!hasPassphrase)
+                                  IconButton(
+                                    icon: const Icon(Icons.lock_open,
+                                        size: 20, color: Colors.amber),
+                                    tooltip: 'Set passphrase',
+                                    onPressed: () =>
+                                        _showSetPassphraseDialog(key),
+                                  ),
                                 IconButton(
                                   icon: const Icon(Icons.visibility, size: 20),
                                   onPressed: () => _showKeyDetails(key),

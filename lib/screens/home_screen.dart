@@ -11,6 +11,7 @@ import '../models/home_toolbar_action.dart';
 import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
 import '../widgets/log_viewer.dart';
+import '../widgets/host_key_dialog.dart';
 import '../widgets/profile_manager.dart';
 import '../widgets/key_manager.dart';
 import '../widgets/keyboard_shortcut_bar.dart';
@@ -61,6 +62,28 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _keyboardFocusNode.requestFocus();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ssh = Provider.of<SSHProvider>(context, listen: false);
+      ssh.onVerifyHostKeyPrompt =
+          (prompt) => showUnknownHostKeyDialog(context, prompt);
+      ssh.onHostKeyMismatch = ({
+        required String host,
+        required int port,
+        required String expectedFingerprint,
+        required String presentedFingerprint,
+      }) {
+        if (!mounted) return;
+        // ignore: unawaited_futures
+        showHostKeyChangedWarning(
+          context,
+          host: host,
+          port: port,
+          expectedFingerprint: expectedFingerprint,
+          presentedFingerprint: presentedFingerprint,
+        );
+      };
     });
   }
 

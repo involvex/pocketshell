@@ -17,6 +17,7 @@ class SessionEntry {
   bool disconnectedWhileBackgrounded;
   bool shouldReconnectOnResume;
   String? lastError;
+  DateTime? lastActivityAt;
 
   SessionEntry({
     required this.name,
@@ -29,6 +30,10 @@ class SessionEntry {
         disconnectedWhileBackgrounded = false,
         shouldReconnectOnResume = false,
         lastError = null;
+
+  void touch() {
+    lastActivityAt = DateTime.now();
+  }
 
   void disposeRuntime() {
     shellSession?.close();

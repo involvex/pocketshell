@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'backup_crypto.dart';
 import 'config_service.dart';
 import '../constants/app_metadata.dart';
 import 'secure_storage_service.dart';
@@ -10,18 +11,26 @@ import 'widget_profile_service.dart';
 
 class BackupService {
   static const int _backupVersion = 1;
+  static const int _encryptedBackupVersion = 2;
   static const int _maxBackupSizeBytes = 5 * 1024 * 1024; // 5 MB
 
-  static Future<void> export() async {
+  /// Builds the inner (plaintext schema v1) payload.
+  ///
+  /// When [includeSecrets] is false (default for plain exports), private keys,
+  /// key passphrases, and profile passwords are stripped so a shared JSON file
+  /// cannot leak credentials.
+  static Future<Map<String, dynamic>> _buildPayload({
+    required bool includeSecrets,
+  }) async {
     final settings = SecureStorageService.stripApiKeys(
       await ConfigService.getSettings(),
     );
     final rawKeys = await ConfigService.getSSHKeys();
-    final fullKeys = <Map<String, dynamic>>[];
+    final keys = <Map<String, dynamic>>[];
     for (final raw in rawKeys) {
       final map = Map<String, dynamic>.from(raw);
       final id = map['id'] as String?;
-      if (id != null) {
+      if (includeSecrets && id != null) {
         final pem = await SecureStorageService.readPrivateKey(id);
         if (pem != null && pem.isNotEmpty) {
           map['privateKey'] = pem;
@@ -30,23 +39,41 @@ class BackupService {
         if (passphrase != null && passphrase.isNotEmpty) {
           map['passphrase'] = passphrase;
         }
+      } else {
+        map.remove('privateKey');
+        map.remove('passphrase');
       }
-      fullKeys.add(map);
+      keys.add(map);
     }
 
-    final data = <String, dynamic>{
+    final rawProfiles = await ConfigService.getProfiles();
+    final profiles = includeSecrets
+        ? rawProfiles
+        : rawProfiles.map((p) {
+            final map = Map<String, dynamic>.from(p);
+            map.remove('password');
+            return map;
+          }).toList();
+
+    return <String, dynamic>{
       'version': _backupVersion,
       'exportedAt': DateTime.now().toIso8601String(),
-      'profiles': await ConfigService.getProfiles(),
-      'sshKeys': fullKeys,
+      'profiles': profiles,
+      'sshKeys': keys,
       'snippets': await ConfigService.getSnippets(),
       'settings': settings,
       'lastSession': await ConfigService.getLastSession(),
+      'knownHosts': await ConfigService.getKnownHosts(),
     };
+  }
 
-    final jsonString = const JsonEncoder.withIndent('  ').convert(data);
+  static Future<void> _shareJson(
+    Map<String, dynamic> envelope,
+    String fileName,
+  ) async {
+    final jsonString = const JsonEncoder.withIndent('  ').convert(envelope);
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/ssh_app_backup.json');
+    final file = File('${dir.path}/$fileName');
     await file.writeAsString(jsonString);
 
     await SharePlus.instance.share(
@@ -60,7 +87,27 @@ class BackupService {
     await file.delete();
   }
 
-  static Future<String> import() async {
+  /// Encrypted export (recommended): full payload protected by [password].
+  static Future<void> exportEncrypted(String password) async {
+    final payload = await _buildPayload(includeSecrets: true);
+    final inner = json.encode(payload);
+    final envelope = await BackupCrypto.encrypt(inner, password);
+    await _shareJson(envelope, 'ssh_app_backup.encrypted.json');
+  }
+
+  /// Plain export. Secrets are stripped unless [includeSecrets] is explicitly
+  /// true (caller must show a risk acknowledgement first).
+  static Future<void> exportPlain({bool includeSecrets = false}) async {
+    final payload = await _buildPayload(includeSecrets: includeSecrets);
+    await _shareJson(payload, 'ssh_app_backup.json');
+  }
+
+  /// Legacy entry point: plain export without secrets (safe default).
+  static Future<void> export() async {
+    await exportPlain();
+  }
+
+  static Future<String> import({String? password}) async {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
@@ -79,10 +126,21 @@ class BackupService {
     }
 
     final jsonString = await file.readAsString();
-    final data = json.decode(jsonString) as Map<String, dynamic>;
+    final raw = json.decode(jsonString) as Map<String, dynamic>;
 
-    final version = data['version'] as int?;
-    if (version != _backupVersion) {
+    final version = raw['version'] as int?;
+    final Map<String, dynamic> data;
+    if (version == _encryptedBackupVersion) {
+      if (password == null || password.isEmpty) {
+        throw const BackupCryptoException(
+          'This backup is encrypted — enter its password',
+        );
+      }
+      final inner = await BackupCrypto.decrypt(raw, password);
+      data = json.decode(inner) as Map<String, dynamic>;
+    } else if (version == _backupVersion) {
+      data = raw;
+    } else {
       throw FormatException('Unsupported backup version: $version');
     }
 
@@ -137,6 +195,13 @@ class BackupService {
       );
     } else if (data.containsKey('lastSession') && data['lastSession'] == null) {
       // Skip — no last session to restore
+    }
+    if (data['knownHosts'] is List) {
+      await ConfigService.saveKnownHosts(
+        (data['knownHosts'] as List<dynamic>)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList(),
+      );
     }
 
     await WidgetProfileService.syncFromConfig();

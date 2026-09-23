@@ -25,6 +25,8 @@ abstract interface class ConfigRepository {
   Future<String?> getSftpLastPath();
   Future<void> saveSftpLastPath(String path);
   Future<void> clearSftpLastPath();
+  Future<List<Map<String, dynamic>>> getKnownHosts();
+  Future<void> saveKnownHosts(List<Map<String, dynamic>> hosts);
   Future<void> clearAll();
 }
 
@@ -111,6 +113,14 @@ class ConfigServiceRepository implements ConfigRepository {
   Future<void> clearSftpLastPath() => ConfigService.clearSftpLastPath();
 
   @override
+  Future<List<Map<String, dynamic>>> getKnownHosts() =>
+      ConfigService.getKnownHosts();
+
+  @override
+  Future<void> saveKnownHosts(List<Map<String, dynamic>> hosts) =>
+      ConfigService.saveKnownHosts(hosts);
+
+  @override
   Future<void> clearAll() => ConfigService.clearAll();
 }
 
@@ -129,6 +139,7 @@ class FakeConfigRepository implements ConfigRepository {
   static const String _sftpSortFieldKey = 'sftp_sort_field';
   static const String _sftpSortAscendingKey = 'sftp_sort_ascending';
   static const String _sftpLastPathKey = 'sftp_last_path';
+  static const String _knownHostsKey = 'known_hosts';
 
   static const Map<String, dynamic> _defaultSettings = {
     'autoDiscovery': false,
@@ -255,6 +266,19 @@ class FakeConfigRepository implements ConfigRepository {
   @override
   Future<void> clearSftpLastPath() async {
     _store.remove(_sftpLastPathKey);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getKnownHosts() async {
+    final data = _store[_knownHostsKey] as String?;
+    if (data == null) return <Map<String, dynamic>>[];
+    final decoded = json.decode(data) as List<dynamic>;
+    return decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  @override
+  Future<void> saveKnownHosts(List<Map<String, dynamic>> hosts) async {
+    _store[_knownHostsKey] = json.encode(hosts);
   }
 
   @override

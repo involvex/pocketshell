@@ -59,6 +59,8 @@ class SettingsProvider extends ChangeNotifier {
   String _kiloModel = AiProviderDefaults.kiloModel;
   Set<HomeToolbarAction> _pinnedToolbarActions =
       HomeToolbarActionX.defaultPinned;
+  bool _requireKeyPassphrase = false;
+  int _sessionIdleTimeoutMinutes = 0;
 
   ThemeMode get themeMode => _themeMode;
   AppTheme get appTheme => _appTheme;
@@ -80,6 +82,8 @@ class SettingsProvider extends ChangeNotifier {
   String get opencodeZenModel => _opencodeZenModel;
   String get kiloModel => _kiloModel;
   Set<HomeToolbarAction> get pinnedToolbarActions => _pinnedToolbarActions;
+  bool get requireKeyPassphrase => _requireKeyPassphrase;
+  int get sessionIdleTimeoutMinutes => _sessionIdleTimeoutMinutes;
 
   bool isToolbarActionPinned(HomeToolbarAction action) =>
       _pinnedToolbarActions.contains(action);
@@ -188,6 +192,10 @@ class SettingsProvider extends ChangeNotifier {
     _pinnedToolbarActions = _parsePinnedToolbarActions(
       settings['pinnedToolbarActions'] as List<dynamic>?,
     );
+    _requireKeyPassphrase = settings['requireKeyPassphrase'] as bool? ?? false;
+
+    _sessionIdleTimeoutMinutes =
+        (settings['sessionIdleTimeoutMinutes'] as num?)?.toInt() ?? 0;
 
     _isLoaded = true;
     notifyListeners();
@@ -380,6 +388,18 @@ class SettingsProvider extends ChangeNotifier {
       _ => 'blue',
     };
     await _saveSetting('accentColor', colorStr);
+    notifyListeners();
+  }
+
+  Future<void> setRequireKeyPassphrase(bool value) async {
+    _requireKeyPassphrase = value;
+    await _saveSetting('requireKeyPassphrase', value);
+    notifyListeners();
+  }
+
+  Future<void> setSessionIdleTimeoutMinutes(int value) async {
+    _sessionIdleTimeoutMinutes = value;
+    await _saveSetting('sessionIdleTimeoutMinutes', value);
     notifyListeners();
   }
 
