@@ -51,24 +51,66 @@ class SSHProvider extends ChangeNotifier {
   bool _pendingCtrl = false;
   bool _pendingAlt = false;
 
+  /// Locked modifiers stay armed across keypresses until tapped again.
+  /// Armed by double-tapping the toggle (two taps within
+  /// [lockDoubleTapWindow]); useful for repeated combos like `Ctrl+C`.
+  bool _lockedCtrl = false;
+  bool _lockedAlt = false;
+  DateTime? _lastCtrlToggle;
+  DateTime? _lastAltToggle;
+
+  /// Double-tap window for engaging the modifier lock. Public for testing.
+  static const Duration lockDoubleTapWindow = Duration(milliseconds: 400);
+
   bool get pendingCtrl => _pendingCtrl;
   bool get pendingAlt => _pendingAlt;
   bool get hasPendingModifiers => _pendingCtrl || _pendingAlt;
+  bool get lockedCtrl => _lockedCtrl;
+  bool get lockedAlt => _lockedAlt;
 
   void togglePendingCtrl() {
-    _pendingCtrl = !_pendingCtrl;
+    final DateTime now = DateTime.now();
+    if (_lockedCtrl) {
+      _lockedCtrl = false;
+      _pendingCtrl = false;
+    } else if (_pendingCtrl &&
+        _lastCtrlToggle != null &&
+        now.difference(_lastCtrlToggle!) <= lockDoubleTapWindow) {
+      _lockedCtrl = true;
+    } else {
+      _pendingCtrl = !_pendingCtrl;
+    }
+    _lastCtrlToggle = now;
     notifyListeners();
   }
 
   void togglePendingAlt() {
-    _pendingAlt = !_pendingAlt;
+    final DateTime now = DateTime.now();
+    if (_lockedAlt) {
+      _lockedAlt = false;
+      _pendingAlt = false;
+    } else if (_pendingAlt &&
+        _lastAltToggle != null &&
+        now.difference(_lastAltToggle!) <= lockDoubleTapWindow) {
+      _lockedAlt = true;
+    } else {
+      _pendingAlt = !_pendingAlt;
+    }
+    _lastAltToggle = now;
     notifyListeners();
   }
 
   void clearPendingModifiers() {
-    if (_pendingCtrl || _pendingAlt) {
+    var changed = false;
+    if (_pendingCtrl && !_lockedCtrl) {
       _pendingCtrl = false;
+      changed = true;
+    }
+    if (_pendingAlt && !_lockedAlt) {
       _pendingAlt = false;
+      changed = true;
+    }
+    if (changed) {
       notifyListeners();
     }
   }
@@ -625,9 +667,8 @@ class SSHProvider extends ChangeNotifier {
     final bool consume = data.length == 1;
     final bool wasCtrl = _pendingCtrl;
     if (consume) {
-      _pendingCtrl = false;
-      _pendingAlt = false;
-      notifyListeners();
+      // Respects locks: locked modifiers stay armed across keypresses.
+      clearPendingModifiers();
     }
     if (transformed != null) {
       if (wasCtrl) {

@@ -4,6 +4,7 @@ import '../models/ai_provider.dart';
 import '../models/home_toolbar_action.dart';
 import '../models/keyboard_shortcut.dart';
 import '../services/config_repository.dart';
+import '../services/connection_foreground_service.dart';
 import '../services/secure_storage_service.dart';
 import '../utils/terminal_enter_mapping.dart';
 import '../utils/terminal_themes.dart';
@@ -61,6 +62,7 @@ class SettingsProvider extends ChangeNotifier {
       HomeToolbarActionX.defaultPinned;
   bool _requireKeyPassphrase = false;
   int _sessionIdleTimeoutMinutes = 0;
+  bool _prominentConnectionNotification = false;
 
   ThemeMode get themeMode => _themeMode;
   AppTheme get appTheme => _appTheme;
@@ -84,6 +86,7 @@ class SettingsProvider extends ChangeNotifier {
   Set<HomeToolbarAction> get pinnedToolbarActions => _pinnedToolbarActions;
   bool get requireKeyPassphrase => _requireKeyPassphrase;
   int get sessionIdleTimeoutMinutes => _sessionIdleTimeoutMinutes;
+  bool get prominentConnectionNotification => _prominentConnectionNotification;
 
   bool isToolbarActionPinned(HomeToolbarAction action) =>
       _pinnedToolbarActions.contains(action);
@@ -196,6 +199,9 @@ class SettingsProvider extends ChangeNotifier {
 
     _sessionIdleTimeoutMinutes =
         (settings['sessionIdleTimeoutMinutes'] as num?)?.toInt() ?? 0;
+
+    _prominentConnectionNotification =
+        settings['prominentConnectionNotification'] as bool? ?? false;
 
     _isLoaded = true;
     notifyListeners();
@@ -401,6 +407,16 @@ class SettingsProvider extends ChangeNotifier {
     _sessionIdleTimeoutMinutes = value;
     await _saveSetting('sessionIdleTimeoutMinutes', value);
     notifyListeners();
+  }
+
+  /// Toggles the Android connection notification between silent (low
+  /// importance) and prominent (default importance with sound/icon).
+  /// Applies live to the running foreground service when connected.
+  Future<void> setProminentConnectionNotification(bool value) async {
+    _prominentConnectionNotification = value;
+    await _saveSetting('prominentConnectionNotification', value);
+    notifyListeners();
+    await ConnectionForegroundService.applyNotificationPriority(value);
   }
 
   Future<void> updateShortcuts(List<KeyboardShortcut> shortcuts) async {

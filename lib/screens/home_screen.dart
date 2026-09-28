@@ -20,6 +20,7 @@ import '../widgets/network_discovery.dart';
 import '../widgets/ctrl_button_panel.dart';
 import '../widgets/snippet_button_panel.dart';
 import '../widgets/sftp_browser.dart';
+import '../widgets/terminal_search_bar.dart';
 import '../screens/settings_screen.dart';
 import '../screens/snippet_config_screen.dart';
 import '../screens/agents_tab.dart';
@@ -508,6 +509,7 @@ class ClientTab extends StatefulWidget {
 class _ClientTabState extends State<ClientTab> {
   final Map<String, TerminalController> _controllers =
       <String, TerminalController>{};
+  bool _searchVisible = false;
   final Map<String, EnterMappingInputHandler> _enterHandlers =
       <String, EnterMappingInputHandler>{};
 
@@ -604,6 +606,16 @@ class _ClientTabState extends State<ClientTab> {
                 builder: (c) => const ConnectionModal(),
               ),
             ),
+          if (hasConnectedSession)
+            IconButton(
+              icon: Icon(
+                Icons.search,
+                color: _searchVisible ? Colors.tealAccent : null,
+              ),
+              tooltip:
+                  _searchVisible ? 'Close terminal search' : 'Find in terminal',
+              onPressed: () => setState(() => _searchVisible = !_searchVisible),
+            ),
         ],
       );
     });
@@ -636,6 +648,18 @@ class _ClientTabState extends State<ClientTab> {
           child: Column(
             children: <Widget>[
               if (!widget.isFullScreen) _buildSessionTabBar(context),
+              if (_searchVisible &&
+                  ssh.activeSession != null &&
+                  ssh.activeSession!.isConnected)
+                TerminalSearchBar(
+                  key: ValueKey('search-${ssh.activeSession!.id}'),
+                  terminal: ssh.activeSession!.terminal,
+                  controller: _controllerFor(
+                    ssh.activeSession!.id,
+                    settings.sendMouseTaps,
+                  ),
+                  onClose: () => setState(() => _searchVisible = false),
+                ),
               Expanded(
                 child: Consumer<SSHProvider>(builder: (context, ssh, child) {
                   final active = ssh.activeSession;

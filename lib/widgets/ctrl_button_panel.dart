@@ -24,6 +24,8 @@ class CtrlButtonPanel extends StatelessWidget {
         }
         final bool ctrlArmed = ssh.pendingCtrl;
         final bool altArmed = ssh.pendingAlt;
+        final bool ctrlLocked = ssh.lockedCtrl;
+        final bool altLocked = ssh.lockedAlt;
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -39,15 +41,18 @@ class CtrlButtonPanel extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
-                    ctrlArmed && altArmed
-                        ? 'Ctrl+Alt armed — type the next key'
-                        : ctrlArmed
-                            ? 'Ctrl armed — type the next key'
-                            : 'Alt armed — type the next key',
-                    style: const TextStyle(
+                    _modifierHint(
+                      ctrlArmed,
+                      altArmed,
+                      ctrlLocked,
+                      altLocked,
+                    ),
+                    style: TextStyle(
                       fontSize: 11,
                       fontFamily: 'monospace',
-                      color: Colors.tealAccent,
+                      color: ctrlLocked || altLocked
+                          ? Colors.orangeAccent
+                          : Colors.tealAccent,
                     ),
                   ),
                 ),
@@ -75,11 +80,13 @@ class CtrlButtonPanel extends StatelessWidget {
                     _ToggleButton(
                       label: 'Ctrl',
                       active: ctrlArmed,
+                      locked: ctrlLocked,
                       onTap: ssh.togglePendingCtrl,
                     ),
                     _ToggleButton(
                       label: 'Alt',
                       active: altArmed,
+                      locked: altLocked,
                       onTap: ssh.togglePendingAlt,
                     ),
                     _NavButton(
@@ -197,6 +204,27 @@ class CtrlButtonPanel extends StatelessWidget {
     );
   }
 
+  static String _modifierHint(
+    bool ctrlArmed,
+    bool altArmed,
+    bool ctrlLocked,
+    bool altLocked,
+  ) {
+    if (ctrlArmed && altArmed) {
+      return ctrlLocked || altLocked
+          ? 'Ctrl+Alt locked — tap to release'
+          : 'Ctrl+Alt armed — type the next key';
+    }
+    if (ctrlArmed) {
+      return ctrlLocked
+          ? 'Ctrl locked — tap to release (double-tap to lock)'
+          : 'Ctrl armed — type the next key (double-tap to lock)';
+    }
+    return altLocked
+        ? 'Alt locked — tap to release (double-tap to lock)'
+        : 'Alt armed — type the next key (double-tap to lock)';
+  }
+
   static void _sendKey(Terminal terminal, TerminalKey key, SSHProvider ssh) {
     final bool ctrl = ssh.pendingCtrl;
     final bool alt = ssh.pendingAlt;
@@ -286,18 +314,24 @@ class _ToggleButton extends StatelessWidget {
     required this.label,
     required this.active,
     required this.onTap,
+    this.locked = false,
   });
 
   final String label;
   final bool active;
   final VoidCallback onTap;
+  final bool locked;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Material(
-        color: active ? Colors.teal.shade700 : Colors.grey[800],
+        color: locked
+            ? Colors.orange.shade800
+            : active
+                ? Colors.teal.shade700
+                : Colors.grey[800],
         borderRadius: BorderRadius.circular(4),
         child: InkWell(
           onTap: onTap,

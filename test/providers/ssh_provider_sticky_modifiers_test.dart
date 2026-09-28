@@ -73,7 +73,7 @@ void main() {
   });
 
   group('pending modifier toggles', () {
-    test('toggle arms and disarms', () {
+    test('toggle arms and disarms', () async {
       final provider = SSHProvider();
       expect(provider.hasPendingModifiers, isFalse);
 
@@ -81,6 +81,10 @@ void main() {
       expect(provider.pendingCtrl, isTrue);
       expect(provider.hasPendingModifiers, isTrue);
 
+      // A slow second tap (outside the double-tap window) disarms.
+      await Future<void>.delayed(
+        SSHProvider.lockDoubleTapWindow + const Duration(milliseconds: 50),
+      );
       provider.togglePendingCtrl();
       expect(provider.hasPendingModifiers, isFalse);
 
@@ -94,6 +98,42 @@ void main() {
     test('clear is a no-op when nothing armed', () {
       final provider = SSHProvider();
       provider.clearPendingModifiers();
+      expect(provider.hasPendingModifiers, isFalse);
+    });
+
+    test('double-tap locks Ctrl until tapped again', () {
+      final provider = SSHProvider();
+      provider.togglePendingCtrl();
+      expect(provider.pendingCtrl, isTrue);
+      expect(provider.lockedCtrl, isFalse);
+
+      // Second tap within the double-tap window engages the lock.
+      provider.togglePendingCtrl();
+      expect(provider.lockedCtrl, isTrue);
+      expect(provider.pendingCtrl, isTrue);
+
+      // Consuming a keypress must not release a locked modifier.
+      provider.clearPendingModifiers();
+      expect(provider.pendingCtrl, isTrue);
+      expect(provider.lockedCtrl, isTrue);
+
+      // Tapping the locked toggle releases everything.
+      provider.togglePendingCtrl();
+      expect(provider.lockedCtrl, isFalse);
+      expect(provider.hasPendingModifiers, isFalse);
+    });
+
+    test('double-tap locks Alt until tapped again', () {
+      final provider = SSHProvider();
+      provider.togglePendingAlt();
+      provider.togglePendingAlt();
+      expect(provider.lockedAlt, isTrue);
+
+      provider.clearPendingModifiers();
+      expect(provider.pendingAlt, isTrue);
+
+      provider.togglePendingAlt();
+      expect(provider.lockedAlt, isFalse);
       expect(provider.hasPendingModifiers, isFalse);
     });
   });

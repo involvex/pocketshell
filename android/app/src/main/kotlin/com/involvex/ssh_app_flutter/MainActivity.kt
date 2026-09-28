@@ -15,7 +15,13 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "startForegroundService" -> {
                     val count = call.argument<Int>("connectionCount") ?: 1
-                    ConnectionForegroundService.start(this, count)
+                    val prominent = call.argument<Boolean>("prominent") ?: false
+                    ConnectionForegroundService.start(this, count, prominent)
+                    result.success(null)
+                }
+                "setNotificationPriority" -> {
+                    val prominent = call.argument<Boolean>("prominent") ?: false
+                    ConnectionForegroundService.setPriority(this, prominent)
                     result.success(null)
                 }
                 "stopForegroundService" -> {

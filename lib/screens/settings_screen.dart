@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -286,6 +289,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       value: settings.showMobileShortcutBar,
                       onChanged: settings.setShowMobileShortcutBar,
                     ),
+                    if (!kIsWeb && Platform.isAndroid) ...[
+                      const Divider(height: 1, indent: 16),
+                      SwitchListTile(
+                        title: const Text('Prominent connection notice'),
+                        subtitle: const Text(
+                          'Sound and status-bar icon for the active-connection notification while connected',
+                        ),
+                        value: settings.prominentConnectionNotification,
+                        onChanged: settings.setProminentConnectionNotification,
+                      ),
+                    ],
                     const Divider(height: 1, indent: 16),
                     ListTile(
                       title: const Text('Default Agent Port'),
