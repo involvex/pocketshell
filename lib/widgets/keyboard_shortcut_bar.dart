@@ -265,7 +265,30 @@ class _ShortcutChip extends StatelessWidget {
         break;
       case ShortcutAction.tabChar:
         if (isConnected && shortcut.charCode != null) {
-          ssh.sendControlCharacter(shortcut.charCode!);
+          if (ssh.hasPendingModifiers) {
+            ssh.sendTerminalKey(
+              TerminalKey.tab,
+              ctrl: ssh.pendingCtrl,
+              alt: ssh.pendingAlt,
+            );
+            ssh.clearPendingModifiers();
+          } else {
+            ssh.sendControlCharacter(shortcut.charCode!);
+          }
+        }
+        break;
+      case ShortcutAction.escapeKey:
+        if (isConnected) {
+          if (ssh.hasPendingModifiers) {
+            ssh.sendTerminalKey(
+              TerminalKey.escape,
+              ctrl: ssh.pendingCtrl,
+              alt: ssh.pendingAlt,
+            );
+            ssh.clearPendingModifiers();
+          } else {
+            ssh.sendTerminalKey(TerminalKey.escape);
+          }
         }
         break;
       case ShortcutAction.ctrlC:
@@ -273,9 +296,27 @@ class _ShortcutChip extends StatelessWidget {
       case ShortcutAction.ctrlZ:
       case ShortcutAction.ctrlL:
       case ShortcutAction.ctrlA:
+      case ShortcutAction.ctrlB:
+      case ShortcutAction.ctrlE:
+      case ShortcutAction.ctrlF:
+      case ShortcutAction.ctrlG:
+      case ShortcutAction.ctrlH:
+      case ShortcutAction.ctrlJ:
+      case ShortcutAction.ctrlK:
+      case ShortcutAction.ctrlN:
+      case ShortcutAction.ctrlO:
       case ShortcutAction.ctrlP:
+      case ShortcutAction.ctrlQ:
+      case ShortcutAction.ctrlR:
+      case ShortcutAction.ctrlS:
+      case ShortcutAction.ctrlT:
+      case ShortcutAction.ctrlU:
+      case ShortcutAction.ctrlW:
+      case ShortcutAction.ctrlX:
+      case ShortcutAction.ctrlY:
         if (isConnected && shortcut.charCode != null) {
           ssh.sendControlCharacter(shortcut.charCode!);
+          ssh.clearPendingModifiers();
         }
         break;
       case ShortcutAction.ctrlV:
@@ -285,42 +326,62 @@ class _ShortcutChip extends StatelessWidget {
         break;
       case ShortcutAction.arrowUp:
         if (isConnected) {
-          final active = ssh.activeSession;
-          if (active != null) active.terminal.keyInput(TerminalKey.arrowUp);
+          ssh.sendTerminalKey(
+            TerminalKey.arrowUp,
+            ctrl: ssh.pendingCtrl,
+            alt: ssh.pendingAlt,
+          );
+          ssh.clearPendingModifiers();
         }
         break;
       case ShortcutAction.arrowDown:
         if (isConnected) {
-          final active = ssh.activeSession;
-          if (active != null) active.terminal.keyInput(TerminalKey.arrowDown);
+          ssh.sendTerminalKey(
+            TerminalKey.arrowDown,
+            ctrl: ssh.pendingCtrl,
+            alt: ssh.pendingAlt,
+          );
+          ssh.clearPendingModifiers();
         }
         break;
       case ShortcutAction.arrowRight:
         if (isConnected) {
-          final active = ssh.activeSession;
-          if (active != null) active.terminal.keyInput(TerminalKey.arrowRight);
+          ssh.sendTerminalKey(
+            TerminalKey.arrowRight,
+            ctrl: ssh.pendingCtrl,
+            alt: ssh.pendingAlt,
+          );
+          ssh.clearPendingModifiers();
         }
         break;
       case ShortcutAction.arrowLeft:
         if (isConnected) {
-          final active = ssh.activeSession;
-          if (active != null) active.terminal.keyInput(TerminalKey.arrowLeft);
+          ssh.sendTerminalKey(
+            TerminalKey.arrowLeft,
+            ctrl: ssh.pendingCtrl,
+            alt: ssh.pendingAlt,
+          );
+          ssh.clearPendingModifiers();
         }
         break;
       case ShortcutAction.home:
         if (isConnected) {
-          final active = ssh.activeSession;
-          if (active != null) {
-            active.terminal.keyInput(TerminalKey.home);
-          }
+          ssh.sendTerminalKey(
+            TerminalKey.home,
+            ctrl: ssh.pendingCtrl,
+            alt: ssh.pendingAlt,
+          );
+          ssh.clearPendingModifiers();
         }
         break;
       case ShortcutAction.end:
         if (isConnected) {
-          final active = ssh.activeSession;
-          if (active != null) {
-            active.terminal.keyInput(TerminalKey.end);
-          }
+          ssh.sendTerminalKey(
+            TerminalKey.end,
+            ctrl: ssh.pendingCtrl,
+            alt: ssh.pendingAlt,
+          );
+          ssh.clearPendingModifiers();
         }
         break;
     }

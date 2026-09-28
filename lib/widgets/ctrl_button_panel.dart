@@ -6,16 +6,13 @@ import 'package:xterm/xterm.dart';
 import 'package:ssh_app/providers/ssh_provider.dart';
 
 /// Compact multi-row accessory keyboard for mobile SSH sessions.
-class CtrlButtonPanel extends StatefulWidget {
+///
+/// `Ctrl`/`Alt` are one-shot toggles: arm one, then press any key — a panel
+/// button or a normal soft-keyboard (Gboard) key — and the modifier applies
+/// to that keypress before auto-releasing. Gboard interop works because
+/// [SSHProvider] applies armed modifiers to the next terminal output.
+class CtrlButtonPanel extends StatelessWidget {
   const CtrlButtonPanel({super.key});
-
-  @override
-  State<CtrlButtonPanel> createState() => _CtrlButtonPanelState();
-}
-
-class _CtrlButtonPanelState extends State<CtrlButtonPanel> {
-  bool _ctrlSticky = false;
-  bool _altSticky = false;
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +22,8 @@ class _CtrlButtonPanelState extends State<CtrlButtonPanel> {
         if (active == null || !active.isConnected) {
           return const SizedBox.shrink();
         }
+        final bool ctrlArmed = ssh.pendingCtrl;
+        final bool altArmed = ssh.pendingAlt;
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -36,6 +35,22 @@ class _CtrlButtonPanelState extends State<CtrlButtonPanel> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              if (ctrlArmed || altArmed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    ctrlArmed && altArmed
+                        ? 'Ctrl+Alt armed — type the next key'
+                        : ctrlArmed
+                            ? 'Ctrl armed — type the next key'
+                            : 'Alt armed — type the next key',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: Colors.tealAccent,
+                    ),
+                  ),
+                ),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -43,27 +58,36 @@ class _CtrlButtonPanelState extends State<CtrlButtonPanel> {
                   children: <Widget>[
                     _NavButton(
                       label: 'Esc',
-                      onTap: () => active.terminal.keyInput(TerminalKey.escape),
+                      onTap: () => _sendKey(
+                        active.terminal,
+                        TerminalKey.escape,
+                        ssh,
+                      ),
                     ),
                     _NavButton(
                       label: 'Tab',
-                      onTap: () => _sendKey(active.terminal, TerminalKey.tab),
+                      onTap: () => _sendKey(
+                        active.terminal,
+                        TerminalKey.tab,
+                        ssh,
+                      ),
                     ),
                     _ToggleButton(
                       label: 'Ctrl',
-                      active: _ctrlSticky,
-                      onTap: () => setState(() => _ctrlSticky = !_ctrlSticky),
+                      active: ctrlArmed,
+                      onTap: ssh.togglePendingCtrl,
                     ),
                     _ToggleButton(
                       label: 'Alt',
-                      active: _altSticky,
-                      onTap: () => setState(() => _altSticky = !_altSticky),
+                      active: altArmed,
+                      onTap: ssh.togglePendingAlt,
                     ),
                     _NavButton(
                       label: '←',
                       onTap: () => _sendKey(
                         active.terminal,
                         TerminalKey.arrowLeft,
+                        ssh,
                       ),
                     ),
                     _NavButton(
@@ -71,17 +95,24 @@ class _CtrlButtonPanelState extends State<CtrlButtonPanel> {
                       onTap: () => _sendKey(
                         active.terminal,
                         TerminalKey.arrowRight,
+                        ssh,
                       ),
                     ),
                     _NavButton(
                       label: '↑',
-                      onTap: () =>
-                          _sendKey(active.terminal, TerminalKey.arrowUp),
+                      onTap: () => _sendKey(
+                        active.terminal,
+                        TerminalKey.arrowUp,
+                        ssh,
+                      ),
                     ),
                     _NavButton(
                       label: '↓',
-                      onTap: () =>
-                          _sendKey(active.terminal, TerminalKey.arrowDown),
+                      onTap: () => _sendKey(
+                        active.terminal,
+                        TerminalKey.arrowDown,
+                        ssh,
+                      ),
                     ),
                   ],
                 ),
@@ -94,41 +125,63 @@ class _CtrlButtonPanelState extends State<CtrlButtonPanel> {
                   children: <Widget>[
                     _NavButton(
                       label: 'Home',
-                      onTap: () => _sendKey(active.terminal, TerminalKey.home),
+                      onTap: () => _sendKey(
+                        active.terminal,
+                        TerminalKey.home,
+                        ssh,
+                      ),
                     ),
                     _NavButton(
                       label: 'End',
-                      onTap: () => _sendKey(active.terminal, TerminalKey.end),
+                      onTap: () => _sendKey(
+                        active.terminal,
+                        TerminalKey.end,
+                        ssh,
+                      ),
                     ),
                     _NavButton(
                       label: 'PgUp',
-                      onTap: () =>
-                          _sendKey(active.terminal, TerminalKey.pageUp),
+                      onTap: () => _sendKey(
+                        active.terminal,
+                        TerminalKey.pageUp,
+                        ssh,
+                      ),
                     ),
                     _NavButton(
                       label: 'PgDn',
-                      onTap: () =>
-                          _sendKey(active.terminal, TerminalKey.pageDown),
+                      onTap: () => _sendKey(
+                        active.terminal,
+                        TerminalKey.pageDown,
+                        ssh,
+                      ),
+                    ),
+                    _NavButton(
+                      label: 'Ctrl+X',
+                      onTap: () => _sendFixedCtrl(ssh, 24),
+                    ),
+                    _NavButton(
+                      label: 'Ctrl+O',
+                      onTap: () => _sendFixedCtrl(ssh, 15),
                     ),
                     _NavButton(
                       label: 'Ctrl+A',
-                      onTap: () => ssh.sendControlCharacter(1),
+                      onTap: () => _sendFixedCtrl(ssh, 1),
                     ),
                     _NavButton(
                       label: 'Ctrl+C',
-                      onTap: () => ssh.sendControlCharacter(3),
+                      onTap: () => _sendFixedCtrl(ssh, 3),
                     ),
                     _NavButton(
                       label: 'Ctrl+D',
-                      onTap: () => ssh.sendControlCharacter(4),
+                      onTap: () => _sendFixedCtrl(ssh, 4),
                     ),
                     _NavButton(
                       label: 'Ctrl+Z',
-                      onTap: () => ssh.sendControlCharacter(26),
+                      onTap: () => _sendFixedCtrl(ssh, 26),
                     ),
                     _NavButton(
                       label: 'Ctrl+L',
-                      onTap: () => ssh.sendControlCharacter(12),
+                      onTap: () => _sendFixedCtrl(ssh, 12),
                     ),
                     _NavButton(
                       label: 'Paste',
@@ -144,21 +197,35 @@ class _CtrlButtonPanelState extends State<CtrlButtonPanel> {
     );
   }
 
-  void _sendKey(Terminal terminal, TerminalKey key) {
-    terminal.keyInput(
+  static void _sendKey(Terminal terminal, TerminalKey key, SSHProvider ssh) {
+    final bool ctrl = ssh.pendingCtrl;
+    final bool alt = ssh.pendingAlt;
+    final bool hadModifier = ctrl || alt;
+    final bool handled = terminal.keyInput(
       key,
-      ctrl: _ctrlSticky,
-      alt: _altSticky,
+      ctrl: ctrl,
+      alt: alt,
     );
-    if (_ctrlSticky || _altSticky) {
-      setState(() {
-        _ctrlSticky = false;
-        _altSticky = false;
-      });
+    if (!handled && hadModifier) {
+      // keytab has no encoding for some modifier combos (e.g. Ctrl+Tab).
+      // Fall back to the raw control byte so the remote still gets input.
+      if (key == TerminalKey.tab && ctrl) {
+        ssh.sendControlCharacter(9);
+      } else if (key == TerminalKey.escape) {
+        ssh.sendControlCharacter(27);
+      }
+    }
+    if (hadModifier) {
+      ssh.clearPendingModifiers();
     }
   }
 
-  Future<void> _pasteFromClipboard(
+  static void _sendFixedCtrl(SSHProvider ssh, int charCode) {
+    ssh.sendControlCharacter(charCode);
+    ssh.clearPendingModifiers();
+  }
+
+  static Future<void> _pasteFromClipboard(
     BuildContext context,
     SSHProvider ssh,
   ) async {

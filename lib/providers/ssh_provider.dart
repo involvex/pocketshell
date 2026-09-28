@@ -43,6 +43,36 @@ class SSHProvider extends ChangeNotifier {
 
   List<String> connectionLog = [];
 
+  /// One-shot sticky modifiers for mobile (Ctrl/Alt buttons in the accessory
+  /// panel). Armed by tapping the toggle, consumed by the next keypress —
+  /// whether that key comes from the panel or the soft keyboard (Gboard).
+  /// Soft-keyboard input bypasses panel state entirely and funnels through
+  /// [Terminal.onOutput], where [_applyPendingModifiers] applies them.
+  bool _pendingCtrl = false;
+  bool _pendingAlt = false;
+
+  bool get pendingCtrl => _pendingCtrl;
+  bool get pendingAlt => _pendingAlt;
+  bool get hasPendingModifiers => _pendingCtrl || _pendingAlt;
+
+  void togglePendingCtrl() {
+    _pendingCtrl = !_pendingCtrl;
+    notifyListeners();
+  }
+
+  void togglePendingAlt() {
+    _pendingAlt = !_pendingAlt;
+    notifyListeners();
+  }
+
+  void clearPendingModifiers() {
+    if (_pendingCtrl || _pendingAlt) {
+      _pendingCtrl = false;
+      _pendingAlt = false;
+      notifyListeners();
+    }
+  }
+
   List<SSHProfile> profiles = <SSHProfile>[];
   SSHProfile? lastSession;
   List<String> discoveredHosts = <String>[];
@@ -305,7 +335,8 @@ class SSHProvider extends ChangeNotifier {
       });
       entry.terminal.onOutput = (data) {
         entry.touch();
-        shell.stdin.add(utf8.encode(data));
+        final String transformed = _applyPendingModifiers(data);
+        shell.stdin.add(utf8.encode(transformed));
       };
 
       entry.terminal.onResize = (width, height, pixelWidth, pixelHeight) {
@@ -452,6 +483,71 @@ class SSHProvider extends ChangeNotifier {
     }
   }
 
+  /// Sends a letter with optional Ctrl/Alt modifiers through the terminal
+  /// emulator so encoding matches hardware-keyboard input
+  /// (`Ctrl+X` -> `0x18`, `Alt+F` -> `ESC F`).
+  /// Returns true when the terminal handled the combination.
+  /// This is the mobile/sticky-modifier path: soft-keyboard typing bypasses
+  /// any panel state, so callers must route armed modifiers through here
+  /// instead of sending the plain letter.
+  bool sendModifiedLetter(
+    String letter, {
+    bool ctrl = false,
+    bool alt = false,
+  }) {
+    final entry = activeSession;
+    if (entry == null || !entry.isConnected) {
+      return false;
+    }
+    if (letter.length != 1) {
+      return false;
+    }
+    final int code = letter.toLowerCase().codeUnitAt(0);
+    if (code < 97 || code > 122) {
+      return false;
+    }
+    final bool handled = entry.terminal.charInput(
+      code,
+      ctrl: ctrl,
+      alt: alt,
+    );
+    if (handled) {
+      entry.touch();
+      if (ctrl) {
+        addLog('Sent Ctrl+${letter.toUpperCase()}');
+      } else if (alt) {
+        addLog('Sent Alt+${letter.toUpperCase()}');
+      }
+      return true;
+    }
+    return false;
+  }
+
+  /// Sends a terminal key with optional modifiers through `keyInput`,
+  /// applying keytab encoding (e.g. `Ctrl+Up` -> `\E[1;5A`).
+  /// Returns true when the terminal handled the combination.
+  bool sendTerminalKey(
+    TerminalKey key, {
+    bool ctrl = false,
+    bool alt = false,
+    bool shift = false,
+  }) {
+    final entry = activeSession;
+    if (entry == null || !entry.isConnected) {
+      return false;
+    }
+    final bool handled = entry.terminal.keyInput(
+      key,
+      ctrl: ctrl,
+      alt: alt,
+      shift: shift,
+    );
+    if (handled) {
+      entry.touch();
+    }
+    return handled;
+  }
+
   void sendString(String data) {
     final entry = activeSession;
     if (entry != null && entry.shellSession != null && entry.isConnected) {
@@ -472,20 +568,92 @@ class SSHProvider extends ChangeNotifier {
     );
   }
 
+  /// Applies armed sticky modifiers to raw terminal output. This is what makes
+  /// `Ctrl`/`Alt` + a normal soft-keyboard (Gboard) key work: Gboard commits
+  /// text straight to the terminal and never sees panel state, but everything
+  /// funnels through `onOutput`, so the next single-character output is
+  /// transformed here (`x` + pending Ctrl -> `0x18`, `f` + pending Alt ->
+  /// `ESC F`) and the pending flags are consumed. Multi-character output
+  /// (pastes, escape sequences) passes through untouched without consuming.
+  /// Pure transform for sticky modifiers. Returns the encoded output for a
+  /// single-character input, or null when the input is not transformable
+  /// (multi-character output like pastes/escape sequences, or keys with no
+  /// control encoding). Ctrl wins when both modifiers are armed.
+  static String? transformStickyInput(
+    String data, {
+    required bool ctrl,
+    required bool alt,
+  }) {
+    if (!ctrl && !alt) {
+      return null;
+    }
+    if (data.length != 1) {
+      return null;
+    }
+    final int code = data.codeUnitAt(0);
+    final int lower = code >= 65 && code <= 90 ? code + 32 : code;
+    if (ctrl) {
+      if (lower >= 97 && lower <= 122) {
+        return String.fromCharCode(lower - 96);
+      }
+      if (code == 32) {
+        return String.fromCharCode(0);
+      }
+      if (code >= 91 && code <= 95) {
+        return String.fromCharCode(code - 91 + 27);
+      }
+      return null;
+    }
+    if (lower >= 97 && lower <= 122) {
+      return String.fromCharCodes(<int>[0x1b, lower - 97 + 65]);
+    }
+    return null;
+  }
+
+  String _applyPendingModifiers(String data) {
+    if (!_pendingCtrl && !_pendingAlt) {
+      return data;
+    }
+    final String? transformed = transformStickyInput(
+      data,
+      ctrl: _pendingCtrl,
+      alt: _pendingAlt,
+    );
+    // Single-character input always consumes the armed modifiers (toggle
+    // behaviour: active until the next key), even when it has no control
+    // encoding — e.g. Ctrl+3 sends a plain 3.
+    final bool consume = data.length == 1;
+    final bool wasCtrl = _pendingCtrl;
+    if (consume) {
+      _pendingCtrl = false;
+      _pendingAlt = false;
+      notifyListeners();
+    }
+    if (transformed != null) {
+      if (wasCtrl) {
+        final int code = data.codeUnitAt(0);
+        final int lower = code >= 65 && code <= 90 ? code + 32 : code;
+        final String label = (lower >= 97 && lower <= 122)
+            ? String.fromCharCode(lower - 32)
+            : data;
+        addLog('Sent Ctrl+$label');
+      } else {
+        addLog('Sent Alt+${data.toUpperCase()}');
+      }
+      return transformed;
+    }
+    return data;
+  }
+
   String _getCtrlLabel(int charCode) {
+    if (charCode >= 1 && charCode <= 26) {
+      return String.fromCharCode(64 + charCode);
+    }
     switch (charCode) {
-      case 3:
-        return 'C';
-      case 4:
-        return 'D';
-      case 26:
-        return 'Z';
-      case 12:
-        return 'L';
-      case 1:
-        return 'A';
-      case 16:
-        return 'P';
+      case 9:
+        return 'Tab';
+      case 27:
+        return 'Esc';
       default:
         return String.fromCharCode(charCode);
     }

@@ -31,6 +31,8 @@ import '../utils/terminal_enter_mapping.dart';
 
 enum AppTab { client, agents, logs }
 
+enum _TerminalOptionsAction { fullscreen, accessory, sftp }
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.pendingLaunch});
 
@@ -231,6 +233,35 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _handleTerminalOptionsAction(
+    BuildContext context,
+    SSHProvider ssh,
+    _TerminalOptionsAction action,
+  ) {
+    switch (action) {
+      case _TerminalOptionsAction.fullscreen:
+        setState(() => _isFullScreen = !_isFullScreen);
+      case _TerminalOptionsAction.accessory:
+        _toggleAccessory();
+      case _TerminalOptionsAction.sftp:
+        if (ssh.activeSession == null || !ssh.activeSession!.isConnected) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Connect to a session first')),
+          );
+          return;
+        }
+        final sessionId = ssh.activeSessionId!;
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => Scaffold(
+              appBar: AppBar(title: const Text('SFTP')),
+              body: SftpBrowser(sessionId: sessionId),
+            ),
+          ),
+        );
+    }
+  }
+
   void _handleToolbarAction(HomeToolbarAction action) {
     switch (action) {
       case HomeToolbarAction.connect:
@@ -257,47 +288,11 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, ssh, child) {
           if (ssh.sessions.any((s) => s.isConnected) &&
               _selectedTab == AppTab.client) {
+            // Kept to two slots so narrow phones don't hit a RenderFlex
+            // overflow: disconnect + a terminal-options menu.
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  icon: Icon(
-                    _isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
-                  ),
-                  tooltip: _isFullScreen ? 'Exit Full Screen' : 'Full Screen',
-                  onPressed: () =>
-                      setState(() => _isFullScreen = !_isFullScreen),
-                ),
-                IconButton(
-                  icon: Icon(
-                    _accessoryVisible ? Icons.keyboard_hide : Icons.keyboard,
-                  ),
-                  tooltip: _accessoryVisible
-                      ? 'Hide accessory panels'
-                      : 'Show accessory panels',
-                  onPressed: _toggleAccessory,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.folder_open),
-                  tooltip: 'SFTP Browser',
-                  onPressed: () {
-                    if (ssh.activeSession == null ||
-                        !ssh.activeSession!.isConnected) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('Connect to a session first')));
-                      return;
-                    }
-                    final sessionId = ssh.activeSessionId!;
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => Scaffold(
-                          appBar: AppBar(title: const Text('SFTP')),
-                          body: SftpBrowser(sessionId: sessionId),
-                        ),
-                      ),
-                    );
-                  },
-                ),
                 if (ssh.activeSession?.isConnected ?? false)
                   IconButton(
                     icon:
@@ -310,6 +305,40 @@ class _HomeScreenState extends State<HomeScreen> {
                       }
                     },
                   ),
+                PopupMenuButton<_TerminalOptionsAction>(
+                  tooltip: 'Terminal options',
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (action) =>
+                      _handleTerminalOptionsAction(context, ssh, action),
+                  itemBuilder: (context) =>
+                      <PopupMenuEntry<_TerminalOptionsAction>>[
+                    CheckedPopupMenuItem<_TerminalOptionsAction>(
+                      value: _TerminalOptionsAction.fullscreen,
+                      checked: _isFullScreen,
+                      child: Text(
+                        _isFullScreen ? 'Exit Full Screen' : 'Full Screen',
+                      ),
+                    ),
+                    CheckedPopupMenuItem<_TerminalOptionsAction>(
+                      value: _TerminalOptionsAction.accessory,
+                      checked: _accessoryVisible,
+                      child: Text(
+                        _accessoryVisible
+                            ? 'Hide accessory panels'
+                            : 'Show accessory panels',
+                      ),
+                    ),
+                    const PopupMenuItem<_TerminalOptionsAction>(
+                      value: _TerminalOptionsAction.sftp,
+                      child: ListTile(
+                        leading: Icon(Icons.folder_open),
+                        title: Text('SFTP Browser'),
+                        contentPadding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             );
           }
