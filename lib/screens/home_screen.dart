@@ -24,20 +24,29 @@ import '../widgets/terminal_search_bar.dart';
 import '../screens/settings_screen.dart';
 import '../screens/snippet_config_screen.dart';
 import '../screens/agents_tab.dart';
+import '../services/share_clone_handler.dart';
+import '../services/share_intent_service.dart';
 import '../services/widget_launch_handler.dart';
 import '../utils/terminal_style_builder.dart';
 import '../utils/terminal_themes.dart';
 import '../utils/enter_mapping_input_handler.dart';
 import '../utils/terminal_enter_mapping.dart';
+import '../widgets/terminal_selection_handles.dart';
+import '../widgets/terminal_selection_toolbar.dart';
 
 enum AppTab { client, agents, logs }
 
 enum _TerminalOptionsAction { fullscreen, accessory, sftp }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.pendingLaunch});
+  const HomeScreen({
+    super.key,
+    this.pendingLaunch,
+    this.pendingShareText,
+  });
 
   final WidgetLaunchAction? pendingLaunch;
+  final String? pendingShareText;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -49,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _agentsChatOpen = false;
   bool _accessoryVisible = true;
   StreamSubscription<Uri?>? _widgetClickSub;
+  StreamSubscription<String>? _shareSub;
   final FocusNode _keyboardFocusNode = FocusNode();
   final GlobalKey<AgentsTabState> _agentsTabKey = GlobalKey<AgentsTabState>();
 
@@ -62,6 +72,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadConfig();
     if (!kIsWeb && Platform.isAndroid) {
       _widgetClickSub = HomeWidget.widgetClicked.listen(_onWidgetClicked);
+      ShareIntentService.ensureListening();
+      _shareSub = ShareIntentService.incoming.listen(_onSharedText);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _keyboardFocusNode.requestFocus();
@@ -93,6 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     unawaited(_widgetClickSub?.cancel());
+    unawaited(_shareSub?.cancel());
     _keyboardFocusNode.dispose();
     super.dispose();
   }
@@ -108,6 +121,17 @@ class _HomeScreenState extends State<HomeScreen> {
       await WidgetLaunchHandler.execute(
         context,
         pending,
+        onTabSelected: _selectTab,
+      );
+    }
+    if (!mounted) {
+      return;
+    }
+    final shareText = widget.pendingShareText;
+    if (shareText != null && shareText.trim().isNotEmpty) {
+      await ShareCloneHandler.execute(
+        context,
+        shareText,
         onTabSelected: _selectTab,
       );
     }
@@ -129,6 +153,20 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetLaunchHandler.execute(
       context,
       action,
+      onTabSelected: _selectTab,
+    );
+  }
+
+  void _onSharedText(String text) {
+    if (!mounted || text.trim().isEmpty) {
+      return;
+    }
+    // ignore: unawaited_futures
+    ShareIntentService.clearSharedText();
+    // ignore: unawaited_futures
+    ShareCloneHandler.execute(
+      context,
+      text,
       onTabSelected: _selectTab,
     );
   }
@@ -509,6 +547,8 @@ class ClientTab extends StatefulWidget {
 class _ClientTabState extends State<ClientTab> {
   final Map<String, TerminalController> _controllers =
       <String, TerminalController>{};
+  final Map<String, GlobalKey<TerminalViewState>> _terminalViewKeys =
+      <String, GlobalKey<TerminalViewState>>{};
   bool _searchVisible = false;
   final Map<String, EnterMappingInputHandler> _enterHandlers =
       <String, EnterMappingInputHandler>{};
@@ -519,6 +559,13 @@ class _ClientTabState extends State<ClientTab> {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  GlobalKey<TerminalViewState> _viewKeyFor(String sessionId) {
+    return _terminalViewKeys.putIfAbsent(
+      sessionId,
+      () => GlobalKey<TerminalViewState>(),
+    );
   }
 
   TerminalController _controllerFor(
@@ -635,6 +682,7 @@ class _ClientTabState extends State<ClientTab> {
           controller.dispose();
           return true;
         });
+        _terminalViewKeys.removeWhere((id, _) => !activeIds.contains(id));
 
         final terminalTheme = settings.appTheme == AppTheme.hacker &&
                 settings.terminalColorTheme == TerminalColorTheme.standard
@@ -739,28 +787,60 @@ class _ClientTabState extends State<ClientTab> {
 
                   return Container(
                     color: terminalTheme.background,
-                    child: _TerminalLongPressHost(
-                      onLongPress: () {
-                        active.terminal.keyInput(
-                          TerminalKey.f10,
-                          shift: true,
-                        );
-                      },
-                      child: TerminalView(
-                        active.terminal,
-                        controller: controller,
-                        padding: const EdgeInsets.all(8),
-                        theme: terminalTheme,
-                        textStyle:
-                            TerminalStyleBuilder.buildTerminalStyle(settings),
-                        autoResize: true,
-                        onSecondaryTapDown: (_, __) {
-                          active.terminal.keyInput(
-                            TerminalKey.f10,
-                            shift: true,
-                          );
-                        },
-                      ),
+                    child: Column(
+                      children: <Widget>[
+                        TerminalSelectionToolbar(
+                          terminal: active.terminal,
+                          controller: controller,
+                          onPaste: () async {
+                            final data =
+                                await Clipboard.getData(Clipboard.kTextPlain);
+                            final text = data?.text;
+                            if (text == null || text.isEmpty) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Clipboard is empty'),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+                            ssh.sendString(text);
+                          },
+                        ),
+                        Expanded(
+                          child: Stack(
+                            children: <Widget>[
+                              TerminalView(
+                                key: _viewKeyFor(active.id),
+                                active.terminal,
+                                controller: controller,
+                                padding: const EdgeInsets.all(8),
+                                theme: terminalTheme,
+                                textStyle:
+                                    TerminalStyleBuilder.buildTerminalStyle(
+                                  settings,
+                                ),
+                                autoResize: true,
+                                onSecondaryTapDown: (_, __) {
+                                  active.terminal.keyInput(
+                                    TerminalKey.f10,
+                                    shift: true,
+                                  );
+                                },
+                              ),
+                              Positioned.fill(
+                                child: TerminalSelectionHandles(
+                                  viewKey: _viewKeyFor(active.id),
+                                  terminal: active.terminal,
+                                  controller: controller,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 }),
@@ -809,62 +889,3 @@ class _AccessoryArea extends StatelessWidget {
   }
 }
 
-/// Detects long-press via [Listener] (avoids gesture-arena conflicts with
-/// xterm's selection long-press) and sends a context-menu key.
-class _TerminalLongPressHost extends StatefulWidget {
-  const _TerminalLongPressHost({
-    required this.onLongPress,
-    required this.child,
-  });
-
-  final VoidCallback onLongPress;
-  final Widget child;
-
-  @override
-  State<_TerminalLongPressHost> createState() => _TerminalLongPressHostState();
-}
-
-class _TerminalLongPressHostState extends State<_TerminalLongPressHost> {
-  static const Duration _longPressDuration = Duration(milliseconds: 550);
-  static const double _moveSlop = 18;
-
-  int? _pointer;
-  Offset? _downPosition;
-  bool _fired = false;
-
-  void _cancel() {
-    _pointer = null;
-    _downPosition = null;
-    _fired = false;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (event) {
-        _pointer = event.pointer;
-        _downPosition = event.localPosition;
-        _fired = false;
-        Future<void>.delayed(_longPressDuration, () {
-          if (!mounted || _pointer != event.pointer || _fired) {
-            return;
-          }
-          _fired = true;
-          widget.onLongPress();
-        });
-      },
-      onPointerMove: (event) {
-        if (_pointer != event.pointer || _downPosition == null) {
-          return;
-        }
-        if ((event.localPosition - _downPosition!).distance > _moveSlop) {
-          _cancel();
-        }
-      },
-      onPointerUp: (_) => _cancel(),
-      onPointerCancel: (_) => _cancel(),
-      child: widget.child,
-    );
-  }
-}

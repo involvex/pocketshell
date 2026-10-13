@@ -8,6 +8,7 @@ import 'package:home_widget/home_widget.dart';
 import '../constants/app_metadata.dart';
 import 'home_screen.dart';
 import '../services/config_service.dart';
+import '../services/share_intent_service.dart';
 import '../services/widget_launch_handler.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -27,13 +28,17 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _initializeApp() async {
     await ConfigService.init();
     final pendingLaunch = await _readPendingWidgetLaunch();
-    if (pendingLaunch == null) {
+    final pendingShare = await _readPendingShareText();
+    if (pendingLaunch == null && pendingShare == null) {
       await Future<void>.delayed(const Duration(seconds: 2));
     }
     if (mounted) {
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
-          builder: (_) => HomeScreen(pendingLaunch: pendingLaunch),
+          builder: (_) => HomeScreen(
+            pendingLaunch: pendingLaunch,
+            pendingShareText: pendingShare,
+          ),
         ),
       );
     }
@@ -49,6 +54,13 @@ class _SplashScreenState extends State<SplashScreen> {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<String?> _readPendingShareText() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return null;
+    }
+    return ShareIntentService.getInitialSharedText();
   }
 
   @override
