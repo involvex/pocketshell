@@ -74,7 +74,7 @@ jobs:
           echo "apk_path=$APK_DST" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: PocketShell v${{ steps.version.outputs.version }}
           body: ${{ steps.changelog.outputs.body }}
