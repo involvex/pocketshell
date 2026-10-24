@@ -71,15 +71,12 @@ class TerminalSearchSession {
     if (match.line < 0 || match.line >= terminal.buffer.height) {
       return;
     }
-    final BufferLine line = terminal.buffer.lines[match.line];
-    final CellAnchor start = line.createAnchor(match.startX);
-    final CellAnchor end = line.createAnchor(match.endX);
-    try {
-      controller.setSelection(start, end);
-    } finally {
-      start.dispose();
-      end.dispose();
-    }
+    final CellOffset begin = CellOffset(match.startX, match.line);
+    final CellOffset end = CellOffset(match.endX, match.line);
+    controller.setSelection(
+      terminal.buffer.createAnchorFromOffset(begin),
+      terminal.buffer.createAnchorFromOffset(end),
+    );
   }
 
   void _refresh() {
