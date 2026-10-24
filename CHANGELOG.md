@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
 
+- Terminal search jump-to-match no longer breaks text selection (anchor ownership).
+- Selection handles stay aligned while scrolling the terminal scrollback.
 
+### Changed
+
+- Copy from the terminal selection toolbar clears the selection and shows a character count.
+- Mouse/tap events to the remote session are paused while a selection is active.
 
 
 

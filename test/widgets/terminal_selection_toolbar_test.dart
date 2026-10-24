@@ -50,6 +50,7 @@ void main() {
 
     expect(clipboardText, isNotNull);
     expect(clipboardText, contains('hello'));
+    expect(controller.selection, isNull);
   });
 
   testWidgets('hides when selection is cleared', (WidgetTester tester) async {

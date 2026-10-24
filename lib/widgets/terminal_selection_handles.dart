@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
 /// Draggable Android-style selection handles for the terminal.
@@ -13,12 +14,14 @@ class TerminalSelectionHandles extends StatefulWidget {
     required this.viewKey,
     required this.terminal,
     required this.controller,
+    this.scrollController,
     super.key,
   });
 
   final GlobalKey<TerminalViewState> viewKey;
   final Terminal terminal;
   final TerminalController controller;
+  final ScrollController? scrollController;
 
   @override
   State<TerminalSelectionHandles> createState() =>
@@ -47,11 +50,14 @@ class _TerminalListenable extends ChangeNotifier {
 
 class _TerminalSelectionHandlesState extends State<TerminalSelectionHandles> {
   late final _TerminalListenable _terminalListenable;
+  ScrollController? _scrollController;
+  VoidCallback? _scrollListener;
 
   @override
   void initState() {
     super.initState();
     _terminalListenable = _TerminalListenable(widget.terminal);
+    _attachScrollController(widget.scrollController);
   }
 
   @override
@@ -61,12 +67,38 @@ class _TerminalSelectionHandlesState extends State<TerminalSelectionHandles> {
       _terminalListenable.dispose();
       _terminalListenable = _TerminalListenable(widget.terminal);
     }
+    if (!identical(oldWidget.scrollController, widget.scrollController)) {
+      _detachScrollController();
+      _attachScrollController(widget.scrollController);
+    }
   }
 
   @override
   void dispose() {
+    _detachScrollController();
     _terminalListenable.dispose();
     super.dispose();
+  }
+
+  void _attachScrollController(ScrollController? controller) {
+    _scrollController = controller;
+    if (controller == null) {
+      return;
+    }
+    _scrollListener = () {
+      if (mounted) {
+        setState(() {});
+      }
+    };
+    controller.addListener(_scrollListener!);
+  }
+
+  void _detachScrollController() {
+    if (_scrollController != null && _scrollListener != null) {
+      _scrollController!.removeListener(_scrollListener!);
+    }
+    _scrollController = null;
+    _scrollListener = null;
   }
 
   /// Pixel position of [cell] within this layer, or null when the terminal
@@ -88,6 +120,10 @@ class _TerminalSelectionHandlesState extends State<TerminalSelectionHandles> {
     final Offset cellTopLeft = render.getOffset(cell) as Offset;
     final Offset global = _localToGlobal(render, cellTopLeft);
     return self.globalToLocal(global);
+  }
+
+  void _onHandlePanStart() {
+    HapticFeedback.selectionClick();
   }
 
   void _moveHandle({
@@ -158,6 +194,7 @@ class _TerminalSelectionHandlesState extends State<TerminalSelectionHandles> {
                 position: base,
                 color: accent,
                 below: true,
+                onPanStart: _onHandlePanStart,
                 onPanUpdate: (DragUpdateDetails d) =>
                     _moveHandle(details: d, isBase: true),
               ),
@@ -165,6 +202,7 @@ class _TerminalSelectionHandlesState extends State<TerminalSelectionHandles> {
                 position: extent,
                 color: accent,
                 below: false,
+                onPanStart: _onHandlePanStart,
                 onPanUpdate: (DragUpdateDetails d) =>
                     _moveHandle(details: d, isBase: false),
               ),
@@ -192,12 +230,14 @@ class _Handle extends StatelessWidget {
     required this.position,
     required this.color,
     required this.below,
+    required this.onPanStart,
     required this.onPanUpdate,
   });
 
   final Offset position;
   final Color color;
   final bool below;
+  final VoidCallback onPanStart;
   final GestureDragUpdateCallback onPanUpdate;
 
   @override
@@ -231,6 +271,7 @@ class _Handle extends StatelessWidget {
           below ? 'selection-handle-base' : 'selection-handle-extent',
         ),
         behavior: HitTestBehavior.translucent,
+        onPanStart: (_) => onPanStart(),
         onPanUpdate: onPanUpdate,
         child: Center(
           child: below

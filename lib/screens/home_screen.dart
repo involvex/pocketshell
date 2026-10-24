@@ -32,6 +32,7 @@ import '../utils/terminal_themes.dart';
 import '../utils/enter_mapping_input_handler.dart';
 import '../utils/terminal_enter_mapping.dart';
 import '../widgets/terminal_selection_handles.dart';
+import '../widgets/terminal_selection_input_guard.dart';
 import '../widgets/terminal_selection_toolbar.dart';
 
 enum AppTab { client, agents, logs }
@@ -549,6 +550,8 @@ class _ClientTabState extends State<ClientTab> {
       <String, TerminalController>{};
   final Map<String, GlobalKey<TerminalViewState>> _terminalViewKeys =
       <String, GlobalKey<TerminalViewState>>{};
+  final Map<String, ScrollController> _scrollControllers =
+      <String, ScrollController>{};
   bool _searchVisible = false;
   final Map<String, EnterMappingInputHandler> _enterHandlers =
       <String, EnterMappingInputHandler>{};
@@ -558,6 +561,9 @@ class _ClientTabState extends State<ClientTab> {
     for (final controller in _controllers.values) {
       controller.dispose();
     }
+    for (final scrollController in _scrollControllers.values) {
+      scrollController.dispose();
+    }
     super.dispose();
   }
 
@@ -565,6 +571,13 @@ class _ClientTabState extends State<ClientTab> {
     return _terminalViewKeys.putIfAbsent(
       sessionId,
       () => GlobalKey<TerminalViewState>(),
+    );
+  }
+
+  ScrollController _scrollControllerFor(String sessionId) {
+    return _scrollControllers.putIfAbsent(
+      sessionId,
+      ScrollController.new,
     );
   }
 
@@ -683,6 +696,13 @@ class _ClientTabState extends State<ClientTab> {
           return true;
         });
         _terminalViewKeys.removeWhere((id, _) => !activeIds.contains(id));
+        _scrollControllers.removeWhere((id, scrollController) {
+          if (activeIds.contains(id)) {
+            return false;
+          }
+          scrollController.dispose();
+          return true;
+        });
 
         final terminalTheme = settings.appTheme == AppTheme.hacker &&
                 settings.terminalColorTheme == TerminalColorTheme.standard
@@ -785,62 +805,70 @@ class _ClientTabState extends State<ClientTab> {
                     settings.sendMouseTaps,
                   );
 
-                  return Container(
-                    color: terminalTheme.background,
-                    child: Column(
-                      children: <Widget>[
-                        TerminalSelectionToolbar(
-                          terminal: active.terminal,
-                          controller: controller,
-                          onPaste: () async {
-                            final data =
-                                await Clipboard.getData(Clipboard.kTextPlain);
-                            final text = data?.text;
-                            if (text == null || text.isEmpty) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Clipboard is empty'),
-                                  ),
-                                );
-                              }
-                              return;
-                            }
-                            ssh.sendString(text);
-                          },
-                        ),
-                        Expanded(
-                          child: Stack(
-                            children: <Widget>[
-                              TerminalView(
-                                key: _viewKeyFor(active.id),
-                                active.terminal,
-                                controller: controller,
-                                padding: const EdgeInsets.all(8),
-                                theme: terminalTheme,
-                                textStyle:
-                                    TerminalStyleBuilder.buildTerminalStyle(
-                                  settings,
-                                ),
-                                autoResize: true,
-                                onSecondaryTapDown: (_, __) {
-                                  active.terminal.keyInput(
-                                    TerminalKey.f10,
-                                    shift: true,
+                  final ScrollController scrollController =
+                      _scrollControllerFor(active.id);
+
+                  return TerminalSelectionInputGuard(
+                    controller: controller,
+                    child: Container(
+                      color: terminalTheme.background,
+                      child: Column(
+                        children: <Widget>[
+                          TerminalSelectionToolbar(
+                            terminal: active.terminal,
+                            controller: controller,
+                            onPaste: () async {
+                              final data =
+                                  await Clipboard.getData(Clipboard.kTextPlain);
+                              final text = data?.text;
+                              if (text == null || text.isEmpty) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Clipboard is empty'),
+                                    ),
                                   );
-                                },
-                              ),
-                              Positioned.fill(
-                                child: TerminalSelectionHandles(
-                                  viewKey: _viewKeyFor(active.id),
-                                  terminal: active.terminal,
-                                  controller: controller,
-                                ),
-                              ),
-                            ],
+                                }
+                                return;
+                              }
+                              ssh.sendString(text);
+                            },
                           ),
-                        ),
-                      ],
+                          Expanded(
+                            child: Stack(
+                              children: <Widget>[
+                                TerminalView(
+                                  key: _viewKeyFor(active.id),
+                                  active.terminal,
+                                  controller: controller,
+                                  scrollController: scrollController,
+                                  padding: const EdgeInsets.all(8),
+                                  theme: terminalTheme,
+                                  textStyle:
+                                      TerminalStyleBuilder.buildTerminalStyle(
+                                    settings,
+                                  ),
+                                  autoResize: true,
+                                  onSecondaryTapDown: (_, __) {
+                                    active.terminal.keyInput(
+                                      TerminalKey.f10,
+                                      shift: true,
+                                    );
+                                  },
+                                ),
+                                Positioned.fill(
+                                  child: TerminalSelectionHandles(
+                                    viewKey: _viewKeyFor(active.id),
+                                    terminal: active.terminal,
+                                    controller: controller,
+                                    scrollController: scrollController,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }),
