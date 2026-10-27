@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:provider/provider.dart';
@@ -17,6 +17,7 @@ import '../widgets/key_manager.dart';
 import '../widgets/keyboard_shortcut_bar.dart';
 import '../widgets/connection_modal.dart';
 import '../widgets/network_discovery.dart';
+import '../widgets/ai_command_overlay.dart';
 import '../widgets/ctrl_button_panel.dart';
 import '../widgets/snippet_button_panel.dart';
 import '../widgets/sftp_browser.dart';
@@ -27,10 +28,12 @@ import '../screens/agents_tab.dart';
 import '../services/share_clone_handler.dart';
 import '../services/share_intent_service.dart';
 import '../services/widget_launch_handler.dart';
+import '../utils/terminal_clipboard.dart';
 import '../utils/terminal_style_builder.dart';
 import '../utils/terminal_themes.dart';
 import '../utils/enter_mapping_input_handler.dart';
 import '../utils/terminal_enter_mapping.dart';
+import '../widgets/terminal_pinch_zoom.dart';
 import '../widgets/terminal_selection_handles.dart';
 import '../widgets/terminal_selection_input_guard.dart';
 import '../widgets/terminal_selection_toolbar.dart';
@@ -443,6 +446,22 @@ class _HomeScreenState extends State<HomeScreen> {
     AppTab.logs,
   ];
 
+  bool _isMobilePlatform() {
+    if (kIsWeb) return false;
+    return Platform.isAndroid || Platform.isIOS;
+  }
+
+  /// Top shortcut chips duplicate the bottom accessory keyboard while a
+  /// Client session is connected on mobile.
+  bool _shouldShowShortcutBar(SSHProvider ssh) {
+    if (_isFullScreen) return false;
+    if (!_isMobilePlatform()) return true;
+    final clientAccessoryVisible = _selectedTab == AppTab.client &&
+        _accessoryVisible &&
+        ssh.sessions.any((s) => s.isConnected);
+    return !clientAccessoryVisible;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer2<SSHProvider, SettingsProvider>(
@@ -501,7 +520,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
               body: Column(
                 children: [
-                  if (!_isFullScreen) const KeyboardShortcutBar(),
+                  // On mobile Client, the bottom CtrlButtonPanel already has
+                  // Tab/arrows/Ctrl keys — hide the top bar to avoid duplicates.
+                  if (_shouldShowShortcutBar(ssh)) const KeyboardShortcutBar(),
                   Expanded(
                     child: IndexedStack(
                       index: _selectedTab.index,
@@ -553,6 +574,7 @@ class _ClientTabState extends State<ClientTab> {
   final Map<String, ScrollController> _scrollControllers =
       <String, ScrollController>{};
   bool _searchVisible = false;
+  bool _aiOverlayVisible = false;
   final Map<String, EnterMappingInputHandler> _enterHandlers =
       <String, EnterMappingInputHandler>{};
 
@@ -617,20 +639,42 @@ class _ClientTabState extends State<ClientTab> {
 
   Widget _buildSessionTabBar(BuildContext context) {
     return Consumer<SSHProvider>(builder: (context, ssh, child) {
+      final ColorScheme colors = Theme.of(context).colorScheme;
       final sessions = ssh.sessions;
       final chips = sessions.map((s) {
         final isActive = ssh.activeSessionId == s.id;
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2.0),
+          padding: const EdgeInsets.only(right: 6),
           child: InputChip(
             selected: isActive,
+            showCheckmark: false,
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            labelPadding: const EdgeInsets.only(left: 2, right: 4),
+            selectedColor: colors.primary.withValues(alpha: 0.22),
+            side: BorderSide(
+              color: isActive ? colors.primary : colors.outlineVariant,
+            ),
             avatar: CircleAvatar(
               radius: 4,
-              backgroundColor: s.isConnected ? Colors.green : Colors.red,
+              backgroundColor:
+                  s.isConnected ? Colors.greenAccent : colors.error,
             ),
-            label: Text('${s.name} (${s.profile.host}:${s.profile.port})'),
+            label: Text(
+              s.name,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                color: isActive ? colors.primary : null,
+              ),
+            ),
             onPressed: () => ssh.switchActiveSession(s.id),
-            deleteIcon: const Icon(Icons.close, size: 16),
+            deleteIcon: Icon(
+              Icons.close,
+              size: 16,
+              color: isActive ? colors.primary : colors.onSurfaceVariant,
+            ),
             onDeleted: () => ssh.removeSession(s.id),
           ),
         );
@@ -638,45 +682,47 @@ class _ClientTabState extends State<ClientTab> {
 
       chips.add(
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4.0),
-          child: GestureDetector(
-            onTap: () => showDialog<void>(
-                context: context, builder: (c) => const ConnectionModal()),
-            child: const Chip(label: Icon(Icons.add)),
+          padding: const EdgeInsets.only(right: 4),
+          child: ActionChip(
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            label: Icon(Icons.add, size: 18, color: colors.primary),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (c) => const ConnectionModal(),
+            ),
           ),
         ),
       );
 
       final hasConnectedSession = ssh.sessions.any((s) => s.isConnected);
 
-      return Row(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(children: chips),
-            ),
-          ),
-          if (hasConnectedSession)
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline),
-              tooltip: 'New connection',
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (c) => const ConnectionModal(),
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(8, 4, 4, 2),
+        child: Row(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: chips),
               ),
             ),
-          if (hasConnectedSession)
-            IconButton(
-              icon: Icon(
-                Icons.search,
-                color: _searchVisible ? Colors.tealAccent : null,
+            if (hasConnectedSession)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  Icons.search,
+                  color: _searchVisible ? colors.primary : null,
+                ),
+                tooltip: _searchVisible
+                    ? 'Close terminal search'
+                    : 'Find in terminal',
+                onPressed: () =>
+                    setState(() => _searchVisible = !_searchVisible),
               ),
-              tooltip:
-                  _searchVisible ? 'Close terminal search' : 'Find in terminal',
-              onPressed: () => setState(() => _searchVisible = !_searchVisible),
-            ),
-        ],
+          ],
+        ),
       );
     });
   }
@@ -727,6 +773,12 @@ class _ClientTabState extends State<ClientTab> {
                     settings.sendMouseTaps,
                   ),
                   onClose: () => setState(() => _searchVisible = false),
+                ),
+              if (_aiOverlayVisible &&
+                  ssh.activeSession != null &&
+                  ssh.activeSession!.isConnected)
+                AiCommandOverlay(
+                  onClose: () => setState(() => _aiOverlayVisible = false),
                 ),
               Expanded(
                 child: Consumer<SSHProvider>(builder: (context, ssh, child) {
@@ -818,10 +870,8 @@ class _ClientTabState extends State<ClientTab> {
                             terminal: active.terminal,
                             controller: controller,
                             onPaste: () async {
-                              final data =
-                                  await Clipboard.getData(Clipboard.kTextPlain);
-                              final text = data?.text;
-                              if (text == null || text.isEmpty) {
+                              final text = await TerminalClipboard.readText();
+                              if (text == null) {
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
@@ -835,36 +885,60 @@ class _ClientTabState extends State<ClientTab> {
                             },
                           ),
                           Expanded(
-                            child: Stack(
-                              children: <Widget>[
-                                TerminalView(
-                                  key: _viewKeyFor(active.id),
-                                  active.terminal,
-                                  controller: controller,
-                                  scrollController: scrollController,
-                                  padding: const EdgeInsets.all(8),
-                                  theme: terminalTheme,
-                                  textStyle:
-                                      TerminalStyleBuilder.buildTerminalStyle(
-                                    settings,
-                                  ),
-                                  autoResize: true,
-                                  onSecondaryTapDown: (_, __) {
-                                    active.terminal.keyInput(
-                                      TerminalKey.f10,
-                                      shift: true,
-                                    );
-                                  },
-                                ),
-                                Positioned.fill(
-                                  child: TerminalSelectionHandles(
-                                    viewKey: _viewKeyFor(active.id),
-                                    terminal: active.terminal,
-                                    controller: controller,
-                                    scrollController: scrollController,
-                                  ),
-                                ),
-                              ],
+                            child: Builder(
+                              builder: (context) {
+                                Widget terminalStack = Stack(
+                                  children: <Widget>[
+                                    TerminalView(
+                                      key: _viewKeyFor(active.id),
+                                      active.terminal,
+                                      controller: controller,
+                                      scrollController: scrollController,
+                                      padding: const EdgeInsets.all(8),
+                                      theme: terminalTheme,
+                                      textStyle: TerminalStyleBuilder
+                                          .buildTerminalStyle(
+                                        settings,
+                                      ),
+                                      autoResize: true,
+                                      onSecondaryTapDown: (_, __) {
+                                        active.terminal.keyInput(
+                                          TerminalKey.f10,
+                                          shift: true,
+                                        );
+                                      },
+                                    ),
+                                    Positioned.fill(
+                                      child: TerminalSelectionHandles(
+                                        viewKey: _viewKeyFor(active.id),
+                                        terminal: active.terminal,
+                                        controller: controller,
+                                        scrollController: scrollController,
+                                      ),
+                                    ),
+                                  ],
+                                );
+
+                                if (settings.terminalPinchToZoom) {
+                                  terminalStack = TerminalPinchZoom(
+                                    fontSize: settings.terminalFontSize,
+                                    minFontSize:
+                                        SettingsProvider.kTerminalFontSizeMin,
+                                    maxFontSize:
+                                        SettingsProvider.kTerminalFontSizeMax,
+                                    onChanged: (size) {
+                                      settings.setTerminalFontSize(
+                                        size,
+                                        persist: false,
+                                      );
+                                    },
+                                    onCommit: settings.setTerminalFontSize,
+                                    child: terminalStack,
+                                  );
+                                }
+
+                                return terminalStack;
+                              },
                             ),
                           ),
                         ],
@@ -882,6 +956,8 @@ class _ClientTabState extends State<ClientTab> {
                   child: _AccessoryArea(
                     theme: Theme.of(context),
                     ssh: ssh,
+                    onAiGenerate: () =>
+                        setState(() => _aiOverlayVisible = true),
                   ),
                 ),
             ],
@@ -895,25 +971,29 @@ class _ClientTabState extends State<ClientTab> {
 /// Renders the snippet + ctrl button panels. The snippet panel collapses to
 /// a single chip when toggled off, letting AnimatedSize shrink the area.
 class _AccessoryArea extends StatelessWidget {
-  const _AccessoryArea({required this.theme, required this.ssh});
+  const _AccessoryArea({
+    required this.theme,
+    required this.ssh,
+    required this.onAiGenerate,
+  });
 
   final ThemeData theme;
   final SSHProvider ssh;
+  final VoidCallback onAiGenerate;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-      child: const Wrap(
+      child: Wrap(
         alignment: WrapAlignment.center,
         spacing: 8,
         runSpacing: 8,
         children: [
-          SnippetButtonPanel(),
-          CtrlButtonPanel(),
+          const SnippetButtonPanel(),
+          CtrlButtonPanel(onAiGenerate: onAiGenerate),
         ],
       ),
     );
   }
 }
-

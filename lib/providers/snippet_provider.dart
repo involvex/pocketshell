@@ -61,6 +61,25 @@ class SnippetProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Moves a snippet within the saved list.
+  ///
+  /// [newIndex] uses Flutter 3.41+ [ReorderableListView.onReorderItem]
+  /// semantics (already adjusted for the removed item).
+  Future<void> reorderSnippets(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 ||
+        oldIndex >= _snippets.length ||
+        newIndex < 0 ||
+        newIndex >= _snippets.length ||
+        oldIndex == newIndex) {
+      return;
+    }
+
+    final snippet = _snippets.removeAt(oldIndex);
+    _snippets.insert(newIndex, snippet);
+    await _saveSnippets();
+    notifyListeners();
+  }
+
   Future<void> resetSnippets() async {
     _snippets = Snippet.defaults;
     await _saveSnippets();

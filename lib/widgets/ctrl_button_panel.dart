@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm/xterm.dart';
 
 import 'package:ssh_app/providers/ssh_provider.dart';
+import 'package:ssh_app/utils/terminal_clipboard.dart';
 
 /// Compact multi-row accessory keyboard for mobile SSH sessions.
 ///
@@ -12,7 +12,10 @@ import 'package:ssh_app/providers/ssh_provider.dart';
 /// to that keypress before auto-releasing. Gboard interop works because
 /// [SSHProvider] applies armed modifiers to the next terminal output.
 class CtrlButtonPanel extends StatelessWidget {
-  const CtrlButtonPanel({super.key});
+  const CtrlButtonPanel({this.onAiGenerate, super.key});
+
+  /// Opens the AI command overlay when the wand control is tapped.
+  final VoidCallback? onAiGenerate;
 
   @override
   Widget build(BuildContext context) {
@@ -27,12 +30,14 @@ class CtrlButtonPanel extends StatelessWidget {
         final bool ctrlLocked = ssh.lockedCtrl;
         final bool altLocked = ssh.lockedAlt;
 
+        final ColorScheme colors = Theme.of(context).colorScheme;
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF16213E),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade700),
+            color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.outlineVariant),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -61,6 +66,13 @@ class CtrlButtonPanel extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
+                    if (onAiGenerate != null)
+                      _IconNavButton(
+                        icon: Icons.auto_awesome,
+                        tooltip: 'Generate command with AI',
+                        color: colors.primary,
+                        onTap: onAiGenerate!,
+                      ),
                     _NavButton(
                       label: 'Esc',
                       onTap: () => _sendKey(
@@ -257,9 +269,8 @@ class CtrlButtonPanel extends StatelessWidget {
     BuildContext context,
     SSHProvider ssh,
   ) async {
-    final data = await Clipboard.getData('text/plain');
-    final text = data?.text;
-    if (text == null || text.isEmpty) {
+    final text = await TerminalClipboard.readText();
+    if (text == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Clipboard is empty')),
@@ -267,8 +278,45 @@ class CtrlButtonPanel extends StatelessWidget {
       }
       return;
     }
-    // Do not trim — trailing newlines/spaces matter for scripts.
     ssh.sendString(text);
+  }
+}
+
+class _IconNavButton extends StatelessWidget {
+  const _IconNavButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.color,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: Colors.grey[800],
+          borderRadius: BorderRadius.circular(6),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 18, color: color ?? Colors.white),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -287,16 +335,18 @@ class _NavButton extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Material(
         color: Colors.grey[800],
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(6),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(6),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            constraints: const BoxConstraints(minHeight: 36),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            alignment: Alignment.center,
             child: Text(
               label,
               style: const TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 fontFamily: 'monospace',
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
@@ -332,16 +382,18 @@ class _ToggleButton extends StatelessWidget {
             : active
                 ? Colors.teal.shade700
                 : Colors.grey[800],
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(6),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(6),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            constraints: const BoxConstraints(minHeight: 36),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            alignment: Alignment.center,
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 12,
                 fontFamily: 'monospace',
                 fontWeight: FontWeight.bold,
                 color: active ? Colors.white : Colors.white70,

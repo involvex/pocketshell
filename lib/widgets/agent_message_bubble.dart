@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:opencode_api/opencode_api.dart';
 
 import '../utils/agent_message_grouping.dart';

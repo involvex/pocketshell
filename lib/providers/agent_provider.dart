@@ -47,23 +47,30 @@ class AgentProvider extends ChangeNotifier {
   }
 
   Future<AgentConnection> connectFromProfile(SSHProfile profile) async {
-    final username =
-        profile.username.isNotEmpty ? profile.username : 'opencode';
     final service = OpenCodeConnectionService(
       baseUrl: profile.agentBaseUrl,
-      username: username,
-      password: profile.password ?? '',
+      username: profile.effectiveAgentUsername,
+      password: profile.effectiveAgentPassword,
+      // LAN OpenCode HTTPS is commonly self-signed.
+      allowInsecureTls: profile.useHttps,
     );
 
     try {
       await service.connect();
-      final sessions = sortSessionsByUpdatedDesc(await service.getSessions());
+      final savedDirectory = await _config.getAgentLastDirectory();
+      final directory = (savedDirectory != null && savedDirectory.isNotEmpty)
+          ? savedDirectory
+          : null;
+      final sessions = sortSessionsByUpdatedDesc(
+        await service.getSessions(directory: directory),
+      );
       final connection = AgentConnection(
         id: const Uuid().v4(),
         profile: profile,
         service: service,
         sessions: sessions,
         isConnected: true,
+        selectedDirectory: directory,
       );
 
       _wireConnection(connection);
@@ -92,8 +99,9 @@ class AgentProvider extends ChangeNotifier {
     final profile = SSHProfile(
       name: name,
       host: Uri.parse(url).host,
-      username: username,
-      password: password,
+      username: 'unused',
+      agentUsername: username,
+      agentPassword: password,
       agentPort: Uri.parse(url).port == 0 ? 5000 : Uri.parse(url).port,
       useHttps: url.startsWith('https'),
     );
@@ -102,21 +110,23 @@ class AgentProvider extends ChangeNotifier {
 
   Future<AgentConnection> connectToLocalDesktop({
     required int port,
+    String username = 'opencode',
     String password = '',
   }) async {
     final profile = SSHProfile(
       name: 'Local Desktop',
       host: '127.0.0.1',
-      username: 'opencode',
-      password: password,
+      username: 'unused',
+      agentUsername: username,
+      agentPassword: password,
       agentPort: port,
     );
 
-    const username = 'opencode';
     final service = OpenCodeConnectionService(
       baseUrl: profile.agentBaseUrl,
-      username: username,
-      password: password,
+      username: profile.effectiveAgentUsername,
+      password: profile.effectiveAgentPassword,
+      allowInsecureTls: profile.useHttps,
     );
 
     try {
@@ -504,15 +514,25 @@ class AgentProvider extends ChangeNotifier {
       return;
     }
 
-    if (type == 'permission.asked') {
+    if (type == 'permission.asked' ||
+        (type.contains('permission') &&
+            !type.contains('reply') &&
+            !type.contains('list') &&
+            !type.contains('saved'))) {
       final connection = _findConnection(connectionId);
       if (connection == null) return;
+      final permissionId =
+          props['permissionID'] as String? ?? props['id'] as String? ?? '';
+      if (permissionId.isEmpty) return;
       _pendingPermission = AgentPermissionRequest(
         connectionId: connectionId,
-        sessionId: props['sessionID'] as String? ?? '',
-        permissionId: props['permissionID'] as String? ?? '',
+        sessionId: props['sessionID'] as String? ??
+            props['sessionId'] as String? ??
+            '',
+        permissionId: permissionId,
         message: props['message'] as String? ??
             props['description'] as String? ??
+            props['action'] as String? ??
             'Permission requested',
         service: connection.service,
       );
@@ -525,7 +545,12 @@ class AgentProvider extends ChangeNotifier {
         type.contains('message')) {
       // ignore: unawaited_futures
       _reloadMessages(connectionId);
-      if (type.startsWith('session.')) {
+      if (type.startsWith('session.') &&
+          (type.contains('create') ||
+              type.contains('update') ||
+              type.contains('remove') ||
+              type.contains('idle') ||
+              type.endsWith('.updated'))) {
         // ignore: unawaited_futures
         refreshSessions(connectionId);
       }

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import 'constants/app_metadata.dart';
@@ -106,6 +106,14 @@ class MyApp extends StatelessWidget {
               darkTheme: settings.appTheme == AppTheme.hacker
                   ? hackerTheme
                   : darkTheme,
+              builder: (context, child) {
+                // Bridge ThemeData/MaterialLocalizations for packages that still
+                // import package:flutter/material.dart (xterm, share_plus, etc.).
+                // ignore: deprecated_member_use
+                return MaterialUiCompatibilityBridge(
+                  child: child ?? const SizedBox.shrink(),
+                );
+              },
               home: const SplashScreen(),
             ),
           );

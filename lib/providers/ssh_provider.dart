@@ -139,9 +139,11 @@ class SSHProvider extends ChangeNotifier {
     var profileData = await _config.getProfiles();
     final migratedProfiles =
         await SecureStorageService.migrateProfilePasswords(profileData);
-    if (!identical(migratedProfiles, profileData)) {
-      await _config.saveProfiles(migratedProfiles);
-      profileData = migratedProfiles;
+    final migratedAgentProfiles =
+        await SecureStorageService.migrateAgentPasswords(migratedProfiles);
+    if (!identical(migratedAgentProfiles, profileData)) {
+      await _config.saveProfiles(migratedAgentProfiles);
+      profileData = migratedAgentProfiles;
     }
 
     profiles = <SSHProfile>[];
@@ -170,10 +172,16 @@ class SSHProvider extends ChangeNotifier {
   Future<SSHProfile> _hydrateProfile(SSHProfile profile) async {
     final securePassword =
         await SecureStorageService.readProfilePassword(profile.id);
-    if (securePassword == null || securePassword.isEmpty) {
-      return profile;
+    final secureAgentPassword =
+        await SecureStorageService.readAgentPassword(profile.id);
+    var hydrated = profile;
+    if (securePassword != null && securePassword.isNotEmpty) {
+      hydrated = hydrated.copyWith(password: securePassword);
     }
-    return profile.copyWith(password: securePassword);
+    if (secureAgentPassword != null && secureAgentPassword.isNotEmpty) {
+      hydrated = hydrated.copyWith(agentPassword: secureAgentPassword);
+    }
+    return hydrated;
   }
 
   Future<void> saveProfile(SSHProfile profile) async {
@@ -188,6 +196,10 @@ class SSHProvider extends ChangeNotifier {
       profile.id,
       profile.password,
     );
+    await SecureStorageService.writeAgentPassword(
+      profile.id,
+      profile.agentPassword,
+    );
     await _config.saveProfiles(profiles.map((e) => e.toJson()).toList());
     await WidgetProfileService.syncProfiles(profiles);
     notifyListeners();
@@ -196,6 +208,7 @@ class SSHProvider extends ChangeNotifier {
   Future<void> deleteProfile(String id) async {
     profiles.removeWhere((p) => p.id == id);
     await SecureStorageService.deleteProfilePassword(id);
+    await SecureStorageService.deleteAgentPassword(id);
     await _config.saveProfiles(profiles.map((e) => e.toJson()).toList());
     await WidgetProfileService.syncProfiles(profiles);
     notifyListeners();
@@ -206,6 +219,10 @@ class SSHProvider extends ChangeNotifier {
     await SecureStorageService.writeProfilePassword(
       profile.id,
       profile.password,
+    );
+    await SecureStorageService.writeAgentPassword(
+      profile.id,
+      profile.agentPassword,
     );
     await _config.saveLastSession(profile.toJson());
     notifyListeners();

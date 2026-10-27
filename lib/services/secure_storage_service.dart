@@ -36,6 +36,21 @@ class SecureStorageService {
     return _impl.deleteProfilePassword(profileId);
   }
 
+  static Future<String?> readAgentPassword(String profileId) async {
+    return _impl.readAgentPassword(profileId);
+  }
+
+  static Future<void> writeAgentPassword(
+    String profileId,
+    String? password,
+  ) async {
+    return _impl.writeAgentPassword(profileId, password);
+  }
+
+  static Future<void> deleteAgentPassword(String profileId) async {
+    return _impl.deleteAgentPassword(profileId);
+  }
+
   static Future<String?> readKeyPassphrase(String keyId) async {
     return _impl.readKeyPassphrase(keyId);
   }
@@ -76,6 +91,13 @@ class SecureStorageService {
     List<Map<String, dynamic>> profiles,
   ) async {
     return _impl.migrateProfilePasswords(profiles);
+  }
+
+  /// Migrates plaintext agent passwords into secure storage.
+  static Future<List<Map<String, dynamic>>> migrateAgentPasswords(
+    List<Map<String, dynamic>> profiles,
+  ) async {
+    return _impl.migrateAgentPasswords(profiles);
   }
 
   /// Migrates plaintext key passphrases into secure storage.

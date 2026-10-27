@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import '../models/snippet.dart';
 import '../providers/snippet_provider.dart';
@@ -94,71 +94,81 @@ class _SnippetConfigScreenState extends State<SnippetConfigScreen> {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(8),
-            itemCount: filteredSnippets.length,
-            itemBuilder: (context, index) {
-              final snippet = filteredSnippets[index];
-              return Card(
-                margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor:
-                        Theme.of(context).colorScheme.secondaryContainer,
-                    child: const Icon(Icons.terminal, size: 20),
-                  ),
-                  title: Text(snippet.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        snippet.content,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontFamily: 'monospace', fontSize: 12),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          snippet.category,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
+          final canReorder = _searchQuery.isEmpty;
+
+          return Column(
+            children: [
+              if (!canReorder)
+                Material(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest
+                      .withValues(alpha: 0.6),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 16),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Clear search to drag and reorder snippets',
+                            style: TextStyle(fontSize: 12),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined),
-                        onPressed: () =>
-                            _showSnippetDialog(context, snippet: snippet),
-                      ),
-                      IconButton(
-                        icon:
-                            const Icon(Icons.delete_outline, color: Colors.red),
-                        onPressed: () =>
-                            _confirmDelete(context, provider, snippet),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              );
-            },
+              Expanded(
+                child: canReorder
+                    ? ReorderableListView.builder(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+                        buildDefaultDragHandles: false,
+                        itemCount: filteredSnippets.length,
+                        onReorderItem: provider.reorderSnippets,
+                        proxyDecorator: _snippetProxyDecorator,
+                        itemBuilder: (context, index) {
+                          return _SnippetTile(
+                            key: ValueKey(filteredSnippets[index].id),
+                            snippet: filteredSnippets[index],
+                            index: index,
+                            showDragHandle: true,
+                            onEdit: () => _showSnippetDialog(
+                              context,
+                              snippet: filteredSnippets[index],
+                            ),
+                            onDelete: () => _confirmDelete(
+                              context,
+                              provider,
+                              filteredSnippets[index],
+                            ),
+                          );
+                        },
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 88),
+                        itemCount: filteredSnippets.length,
+                        itemBuilder: (context, index) {
+                          return _SnippetTile(
+                            key: ValueKey(filteredSnippets[index].id),
+                            snippet: filteredSnippets[index],
+                            index: index,
+                            showDragHandle: false,
+                            onEdit: () => _showSnippetDialog(
+                              context,
+                              snippet: filteredSnippets[index],
+                            ),
+                            onDelete: () => _confirmDelete(
+                              context,
+                              provider,
+                              filteredSnippets[index],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           );
         },
       ),
@@ -167,6 +177,27 @@ class _SnippetConfigScreenState extends State<SnippetConfigScreen> {
         label: const Text('New Snippet'),
         icon: const Icon(Icons.add),
       ),
+    );
+  }
+
+  Widget _snippetProxyDecorator(
+    Widget child,
+    int index,
+    Animation<double> animation,
+  ) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final elevation = Tween<double>(begin: 0, end: 6).evaluate(animation);
+        return Material(
+          elevation: elevation,
+          color: Colors.transparent,
+          shadowColor: Theme.of(context).colorScheme.shadow,
+          borderRadius: BorderRadius.circular(12),
+          child: child,
+        );
+      },
+      child: child,
     );
   }
 
@@ -288,6 +319,91 @@ class _SnippetConfigScreenState extends State<SnippetConfigScreen> {
               const SizedBox(height: 16),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SnippetTile extends StatelessWidget {
+  const _SnippetTile({
+    required this.snippet,
+    required this.index,
+    required this.showDragHandle,
+    required this.onEdit,
+    required this.onDelete,
+    super.key,
+  });
+
+  final Snippet snippet;
+  final int index;
+  final bool showDragHandle;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: theme.colorScheme.secondaryContainer,
+          child: const Icon(Icons.terminal, size: 20),
+        ),
+        title: Text(
+          snippet.name,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              snippet.content,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                snippet.category,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: onEdit,
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              onPressed: onDelete,
+            ),
+            if (showDragHandle)
+              ReorderableDragStartListener(
+                index: index,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Icon(
+                    Icons.drag_handle,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../models/ai_provider.dart';
 import '../models/home_toolbar_action.dart';
@@ -45,6 +45,7 @@ class SettingsProvider extends ChangeNotifier {
   List<KeyboardShortcut> _shortcuts = [];
   bool _isLoaded = false;
   double _terminalFontSize = 12.0;
+  bool _terminalPinchToZoom = false;
   bool _showMobileShortcutBar = false;
   int _defaultAgentPort = 5000;
   TerminalFontFamily _terminalFontFamily = TerminalFontFamily.monospace;
@@ -70,7 +71,11 @@ class SettingsProvider extends ChangeNotifier {
   List<KeyboardShortcut> get shortcuts => _shortcuts;
   bool get isLoaded => _isLoaded;
   double get terminalFontSize => _terminalFontSize;
+  bool get terminalPinchToZoom => _terminalPinchToZoom;
   bool get showMobileShortcutBar => _showMobileShortcutBar;
+
+  static const double kTerminalFontSizeMin = 6;
+  static const double kTerminalFontSizeMax = 24;
   int get defaultAgentPort => _defaultAgentPort;
   TerminalFontFamily get terminalFontFamily => _terminalFontFamily;
   TerminalFontWeight get terminalFontWeight => _terminalFontWeight;
@@ -136,18 +141,32 @@ class SettingsProvider extends ChangeNotifier {
 
     final shortcutsData = settings['shortcuts'] as List<dynamic>?;
     if (shortcutsData != null && shortcutsData.isNotEmpty) {
-      _shortcuts = shortcutsData
-          .map((e) =>
-              KeyboardShortcut.fromJson(Map<String, dynamic>.from(e as Map)))
+      final loaded = shortcutsData
+          .map((e) => KeyboardShortcut.fromJson(
+                Map<String, dynamic>.from(e as Map),
+              ))
           .toList();
+      _shortcuts = _dedupeShortcuts(loaded);
+      if (_shortcuts.length != loaded.length) {
+        // Persist cleanup so duplicate chips do not return next launch.
+        await _saveSetting(
+          'shortcuts',
+          _shortcuts.map((s) => s.toJson()).toList(),
+        );
+      }
     } else {
       _shortcuts = KeyboardShortcut.defaults;
     }
 
     final fontSizeVal = settings['terminalFontSize'];
     if (fontSizeVal != null) {
-      _terminalFontSize = (fontSizeVal as num).toDouble();
+      _terminalFontSize = (fontSizeVal as num).toDouble().clamp(
+            kTerminalFontSizeMin,
+            kTerminalFontSizeMax,
+          );
     }
+
+    _terminalPinchToZoom = settings['terminalPinchToZoom'] as bool? ?? false;
 
     _showMobileShortcutBar =
         settings['showMobileShortcutBar'] as bool? ?? false;
@@ -276,9 +295,27 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setTerminalFontSize(double size) async {
-    _terminalFontSize = size;
-    await _saveSetting('terminalFontSize', size);
+  Future<void> setTerminalFontSize(
+    double size, {
+    bool persist = true,
+  }) async {
+    final clamped = size.clamp(kTerminalFontSizeMin, kTerminalFontSizeMax);
+    if (_terminalFontSize == clamped) {
+      if (persist) {
+        await _saveSetting('terminalFontSize', clamped);
+      }
+      return;
+    }
+    _terminalFontSize = clamped;
+    notifyListeners();
+    if (persist) {
+      await _saveSetting('terminalFontSize', clamped);
+    }
+  }
+
+  Future<void> setTerminalPinchToZoom(bool value) async {
+    _terminalPinchToZoom = value;
+    await _saveSetting('terminalPinchToZoom', value);
     notifyListeners();
   }
 
@@ -420,8 +457,8 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   Future<void> updateShortcuts(List<KeyboardShortcut> shortcuts) async {
-    _shortcuts = shortcuts;
-    await _saveSetting('shortcuts', shortcuts.map((s) => s.toJson()).toList());
+    _shortcuts = _dedupeShortcuts(shortcuts);
+    await _saveSetting('shortcuts', _shortcuts.map((s) => s.toJson()).toList());
     notifyListeners();
   }
 
@@ -429,6 +466,20 @@ class SettingsProvider extends ChangeNotifier {
     _shortcuts = KeyboardShortcut.defaults;
     await _saveSetting('shortcuts', _shortcuts.map((s) => s.toJson()).toList());
     notifyListeners();
+  }
+
+  /// Keeps the first chip for each action+row pair.
+  static List<KeyboardShortcut> _dedupeShortcuts(
+    List<KeyboardShortcut> shortcuts,
+  ) {
+    final seen = <String>{};
+    final result = <KeyboardShortcut>[];
+    for (final shortcut in shortcuts) {
+      final key = '${shortcut.action.name}:${shortcut.row}';
+      if (!seen.add(key)) continue;
+      result.add(shortcut);
+    }
+    return result;
   }
 
   Future<void> _saveSetting(String key, dynamic value) async {

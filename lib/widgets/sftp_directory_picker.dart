@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:dartssh2/dartssh2.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'package:ssh_app/providers/sftp_controller.dart';
 import 'package:ssh_app/utils/remote_fs_sort.dart';

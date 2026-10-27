@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:opencode_api/opencode_api.dart' hide ConfigService, Provider;
 import 'package:provider/provider.dart';
 
@@ -163,7 +163,7 @@ class _OpenCodeConfigSheetState extends State<_OpenCodeConfigSheet> {
     final profile = widget.connection.profile;
     final updated = profile.copyWith(
       agentPort: remote.agentPort ?? profile.agentPort,
-      password: remote.password ?? profile.password,
+      agentPassword: remote.password ?? profile.agentPassword,
     );
     await Provider.of<SSHProvider>(context, listen: false).saveProfile(updated);
 
@@ -378,7 +378,7 @@ Future<void> importOpenCodeConfigViaSsh(BuildContext context) async {
 
   final updated = profile.copyWith(
     agentPort: remote.agentPort ?? profile.agentPort,
-    password: remote.password ?? profile.password,
+    agentPassword: remote.password ?? profile.agentPassword,
   );
   await ssh.saveProfile(updated);
 

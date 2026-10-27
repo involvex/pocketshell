@@ -1,7 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../models/agent_connection.dart';
@@ -26,8 +26,12 @@ class AgentsTab extends StatefulWidget {
 
 class AgentsTabState extends State<AgentsTab> {
   final TextEditingController _manualUrlController = TextEditingController();
+  final TextEditingController _manualUsernameController =
+      TextEditingController(text: 'opencode');
   final TextEditingController _manualPasswordController =
       TextEditingController();
+  final TextEditingController _localUsernameController =
+      TextEditingController(text: 'opencode');
   final TextEditingController _localPasswordController =
       TextEditingController();
   bool _isConnecting = false;
@@ -47,7 +51,9 @@ class AgentsTabState extends State<AgentsTab> {
   @override
   void dispose() {
     _manualUrlController.dispose();
+    _manualUsernameController.dispose();
     _manualPasswordController.dispose();
+    _localUsernameController.dispose();
     _localPasswordController.dispose();
     super.dispose();
   }
@@ -78,9 +84,11 @@ class AgentsTabState extends State<AgentsTab> {
   Future<void> _connectLocalDesktop(int port) async {
     setState(() => _isConnecting = true);
     try {
+      final localUser = _localUsernameController.text.trim();
       await Provider.of<AgentProvider>(context, listen: false)
           .connectToLocalDesktop(
         port: port,
+        username: localUser.isEmpty ? 'opencode' : localUser,
         password: _localPasswordController.text,
       );
     } catch (e) {
@@ -103,8 +111,10 @@ class AgentsTabState extends State<AgentsTab> {
 
     setState(() => _isConnecting = true);
     try {
+      final manualUser = _manualUsernameController.text.trim();
       await Provider.of<AgentProvider>(context, listen: false).connectFromUrl(
         url: url.startsWith('http') ? url : 'http://$url',
+        username: manualUser.isEmpty ? 'opencode' : manualUser,
         password: _manualPasswordController.text,
       );
     } catch (e) {
@@ -204,14 +214,28 @@ class AgentsTabState extends State<AgentsTab> {
           ),
           Padding(
             padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-            child: TextField(
-              controller: _localPasswordController,
-              decoration: const InputDecoration(
-                labelText: 'Local password (optional)',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              obscureText: true,
+            child: Column(
+              children: [
+                TextField(
+                  controller: _localUsernameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Username',
+                    hintText: 'opencode',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _localPasswordController,
+                  decoration: const InputDecoration(
+                    labelText: 'OpenCode serve password',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  obscureText: true,
+                ),
+              ],
             ),
           ),
           const Divider(height: 32),
@@ -254,9 +278,18 @@ class AgentsTabState extends State<AgentsTab> {
         ),
         const SizedBox(height: 8),
         TextField(
+          controller: _manualUsernameController,
+          decoration: const InputDecoration(
+            labelText: 'Username',
+            hintText: 'opencode',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
           controller: _manualPasswordController,
           decoration: const InputDecoration(
-            labelText: 'Password (optional)',
+            labelText: 'OpenCode serve password',
             border: OutlineInputBorder(),
           ),
           obscureText: true,

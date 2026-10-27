@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
@@ -49,15 +49,29 @@ class _TerminalListenable extends ChangeNotifier {
 }
 
 class _TerminalSelectionHandlesState extends State<TerminalSelectionHandles> {
-  late final _TerminalListenable _terminalListenable;
+  late _TerminalListenable _terminalListenable;
   ScrollController? _scrollController;
   VoidCallback? _scrollListener;
+  bool _layoutRetryScheduled = false;
 
   @override
   void initState() {
     super.initState();
     _terminalListenable = _TerminalListenable(widget.terminal);
     _attachScrollController(widget.scrollController);
+  }
+
+  void _scheduleLayoutRetry() {
+    if (_layoutRetryScheduled || !mounted) {
+      return;
+    }
+    _layoutRetryScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _layoutRetryScheduled = false;
+      if (mounted && widget.controller.selection != null) {
+        setState(() {});
+      }
+    });
   }
 
   @override
@@ -178,13 +192,15 @@ class _TerminalSelectionHandlesState extends State<TerminalSelectionHandles> {
           try {
             render = state.renderTerminal;
           } catch (_) {
-            // View not laid out yet — skip this frame.
+            // View not laid out yet — retry next frame.
+            _scheduleLayoutRetry();
             return const SizedBox.shrink();
           }
           final BufferRange normalized = selection.normalized;
           final Offset? base = _toLocal(render, normalized.begin);
           final Offset? extent = _toLocal(render, normalized.end);
           if (base == null || extent == null) {
+            _scheduleLayoutRetry();
             return const SizedBox.shrink();
           }
           final Color accent = Theme.of(context).colorScheme.primary;

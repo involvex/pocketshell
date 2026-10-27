@@ -1,8 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show Rect;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+
 import 'backup_crypto.dart';
 import 'config_service.dart';
 import '../constants/app_metadata.dart';
@@ -47,13 +50,25 @@ class BackupService {
     }
 
     final rawProfiles = await ConfigService.getProfiles();
-    final profiles = includeSecrets
-        ? rawProfiles
-        : rawProfiles.map((p) {
-            final map = Map<String, dynamic>.from(p);
-            map.remove('password');
-            return map;
-          }).toList();
+    final profiles = <Map<String, dynamic>>[];
+    for (final raw in rawProfiles) {
+      final map = Map<String, dynamic>.from(raw);
+      final id = map['id'] as String?;
+      if (includeSecrets && id != null) {
+        final password = await SecureStorageService.readProfilePassword(id);
+        if (password != null && password.isNotEmpty) {
+          map['password'] = password;
+        }
+        final agentPassword = await SecureStorageService.readAgentPassword(id);
+        if (agentPassword != null && agentPassword.isNotEmpty) {
+          map['agentPassword'] = agentPassword;
+        }
+      } else {
+        map.remove('password');
+        map.remove('agentPassword');
+      }
+      profiles.add(map);
+    }
 
     return <String, dynamic>{
       'version': _backupVersion,
@@ -69,37 +84,62 @@ class BackupService {
 
   static Future<void> _shareJson(
     Map<String, dynamic> envelope,
-    String fileName,
-  ) async {
+    String fileName, {
+    Rect? sharePositionOrigin,
+  }) async {
     final jsonString = const JsonEncoder.withIndent('  ').convert(envelope);
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/$fileName');
     await file.writeAsString(jsonString);
 
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path)],
-        subject: '$kAppDisplayName Backup',
-      ),
-    );
-
-    // Cleanup temp file after sharing
-    await file.delete();
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          files: <XFile>[
+            XFile(file.path, mimeType: 'application/json'),
+          ],
+          subject: '$kAppDisplayName Backup',
+          sharePositionOrigin: sharePositionOrigin,
+        ),
+      );
+    } finally {
+      // Delay delete so the share target can finish reading the file.
+      // ignore: unawaited_futures
+      Future<void>.delayed(const Duration(seconds: 60), () async {
+        if (await file.exists()) {
+          await file.delete();
+        }
+      });
+    }
   }
 
   /// Encrypted export (recommended): full payload protected by [password].
-  static Future<void> exportEncrypted(String password) async {
+  static Future<void> exportEncrypted(
+    String password, {
+    Rect? sharePositionOrigin,
+  }) async {
     final payload = await _buildPayload(includeSecrets: true);
     final inner = json.encode(payload);
     final envelope = await BackupCrypto.encrypt(inner, password);
-    await _shareJson(envelope, 'ssh_app_backup.encrypted.json');
+    await _shareJson(
+      envelope,
+      'ssh_app_backup.encrypted.json',
+      sharePositionOrigin: sharePositionOrigin,
+    );
   }
 
   /// Plain export. Secrets are stripped unless [includeSecrets] is explicitly
   /// true (caller must show a risk acknowledgement first).
-  static Future<void> exportPlain({bool includeSecrets = false}) async {
+  static Future<void> exportPlain({
+    bool includeSecrets = false,
+    Rect? sharePositionOrigin,
+  }) async {
     final payload = await _buildPayload(includeSecrets: includeSecrets);
-    await _shareJson(payload, 'ssh_app_backup.json');
+    await _shareJson(
+      payload,
+      'ssh_app_backup.json',
+      sharePositionOrigin: sharePositionOrigin,
+    );
   }
 
   /// Legacy entry point: plain export without secrets (safe default).

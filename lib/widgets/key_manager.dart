@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../models/ssh_key.dart';
 import '../services/ssh_key_generator.dart';
 import '../services/config_service.dart';

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:xterm/xterm.dart';
 
 /// Suspends mouse/tap forwarding to the remote terminal while text is selected.

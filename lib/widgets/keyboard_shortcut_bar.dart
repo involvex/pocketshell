@@ -1,13 +1,12 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm/xterm.dart';
 import '../models/keyboard_shortcut.dart';
 import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
-import 'ai_command_button.dart';
+import '../utils/terminal_clipboard.dart';
 import 'connection_modal.dart';
 import 'profile_manager.dart';
 import 'network_discovery.dart';
@@ -163,7 +162,6 @@ class _ShortcutRow extends StatelessWidget {
                         shortcut: s,
                         isConnected: isConnected,
                       )),
-                  if (isFirstRow && isConnected) const AiCommandButton(),
                   const SizedBox(width: 8),
                 ],
               ),
@@ -391,9 +389,8 @@ class _ShortcutChip extends StatelessWidget {
     BuildContext context,
     SSHProvider ssh,
   ) async {
-    final data = await Clipboard.getData('text/plain');
-    final text = data?.text?.trim();
-    if (text == null || text.isEmpty) {
+    final text = await TerminalClipboard.readText();
+    if (text == null) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Clipboard is empty')),

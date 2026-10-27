@@ -1,7 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -53,38 +53,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
     String confirmLabel = 'Continue',
   }) async {
     final controller = TextEditingController();
-    try {
-      return await showDialog<String>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: Text(title),
-            content: TextField(
-              controller: controller,
-              obscureText: true,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                hintText: 'Minimum 8 characters recommended',
-              ),
+    final String? result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            obscureText: true,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Password',
+              hintText: 'Minimum 8 characters recommended',
             ),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(dialogContext, controller.text),
-                child: Text(confirmLabel),
-              ),
-            ],
-          );
-        },
-      );
-    } finally {
+            onSubmitted: (value) => Navigator.pop(dialogContext, value),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              child: Text(confirmLabel),
+            ),
+          ],
+        );
+      },
+    );
+    // Dispose after the dialog route finishes deactivating its TextField;
+    // disposing in a finally block races InheritedElement teardown and can
+    // trip `_dependents.isEmpty`.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       controller.dispose();
-    }
+    });
+    return result;
   }
 
   Future<bool> _confirmPlainSecretsExport() async {
@@ -175,6 +179,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
     if (choice == null || !mounted) return;
+
+    final Rect? shareOrigin = _shareOriginRect();
+
     setState(() => _isExporting = true);
     try {
       switch (choice) {
@@ -184,24 +191,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
             confirmLabel: 'Export',
           );
           if (password == null || password.isEmpty) return;
-          if (password.length < 8 && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Use at least 8 characters for backup password'),
-                backgroundColor: Colors.orange,
-              ),
-            );
+          if (password.length < 8) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content:
+                      Text('Use at least 8 characters for backup password'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
             return;
           }
-          await BackupService.exportEncrypted(password);
+          if (!mounted) return;
+          await BackupService.exportEncrypted(
+            password,
+            sharePositionOrigin: shareOrigin,
+          );
           break;
         case 'plain-secrets':
           final ok = await _confirmPlainSecretsExport();
           if (!ok) return;
-          await BackupService.exportPlain(includeSecrets: true);
+          if (!mounted) return;
+          await BackupService.exportPlain(
+            includeSecrets: true,
+            sharePositionOrigin: shareOrigin,
+          );
           break;
         default:
-          await BackupService.exportPlain();
+          if (!mounted) return;
+          await BackupService.exportPlain(sharePositionOrigin: shareOrigin);
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -220,6 +239,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } finally {
       if (mounted) setState(() => _isExporting = false);
     }
+  }
+
+  Rect? _shareOriginRect() {
+    final RenderObject? renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) {
+      return null;
+    }
+    return renderObject.localToGlobal(Offset.zero) & renderObject.size;
   }
 
   Future<void> _handleImport() async {
@@ -284,7 +311,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     SwitchListTile(
                       title: const Text('Mobile shortcut bar'),
                       subtitle: const Text(
-                        'Show the configured keyboard shortcut bar on Android/iOS',
+                        'Show top shortcut chips when idle. Hidden while a '
+                        'Client session is connected (bottom accessory keyboard '
+                        'covers those keys).',
                       ),
                       value: settings.showMobileShortcutBar,
                       onChanged: settings.setShowMobileShortcutBar,
