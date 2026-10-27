@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ssh_app/utils/remote_fs_sort.dart';
 import 'package:ssh_app/widgets/sftp/sftp_browser_header.dart';

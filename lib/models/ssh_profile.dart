@@ -14,6 +14,12 @@ class SSHProfile {
   final String? startupCommand;
   final int agentPort;
   final bool useHttps;
+
+  /// When true with [useHttps], agent TLS accepts self-signed certificates.
+  /// Off by default — must be opted in per profile (LAN OpenCode).
+  final bool allowSelfSignedCerts;
+  final String agentUsername;
+  final String? agentPassword;
   final SessionManager sessionManager;
 
   SSHProfile({
@@ -28,11 +34,27 @@ class SSHProfile {
     this.startupCommand,
     this.agentPort = 5000,
     this.useHttps = false,
+    this.allowSelfSignedCerts = false,
+    this.agentUsername = 'opencode',
+    this.agentPassword,
     this.sessionManager = SessionManager.none,
   }) : id = id ?? const Uuid().v4();
 
   String get agentBaseUrl =>
       '${useHttps ? 'https' : 'http'}://$host:$agentPort';
+
+  /// HTTP Basic username for OpenCode serve (never empty).
+  String get effectiveAgentUsername =>
+      agentUsername.isNotEmpty ? agentUsername : 'opencode';
+
+  /// OpenCode serve password, falling back to SSH password when unset.
+  String get effectiveAgentPassword {
+    final agent = agentPassword;
+    if (agent != null && agent.isNotEmpty) {
+      return agent;
+    }
+    return password ?? '';
+  }
 
   SSHProfile copyWith({
     String? id,
@@ -46,6 +68,9 @@ class SSHProfile {
     String? startupCommand,
     int? agentPort,
     bool? useHttps,
+    bool? allowSelfSignedCerts,
+    String? agentUsername,
+    String? agentPassword,
     SessionManager? sessionManager,
   }) {
     return SSHProfile(
@@ -60,6 +85,9 @@ class SSHProfile {
       startupCommand: startupCommand ?? this.startupCommand,
       agentPort: agentPort ?? this.agentPort,
       useHttps: useHttps ?? this.useHttps,
+      allowSelfSignedCerts: allowSelfSignedCerts ?? this.allowSelfSignedCerts,
+      agentUsername: agentUsername ?? this.agentUsername,
+      agentPassword: agentPassword ?? this.agentPassword,
       sessionManager: sessionManager ?? this.sessionManager,
     );
   }
@@ -78,6 +106,9 @@ class SSHProfile {
       'startupCommand': startupCommand,
       'agentPort': agentPort,
       'useHttps': useHttps,
+      'allowSelfSignedCerts': allowSelfSignedCerts,
+      'agentUsername': agentUsername,
+      if (includePassword) 'agentPassword': agentPassword,
       'sessionManager': sessionManager.name,
     };
   }
@@ -95,6 +126,9 @@ class SSHProfile {
       startupCommand: json['startupCommand'] as String?,
       agentPort: json['agentPort'] as int? ?? 5000,
       useHttps: json['useHttps'] as bool? ?? false,
+      allowSelfSignedCerts: json['allowSelfSignedCerts'] as bool? ?? false,
+      agentUsername: json['agentUsername'] as String? ?? 'opencode',
+      agentPassword: json['agentPassword'] as String?,
       sessionManager: SessionManagerX.fromStorage(
         json['sessionManager'] as String?,
       ),

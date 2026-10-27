@@ -138,8 +138,10 @@ lib/
 ## Learned Workspace Facts
 
 - Home navigation uses `AppTab` (Client, Agents, Logs) with an `IndexedStack`.
-- OpenCode integrates through `opencode_api` and `OpenCodeConnectionService`; sessions are scoped by a `directory` query param; `getConfig`/`updateConfig` exposed for server-side config.
-- `SSHProfile` includes `agentPort` (default 5000) and `useHttps`; `agentBaseUrl` builds the OpenCode URL.
+- OpenCode V2 is talked to by `OpenCodeConnectionService` over Dio (`/api/info`, `/api/session`, `/api/event`, etc.) with HTTP Basic auth; responses are mapped into `opencode_api` V1 UI models. Do not call legacy V1 routes like `/global/health` (they can return SPA HTML 200).
+- Sessions are scoped by a `directory` query/`location.directory`; `getConfig` reads `/api/config` documents; arbitrary config PATCH is not available on V2 (experimental shell patch only). Insecure TLS is opt-in via `allowSelfSignedCerts` (never implied by HTTPS alone) and is limited to the profile host.
+- `SSHProfile` includes `agentPort` (default 5000), `useHttps`, `allowSelfSignedCerts`, `agentUsername` (default `opencode`), and `agentPassword` (secure storage); `agentBaseUrl` builds the OpenCode URL. Agent HTTP Basic auth uses `effectiveAgentUsername` / `effectiveAgentPassword` (falls back to SSH password when agent password is unset).
+- Client terminal AI command generation lives in the accessory bar wand + top `AiCommandOverlay` (not the shortcut bar).
 - `AgentProvider` is a `ChangeNotifierProxyProvider` that routes `onLog` to `SSHProvider.addLog`.
 - Agent directory path persists in ConfigService as `agent_last_directory`.
 - Android widgets (`SshQuickConnectWidget`, `AgentQuickConnectWidget`) sync profiles via `WidgetProfileService` and deep-link via `sshapp://widget/ssh|agent?profileId=` through `WidgetLaunchHandler`.
@@ -148,7 +150,7 @@ lib/
 - Agents tab uses master-detail navigation on all screen sizes with `PopScope` and Android predictive back.
 - `AppLifecycleService` and `ConnectionForegroundService` keep SSH/agent sessions alive when Android is backgrounded.
 - Agent chat groups consecutive same-role messages via `groupAgentMessages` in `lib/utils/agent_message_grouping.dart`; rendering uses `AgentMessageBubble` and `AgentMessagePartTile`.
-- `OpenCodeRemoteConfigService` imports Windows host config over SSH from `%USERPROFILE%\.config\opencode\`; Android build uses AGP 9.0.1 with vendored `packages/home_widget`.
+- `OpenCodeRemoteConfigService` imports Windows host config over SSH from `%USERPROFILE%\.config\opencode\`; Android build uses AGP 9.3.1 / Kotlin 2.4.20 with vendored `packages/home_widget`.
 
 ## Cursor Cloud specific instructions
 

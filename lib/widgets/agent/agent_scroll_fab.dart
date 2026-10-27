@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Floating action button for scrolling chat messages.
 class AgentScrollFab extends StatelessWidget {

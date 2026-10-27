@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:xterm/xterm.dart';
 
+import 'package:ssh_app/utils/terminal_clipboard.dart';
 import 'package:ssh_app/utils/terminal_selection.dart';
 
 /// Compact action bar shown while the terminal has an active selection.
@@ -19,10 +19,15 @@ class TerminalSelectionToolbar extends StatelessWidget {
 
   Future<void> _copy(BuildContext context, {required bool clearAfter}) async {
     final String? text = selectedTerminalText(terminal, controller);
-    if (text == null) {
+    if (text == null || text.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nothing to copy')),
+        );
+      }
       return;
     }
-    await Clipboard.setData(ClipboardData(text: text));
+    await TerminalClipboard.copyText(text);
     if (clearAfter) {
       controller.clearSelection();
     }
@@ -60,32 +65,42 @@ class TerminalSelectionToolbar extends StatelessWidget {
           return const SizedBox.shrink();
         }
         final ColorScheme colors = Theme.of(context).colorScheme;
+        final ButtonStyle actionStyle = TextButton.styleFrom(
+          foregroundColor: colors.primary,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          visualDensity: VisualDensity.compact,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        );
         return Material(
-          elevation: 2,
-          color: colors.surfaceContainerHigh,
+          elevation: 1,
+          color: colors.surfaceContainerHighest,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   TextButton.icon(
+                    style: actionStyle,
                     onPressed: () => _copy(context, clearAfter: true),
                     icon: const Icon(Icons.copy, size: 16),
                     label: const Text('Copy'),
                   ),
                   TextButton.icon(
+                    style: actionStyle,
                     onPressed: _selectAll,
                     icon: const Icon(Icons.select_all, size: 16),
                     label: const Text('Select all'),
                   ),
                   TextButton.icon(
+                    style: actionStyle,
                     onPressed: controller.clearSelection,
                     icon: const Icon(Icons.clear, size: 16),
                     label: const Text('Clear'),
                   ),
                   TextButton.icon(
+                    style: actionStyle,
                     onPressed: () async {
                       await onPaste();
                       controller.clearSelection();

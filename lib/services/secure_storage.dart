@@ -34,6 +34,12 @@ abstract interface class SecureStorage {
   Future<String?> readProfilePassword(String profileId);
   Future<void> writeProfilePassword(String profileId, String? password);
   Future<void> deleteProfilePassword(String profileId);
+  Future<String?> readAgentPassword(String profileId);
+  Future<void> writeAgentPassword(String profileId, String? password);
+  Future<void> deleteAgentPassword(String profileId);
+  Future<List<Map<String, dynamic>>> migrateAgentPasswords(
+    List<Map<String, dynamic>> profiles,
+  );
   Future<String?> readKeyPassphrase(String keyId);
   Future<void> writeKeyPassphrase(String keyId, String? passphrase);
   Future<void> deleteKeyPassphrase(String keyId);
@@ -63,11 +69,15 @@ class SecureStorageImpl implements SecureStorage {
   static const String _opencodeZenApiKeyKey = 'opencode_zen_api_key';
   static const String _kiloApiKeyKey = 'kilo_api_key';
   static const String _profilePasswordPrefix = 'ssh_profile_password_';
+  static const String _agentPasswordPrefix = 'ssh_agent_password_';
   static const String _keyPassphrasePrefix = 'ssh_key_passphrase_';
   static const String _privateKeyPrefix = 'ssh_private_key_';
 
   static String _profilePasswordKey(String profileId) =>
       '$_profilePasswordPrefix$profileId';
+
+  static String _agentPasswordKey(String profileId) =>
+      '$_agentPasswordPrefix$profileId';
 
   static String _keyPassphraseKey(String keyId) =>
       '$_keyPassphrasePrefix$keyId';
@@ -155,6 +165,29 @@ class SecureStorageImpl implements SecureStorage {
   }
 
   @override
+  Future<String?> readAgentPassword(String profileId) async {
+    return _safeRead(() => _storage.read(key: _agentPasswordKey(profileId)));
+  }
+
+  @override
+  Future<void> writeAgentPassword(
+    String profileId,
+    String? password,
+  ) async {
+    final key = _agentPasswordKey(profileId);
+    if (password == null || password.isEmpty) {
+      await _safeDelete(() => _storage.delete(key: key));
+      return;
+    }
+    await _safeWrite(() => _storage.write(key: key, value: password));
+  }
+
+  @override
+  Future<void> deleteAgentPassword(String profileId) async {
+    await _safeDelete(() => _storage.delete(key: _agentPasswordKey(profileId)));
+  }
+
+  @override
   Future<String?> readKeyPassphrase(String keyId) async {
     return _safeRead(() => _storage.read(key: _keyPassphraseKey(keyId)));
   }
@@ -216,6 +249,32 @@ class SecureStorageImpl implements SecureStorage {
         // Only clear after successful write (atomicity)
         if (success) {
           map['password'] = null;
+          changed = true;
+        }
+      }
+      out.add(map);
+    }
+    if (changed) {
+      return out;
+    }
+    return List<Map<String, dynamic>>.from(profiles);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> migrateAgentPasswords(
+    List<Map<String, dynamic>> profiles,
+  ) async {
+    var changed = false;
+    final out = <Map<String, dynamic>>[];
+    for (final raw in profiles) {
+      final map = Map<String, dynamic>.from(raw);
+      final id = map['id'] as String?;
+      final password = map['agentPassword'] as String?;
+      if (id != null && password != null && password.isNotEmpty) {
+        final success = await _safeWrite(() =>
+            _storage.write(key: _agentPasswordKey(id), value: password));
+        if (success) {
+          map['agentPassword'] = null;
           changed = true;
         }
       }

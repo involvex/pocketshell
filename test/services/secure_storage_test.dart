@@ -148,6 +148,44 @@ void main() {
       });
     });
 
+    group('agent password operations', () {
+      test('readAgentPassword returns null when not set', () async {
+        final result = await storage.readAgentPassword('profile-1');
+        expect(result, null);
+      });
+
+      test('writeAgentPassword writes value', () async {
+        await storage.writeAgentPassword('profile-1', 'serve-pass');
+        final stored =
+            await fakeStorage.read(key: 'ssh_agent_password_profile-1');
+        expect(stored, 'serve-pass');
+      });
+
+      test('writeAgentPassword deletes when empty', () async {
+        await fakeStorage.write(
+            key: 'ssh_agent_password_profile-1', value: 'existing');
+        await storage.writeAgentPassword('profile-1', '');
+        final stored =
+            await fakeStorage.read(key: 'ssh_agent_password_profile-1');
+        expect(stored, null);
+      });
+
+      test('migrateAgentPasswords moves plaintext into secure storage',
+          () async {
+        final migrated = await storage.migrateAgentPasswords([
+          <String, dynamic>{
+            'id': 'p1',
+            'agentPassword': 'from-json',
+          },
+        ]);
+        expect(migrated.single['agentPassword'], null);
+        expect(
+          await fakeStorage.read(key: 'ssh_agent_password_p1'),
+          'from-json',
+        );
+      });
+    });
+
     group('key passphrase operations', () {
       test('readKeyPassphrase returns null when not set', () async {
         final result = await storage.readKeyPassphrase('key-1');

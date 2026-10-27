@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import '../providers/ssh_provider.dart';
 import '../models/ssh_key.dart';
@@ -118,9 +118,16 @@ class _ProfileManagerState extends State<ProfileManager> {
         TextEditingController(text: profile?.username ?? '');
     final passwordController =
         TextEditingController(text: profile?.password ?? '');
+    final agentUsernameController = TextEditingController(
+      text: profile?.agentUsername ?? 'opencode',
+    );
+    final agentPasswordController = TextEditingController(
+      text: profile?.agentPassword ?? '',
+    );
     final startupCommandController =
         TextEditingController(text: profile?.startupCommand ?? '');
     var useHttps = profile?.useHttps ?? false;
+    var allowSelfSignedCerts = profile?.allowSelfSignedCerts ?? false;
     var sessionManager = profile?.sessionManager ?? SessionManager.none;
     String? selectedKeyId = profile?.privateKey != null &&
             !looksLikePemPrivateKey(profile!.privateKey!)
@@ -173,15 +180,32 @@ class _ProfileManagerState extends State<ProfileManager> {
                         ),
                         const SizedBox(height: 8),
                         TextField(
+                          controller: agentUsernameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Agent username',
+                            hintText: 'opencode',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: agentPasswordController,
+                          decoration: const InputDecoration(
+                            labelText: 'Agent password (OpenCode serve)',
+                          ),
+                          obscureText: true,
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
                           controller: usernameController,
-                          decoration:
-                              const InputDecoration(labelText: 'Username'),
+                          decoration: const InputDecoration(
+                            labelText: 'SSH Username',
+                          ),
                         ),
                         const SizedBox(height: 8),
                         TextField(
                           controller: passwordController,
                           decoration: const InputDecoration(
-                            labelText: 'Password (optional with key)',
+                            labelText: 'SSH Password (optional with key)',
                           ),
                           obscureText: true,
                         ),
@@ -241,9 +265,26 @@ class _ProfileManagerState extends State<ProfileManager> {
                         SwitchListTile(
                           title: const Text('Use HTTPS for Agent'),
                           value: useHttps,
-                          onChanged: (value) =>
-                              setDialogState(() => useHttps = value),
+                          onChanged: (value) => setDialogState(() {
+                            useHttps = value;
+                            if (!value) {
+                              allowSelfSignedCerts = false;
+                            }
+                          }),
                         ),
+                        if (useHttps)
+                          SwitchListTile(
+                            title: const Text('Allow self-signed cert'),
+                            subtitle: const Text(
+                              'Only for trusted LAN OpenCode hosts. '
+                              'Disables certificate verification for this '
+                              'profile host.',
+                            ),
+                            value: allowSelfSignedCerts,
+                            onChanged: (value) => setDialogState(
+                              () => allowSelfSignedCerts = value,
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -258,6 +299,7 @@ class _ProfileManagerState extends State<ProfileManager> {
                             hostController.text.isEmpty) {
                           return;
                         }
+                        final agentUser = agentUsernameController.text.trim();
                         final newProfile = SSHProfile(
                           id: profile?.id,
                           name: nameController.text,
@@ -275,6 +317,13 @@ class _ProfileManagerState extends State<ProfileManager> {
                           agentPort:
                               int.tryParse(agentPortController.text) ?? 5000,
                           useHttps: useHttps,
+                          allowSelfSignedCerts:
+                              useHttps && allowSelfSignedCerts,
+                          agentUsername:
+                              agentUser.isEmpty ? 'opencode' : agentUser,
+                          agentPassword: agentPasswordController.text.isEmpty
+                              ? null
+                              : agentPasswordController.text,
                           sessionManager: sessionManager,
                         );
                         Provider.of<SSHProvider>(context, listen: false)

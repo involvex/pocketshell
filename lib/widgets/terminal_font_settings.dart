@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
@@ -28,10 +28,20 @@ class TerminalFontSettings extends StatelessWidget {
                 ),
                 Slider(
                   value: settings.terminalFontSize,
-                  min: 6,
-                  max: 24,
+                  min: SettingsProvider.kTerminalFontSizeMin,
+                  max: SettingsProvider.kTerminalFontSizeMax,
                   divisions: 18,
                   onChanged: settings.setTerminalFontSize,
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.pinch_outlined),
+                  title: const Text('Pinch to zoom'),
+                  subtitle: const Text(
+                    'Two-finger pinch on the terminal changes font size',
+                  ),
+                  value: settings.terminalPinchToZoom,
+                  onChanged: settings.setTerminalPinchToZoom,
                 ),
                 const SizedBox(height: 8),
                 const Text('Font Family'),
