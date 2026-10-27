@@ -31,7 +31,8 @@ class OpenCodeConnectionService {
   final String username;
   final String password;
 
-  /// When true, accepts self-signed / untrusted TLS certificates (LAN HTTPS).
+  /// When true, accepts untrusted TLS certificates for this connection only.
+  /// Must be explicitly opted in by the caller (never implied by HTTPS alone).
   final bool allowInsecureTls;
 
   late final Dio _dio;
@@ -86,11 +87,18 @@ class OpenCodeConnectionService {
     );
 
     if (allowInsecureTls) {
+      final expectedHost = Uri.tryParse(_normalizedBaseUrl)?.host;
       _dio.httpClientAdapter = IOHttpClientAdapter(
         createHttpClient: () {
           final client = HttpClient();
+          // Opt-in only: accept certs for the configured agent host.
           client.badCertificateCallback =
-              (X509Certificate cert, String host, int port) => true;
+              (X509Certificate cert, String host, int port) {
+            if (expectedHost == null || expectedHost.isEmpty) {
+              return false;
+            }
+            return host.toLowerCase() == expectedHost.toLowerCase();
+          };
           return client;
         },
       );

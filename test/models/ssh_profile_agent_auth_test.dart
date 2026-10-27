@@ -11,6 +11,7 @@ void main() {
       );
       expect(profile.agentUsername, 'opencode');
       expect(profile.effectiveAgentUsername, 'opencode');
+      expect(profile.allowSelfSignedCerts, isFalse);
     });
 
     test('effectiveAgentUsername falls back when empty', () {
@@ -28,10 +29,10 @@ void main() {
         name: 'win',
         host: 'h',
         username: 'Lukas',
-        password: 'ssh-pass',
-        agentPassword: 'serve-pass',
+        password: '<<ssh-fallback>>',
+        agentPassword: '<<agent-override>>',
       );
-      expect(profile.effectiveAgentPassword, 'serve-pass');
+      expect(profile.effectiveAgentPassword, '<<agent-override>>');
     });
 
     test('effectiveAgentPassword falls back to SSH password', () {
@@ -39,9 +40,9 @@ void main() {
         name: 'win',
         host: 'h',
         username: 'Lukas',
-        password: 'ssh-pass',
+        password: '<<ssh-fallback>>',
       );
-      expect(profile.effectiveAgentPassword, 'ssh-pass');
+      expect(profile.effectiveAgentPassword, '<<ssh-fallback>>');
     });
 
     test('toJson omits agentPassword unless includePassword', () {
@@ -50,14 +51,17 @@ void main() {
         host: 'h',
         username: 'Lukas',
         agentUsername: 'opencode',
-        agentPassword: 'secret',
+        agentPassword: '<<agent-override>>',
       );
       expect(profile.toJson().containsKey('agentPassword'), isFalse);
       expect(profile.toJson().containsKey('agentUsername'), isTrue);
-      expect(profile.toJson(includePassword: true)['agentPassword'], 'secret');
+      expect(
+        profile.toJson(includePassword: true)['agentPassword'],
+        '<<agent-override>>',
+      );
     });
 
-    test('fromJson round-trips agentUsername', () {
+    test('fromJson round-trips agentUsername and self-signed flag', () {
       final profile = SSHProfile.fromJson(<String, dynamic>{
         'id': 'id-1',
         'name': 'n',
@@ -65,9 +69,13 @@ void main() {
         'username': 'u',
         'agentUsername': 'custom',
         'agentPort': 4000,
+        'useHttps': true,
+        'allowSelfSignedCerts': true,
       });
       expect(profile.agentUsername, 'custom');
       expect(profile.agentPort, 4000);
+      expect(profile.useHttps, isTrue);
+      expect(profile.allowSelfSignedCerts, isTrue);
     });
   });
 }

@@ -139,8 +139,8 @@ lib/
 
 - Home navigation uses `AppTab` (Client, Agents, Logs) with an `IndexedStack`.
 - OpenCode V2 is talked to by `OpenCodeConnectionService` over Dio (`/api/info`, `/api/session`, `/api/event`, etc.) with HTTP Basic auth; responses are mapped into `opencode_api` V1 UI models. Do not call legacy V1 routes like `/global/health` (they can return SPA HTML 200).
-- Sessions are scoped by a `directory` query/`location.directory`; `getConfig` reads `/api/config` documents; arbitrary config PATCH is not available on V2 (experimental shell patch only). HTTPS profiles set `allowInsecureTls` for common LAN self-signed certs.
-- `SSHProfile` includes `agentPort` (default 5000), `useHttps`, `agentUsername` (default `opencode`), and `agentPassword` (secure storage); `agentBaseUrl` builds the OpenCode URL. Agent HTTP Basic auth uses `effectiveAgentUsername` / `effectiveAgentPassword` (falls back to SSH password when agent password is unset).
+- Sessions are scoped by a `directory` query/`location.directory`; `getConfig` reads `/api/config` documents; arbitrary config PATCH is not available on V2 (experimental shell patch only). Insecure TLS is opt-in via `allowSelfSignedCerts` (never implied by HTTPS alone) and is limited to the profile host.
+- `SSHProfile` includes `agentPort` (default 5000), `useHttps`, `allowSelfSignedCerts`, `agentUsername` (default `opencode`), and `agentPassword` (secure storage); `agentBaseUrl` builds the OpenCode URL. Agent HTTP Basic auth uses `effectiveAgentUsername` / `effectiveAgentPassword` (falls back to SSH password when agent password is unset).
 - Client terminal AI command generation lives in the accessory bar wand + top `AiCommandOverlay` (not the shortcut bar).
 - `AgentProvider` is a `ChangeNotifierProxyProvider` that routes `onLog` to `SSHProvider.addLog`.
 - Agent directory path persists in ConfigService as `agent_last_directory`.

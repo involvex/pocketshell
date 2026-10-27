@@ -127,6 +127,7 @@ class _ProfileManagerState extends State<ProfileManager> {
     final startupCommandController =
         TextEditingController(text: profile?.startupCommand ?? '');
     var useHttps = profile?.useHttps ?? false;
+    var allowSelfSignedCerts = profile?.allowSelfSignedCerts ?? false;
     var sessionManager = profile?.sessionManager ?? SessionManager.none;
     String? selectedKeyId = profile?.privateKey != null &&
             !looksLikePemPrivateKey(profile!.privateKey!)
@@ -264,9 +265,26 @@ class _ProfileManagerState extends State<ProfileManager> {
                         SwitchListTile(
                           title: const Text('Use HTTPS for Agent'),
                           value: useHttps,
-                          onChanged: (value) =>
-                              setDialogState(() => useHttps = value),
+                          onChanged: (value) => setDialogState(() {
+                            useHttps = value;
+                            if (!value) {
+                              allowSelfSignedCerts = false;
+                            }
+                          }),
                         ),
+                        if (useHttps)
+                          SwitchListTile(
+                            title: const Text('Allow self-signed cert'),
+                            subtitle: const Text(
+                              'Only for trusted LAN OpenCode hosts. '
+                              'Disables certificate verification for this '
+                              'profile host.',
+                            ),
+                            value: allowSelfSignedCerts,
+                            onChanged: (value) => setDialogState(
+                              () => allowSelfSignedCerts = value,
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -299,6 +317,8 @@ class _ProfileManagerState extends State<ProfileManager> {
                           agentPort:
                               int.tryParse(agentPortController.text) ?? 5000,
                           useHttps: useHttps,
+                          allowSelfSignedCerts:
+                              useHttps && allowSelfSignedCerts,
                           agentUsername:
                               agentUser.isEmpty ? 'opencode' : agentUser,
                           agentPassword: agentPasswordController.text.isEmpty

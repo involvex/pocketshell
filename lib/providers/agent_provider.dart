@@ -51,8 +51,7 @@ class AgentProvider extends ChangeNotifier {
       baseUrl: profile.agentBaseUrl,
       username: profile.effectiveAgentUsername,
       password: profile.effectiveAgentPassword,
-      // LAN OpenCode HTTPS is commonly self-signed.
-      allowInsecureTls: profile.useHttps,
+      allowInsecureTls: profile.useHttps && profile.allowSelfSignedCerts,
     );
 
     try {
@@ -126,7 +125,7 @@ class AgentProvider extends ChangeNotifier {
       baseUrl: profile.agentBaseUrl,
       username: profile.effectiveAgentUsername,
       password: profile.effectiveAgentPassword,
-      allowInsecureTls: profile.useHttps,
+      allowInsecureTls: profile.useHttps && profile.allowSelfSignedCerts,
     );
 
     try {
