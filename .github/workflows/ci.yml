@@ -26,6 +26,9 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2 # v2.20.0
         with:
+          # Pin with pubspec.lock / local SDK. Floating stable (3.47+)
+          # needs intl ^0.20.3 and material_ui 1.4+ (Dart ^3.13).
+          flutter-version: "3.44.4"
           channel: stable
           cache: true
           cache-key: flutter-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
@@ -63,6 +66,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2 # v2.20.0
         with:
+          flutter-version: "3.44.4"
           channel: stable
           cache: true
           cache-key: flutter-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
