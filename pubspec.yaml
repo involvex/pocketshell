@@ -32,11 +32,11 @@ dependencies:
     path: packages/home_widget
   package_info_plus: ^10.2.2
   url_launcher: ^6.3.2
-  # Pinned by flutter_localizations on Flutter 3.44 (material_ui 1.2).
-  intl: 0.20.2
-  # 1.3 retracted; 1.4+ needs Dart ^3.13 / Flutter >=3.47.
-  # 1.2.0 is the newest usable release on Flutter 3.44 / Dart 3.12.
-  material_ui: 1.2.0
+  # Required by flutter_localizations via material_ui 1.x.
+  intl: ^0.20.3
+  # 1.4+ needs Dart ^3.13 / Flutter >=3.47 (this machine). 0.0.1 was a
+  # re-export stub without MaterialUiCompatibilityBridge.
+  material_ui: ^1.10.0
 
 dev_dependencies:
   flutter_test:

@@ -54,3 +54,5 @@ screenshot.png
 *.log
 .claude/settings.local.json
 .cline
+# Widget Preview related
+.widget_preview/
