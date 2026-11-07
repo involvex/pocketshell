@@ -151,6 +151,7 @@ lib/
 - `AppLifecycleService` and `ConnectionForegroundService` keep SSH/agent sessions alive when Android is backgrounded.
 - Agent chat groups consecutive same-role messages via `groupAgentMessages` in `lib/utils/agent_message_grouping.dart`; rendering uses `AgentMessageBubble` and `AgentMessagePartTile`.
 - `OpenCodeRemoteConfigService` imports Windows host config over SSH from `%USERPROFILE%\.config\opencode\`; Android build uses AGP 9.3.1 / Kotlin 2.4.20 with vendored `packages/home_widget`.
+- CI/release Flutter SDK is pinned in `.github/flutter-version` (currently `3.47.9` / Dart 3.13). Bump that file before merging pub deps that need a newer Dart SDK; Dependabot ignores major `very_good_analysis` bumps for the same reason.
 
 ## Cursor Cloud specific instructions
 

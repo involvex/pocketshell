@@ -1,4 +1,8 @@
 version: 2
+# Pub packages must resolve on the Flutter SDK pinned in
+# .github/flutter-version (currently 3.47.9 / Dart 3.13).
+# Bump that file before merging Dependabot updates that require a
+# newer Dart SDK; CI `flutter pub get` is the gate.
 updates:
   - package-ecosystem: "pub"
     directory: "/"
@@ -10,6 +14,11 @@ updates:
     labels:
       - "dependencies"
       - "pub"
+    # Block major lint bumps that typically jump Dart SDK floors
+    # ahead of the CI Flutter pin. Revisit after the next Flutter bump.
+    ignore:
+      - dependency-name: "very_good_analysis"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "gradle"
     directory: "/android"

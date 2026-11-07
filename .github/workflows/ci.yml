@@ -16,6 +16,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7 # v7.0.1
 
+      - name: Read Flutter version
+        id: flutter-ver
+        run: echo "version=$(tr -d '[:space:]' < .github/flutter-version)" >> "$GITHUB_OUTPUT"
+
       - name: Setup Java
         uses: actions/setup-java@v6 # v4.5.0
         with:
@@ -26,12 +30,24 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2 # v2.20.0
         with:
-          # Pin with pubspec.lock / local SDK. Floating stable (3.47+)
-          # needs intl ^0.20.3 and material_ui 1.4+ (Dart ^3.13).
-          flutter-version: "3.44.4"
+          # Single source of truth: .github/flutter-version (keep in sync
+          # with local SDK / pubspec.lock Dart constraints).
+          flutter-version: ${{ steps.flutter-ver.outputs.version }}
           channel: stable
           cache: true
-          cache-key: flutter-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+          cache-key: flutter-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '.github/flutter-version') }}
+
+      - name: Confirm Flutter pin
+        run: |
+          expected="${{ steps.flutter-ver.outputs.version }}"
+          actual="$(flutter --version | sed -n 's/^Flutter \([^ ]*\).*/\1/p')"
+          echo "Pinned Flutter: $expected"
+          echo "Installed Flutter: $actual"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::Flutter $actual does not match .github/flutter-version ($expected)"
+            exit 1
+          fi
+          dart --version
 
       - name: Install dependencies
         run: flutter pub get
@@ -56,6 +72,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7 # v7.0.1
 
+      - name: Read Flutter version
+        id: flutter-ver
+        run: echo "version=$(tr -d '[:space:]' < .github/flutter-version)" >> "$GITHUB_OUTPUT"
+
       - name: Setup Java
         uses: actions/setup-java@v6 # v4.5.0
         with:
@@ -66,10 +86,10 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2 # v2.20.0
         with:
-          flutter-version: "3.44.4"
+          flutter-version: ${{ steps.flutter-ver.outputs.version }}
           channel: stable
           cache: true
-          cache-key: flutter-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+          cache-key: flutter-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '.github/flutter-version') }}
 
       - name: Install dependencies
         run: flutter pub get
