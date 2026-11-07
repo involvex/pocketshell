@@ -19,7 +19,7 @@ dependencies:
   shared_preferences: ^2.5.5
   flutter_native_splash: ^2.3.6
   pointycastle: ^4.0.0
-  crypto: ^3.0.3
+  crypto: ^3.0.8
   cryptography: ^2.9.0
   uuid: ^4.3.3
   share_plus: ^13.3.1
