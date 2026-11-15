@@ -4,6 +4,7 @@ import 'package:xterm/xterm.dart';
 
 import 'package:ssh_app/providers/ssh_provider.dart';
 import 'package:ssh_app/utils/terminal_clipboard.dart';
+import 'package:ssh_app/utils/terminal_selection.dart';
 
 /// Compact multi-row accessory keyboard for mobile SSH sessions.
 ///
@@ -12,10 +13,21 @@ import 'package:ssh_app/utils/terminal_clipboard.dart';
 /// to that keypress before auto-releasing. Gboard interop works because
 /// [SSHProvider] applies armed modifiers to the next terminal output.
 class CtrlButtonPanel extends StatelessWidget {
-  const CtrlButtonPanel({this.onAiGenerate, super.key});
+  const CtrlButtonPanel({
+    this.onAiGenerate,
+    this.terminal,
+    this.controller,
+    super.key,
+  });
 
   /// Opens the AI command overlay when the wand control is tapped.
   final VoidCallback? onAiGenerate;
+
+  /// Active session terminal used for selection copy.
+  final Terminal? terminal;
+
+  /// Selection controller for the active terminal session.
+  final TerminalController? controller;
 
   @override
   Widget build(BuildContext context) {
@@ -56,8 +68,8 @@ class CtrlButtonPanel extends StatelessWidget {
                       fontSize: 11,
                       fontFamily: 'monospace',
                       color: ctrlLocked || altLocked
-                          ? Colors.orangeAccent
-                          : Colors.tealAccent,
+                          ? colors.tertiary
+                          : colors.primary,
                     ),
                   ),
                 ),
@@ -203,6 +215,10 @@ class CtrlButtonPanel extends StatelessWidget {
                       onTap: () => _sendFixedCtrl(ssh, 12),
                     ),
                     _NavButton(
+                      label: 'Copy',
+                      onTap: () => _copySelection(context, terminal, controller),
+                    ),
+                    _NavButton(
                       label: 'Paste',
                       onTap: () => _pasteFromClipboard(context, ssh),
                     ),
@@ -280,6 +296,49 @@ class CtrlButtonPanel extends StatelessWidget {
     }
     ssh.sendString(text);
   }
+
+  static Future<void> _copySelection(
+    BuildContext context,
+    Terminal? terminal,
+    TerminalController? controller,
+  ) async {
+    if (terminal == null || controller == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nothing to copy')),
+        );
+      }
+      return;
+    }
+    final String? text = selectedTerminalText(terminal, controller);
+    if (text == null || text.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nothing to copy')),
+        );
+      }
+      return;
+    }
+    final String sanitized = TerminalClipboard.sanitize(text);
+    final bool ok = await TerminalClipboard.copyText(sanitized);
+    if (!ok) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not copy to clipboard')),
+        );
+      }
+      return;
+    }
+    controller.clearSelection();
+    if (context.mounted) {
+      final int chars = sanitized.length;
+      final String label =
+          chars == 1 ? 'Copied 1 character' : 'Copied $chars characters';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(label)),
+      );
+    }
+  }
 }
 
 class _IconNavButton extends StatelessWidget {
@@ -297,12 +356,13 @@ class _IconNavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Tooltip(
         message: tooltip,
         child: Material(
-          color: Colors.grey[800],
+          color: colors.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(6),
           child: InkWell(
             onTap: onTap,
@@ -311,7 +371,11 @@ class _IconNavButton extends StatelessWidget {
               constraints: const BoxConstraints(minHeight: 36, minWidth: 36),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               alignment: Alignment.center,
-              child: Icon(icon, size: 18, color: color ?? Colors.white),
+              child: Icon(
+                icon,
+                size: 18,
+                color: color ?? colors.onSurface,
+              ),
             ),
           ),
         ),
@@ -331,10 +395,11 @@ class _NavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Material(
-        color: Colors.grey[800],
+        color: colors.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(6),
         child: InkWell(
           onTap: onTap,
@@ -345,11 +410,11 @@ class _NavButton extends StatelessWidget {
             alignment: Alignment.center,
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontFamily: 'monospace',
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: colors.onSurface,
               ),
             ),
           ),
@@ -374,14 +439,21 @@ class _ToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final Color background = locked
+        ? colors.tertiaryContainer
+        : active
+            ? colors.primaryContainer
+            : colors.surfaceContainerHigh;
+    final Color foreground = locked
+        ? colors.onTertiaryContainer
+        : active
+            ? colors.onPrimaryContainer
+            : colors.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Material(
-        color: locked
-            ? Colors.orange.shade800
-            : active
-                ? Colors.teal.shade700
-                : Colors.grey[800],
+        color: background,
         borderRadius: BorderRadius.circular(6),
         child: InkWell(
           onTap: onTap,
@@ -396,7 +468,7 @@ class _ToggleButton extends StatelessWidget {
                 fontSize: 12,
                 fontFamily: 'monospace',
                 fontWeight: FontWeight.bold,
-                color: active ? Colors.white : Colors.white70,
+                color: foreground,
               ),
             ),
           ),

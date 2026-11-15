@@ -2,6 +2,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
+import 'package:ssh_app/utils/terminal_selection_range.dart';
+
 /// Draggable Android-style selection handles for the terminal.
 ///
 /// xterm paints the selection highlight but offers no touch handles, so a
@@ -9,6 +11,9 @@ import 'package:xterm/xterm.dart';
 /// sits on top of the [TerminalView] (identified by [viewKey]) and renders
 /// a start/end handle that can be dragged to resize the selection in cell
 /// units via [TerminalController.setSelection].
+///
+/// Extent positioning uses exclusive-end semantics (see
+/// [extentHandleCell] / [moveSelectionHandle]).
 class TerminalSelectionHandles extends StatefulWidget {
   const TerminalSelectionHandles({
     required this.viewKey,
@@ -155,18 +160,13 @@ class _TerminalSelectionHandlesState extends State<TerminalSelectionHandles> {
     if (current == null) {
       return;
     }
-    final BufferRange normalized = current.normalized;
-    if (isBase) {
-      widget.controller.setSelection(
-        widget.terminal.buffer.createAnchorFromOffset(cell),
-        widget.terminal.buffer.createAnchorFromOffset(normalized.end),
-      );
-    } else {
-      widget.controller.setSelection(
-        widget.terminal.buffer.createAnchorFromOffset(normalized.begin),
-        widget.terminal.buffer.createAnchorFromOffset(cell),
-      );
-    }
+    moveSelectionHandle(
+      terminal: widget.terminal,
+      controller: widget.controller,
+      current: current,
+      finger: cell,
+      isBase: isBase,
+    );
   }
 
   @override
@@ -197,27 +197,35 @@ class _TerminalSelectionHandlesState extends State<TerminalSelectionHandles> {
             return const SizedBox.shrink();
           }
           final BufferRange normalized = selection.normalized;
-          final Offset? base = _toLocal(render, normalized.begin);
-          final Offset? extent = _toLocal(render, normalized.end);
-          if (base == null || extent == null) {
+          final Offset? baseTop =
+              _toLocal(render, baseHandleCell(normalized));
+          final Offset? extentTop =
+              _toLocal(render, extentHandleCell(normalized));
+          if (baseTop == null || extentTop == null) {
             _scheduleLayoutRetry();
             return const SizedBox.shrink();
           }
+          // Anchor handles to the bottom of the cell like Android TextField.
+          final double lineHeight = _lineHeight(render);
+          final Offset base = Offset(baseTop.dx, baseTop.dy + lineHeight);
+          final Offset extent =
+              Offset(extentTop.dx, extentTop.dy + lineHeight);
           final Color accent = Theme.of(context).colorScheme.primary;
           return Stack(
             children: <Widget>[
-              _Handle(
+              _AndroidHandle(
                 position: base,
                 color: accent,
-                below: true,
+                // Mirrored teardrop on the start edge (Android left handle).
+                mirrored: true,
                 onPanStart: _onHandlePanStart,
                 onPanUpdate: (DragUpdateDetails d) =>
                     _moveHandle(details: d, isBase: true),
               ),
-              _Handle(
+              _AndroidHandle(
                 position: extent,
                 color: accent,
-                below: false,
+                mirrored: false,
                 onPanStart: _onHandlePanStart,
                 onPanUpdate: (DragUpdateDetails d) =>
                     _moveHandle(details: d, isBase: false),
@@ -241,66 +249,96 @@ Offset _globalToLocal(dynamic render, Offset point) =>
 CellOffset _cellAt(dynamic render, Offset point) =>
     render.getCellOffset(point) as CellOffset;
 
-class _Handle extends StatelessWidget {
-  const _Handle({
+double _lineHeight(dynamic render) {
+  try {
+    return (render.lineHeight as num).toDouble();
+  } on Object {
+    try {
+      return (render.cellSize as Size).height;
+    } on Object {
+      return 16;
+    }
+  }
+}
+
+/// Material-style teardrop handle hanging below the selection baseline.
+class _AndroidHandle extends StatelessWidget {
+  const _AndroidHandle({
     required this.position,
     required this.color,
-    required this.below,
+    required this.mirrored,
     required this.onPanStart,
     required this.onPanUpdate,
   });
 
   final Offset position;
   final Color color;
-  final bool below;
+  final bool mirrored;
   final VoidCallback onPanStart;
   final GestureDragUpdateCallback onPanUpdate;
 
+  static const double _size = 22;
+  static const double _touchTarget = 48;
+
   @override
   Widget build(BuildContext context) {
-    const double dotSize = 16;
-    const double stemHeight = 28;
-    const double stemWidth = 3;
-    const double touchTarget = 44;
-
-    final Widget dot = Container(
-      width: dotSize,
-      height: dotSize,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    final Widget handle = CustomPaint(
+      size: const Size(_size, _size),
+      painter: _TextSelectionHandlePainter(color: color),
     );
-    final Widget stem =
-        Container(width: stemWidth, height: stemHeight, color: color);
 
-    // Anchor the dot center on the cell position.
-    final double left = position.dx - touchTarget / 2;
-    final double top = below
-        ? position.dy - dotSize / 2
-        : position.dy - stemHeight - dotSize + dotSize / 2;
+    // Android: both handles sit under the line; start is mirrored.
+    final Widget oriented = mirrored
+        ? Transform.flip(flipX: true, child: handle)
+        : handle;
+
+    final double left = mirrored
+        ? position.dx - _touchTarget + _size / 2
+        : position.dx - _size / 2;
+    final double top = position.dy - 2;
 
     return Positioned(
       left: left,
       top: top,
-      width: touchTarget,
-      height: dotSize + stemHeight,
+      width: _touchTarget,
+      height: _touchTarget,
       child: GestureDetector(
         key: ValueKey<String>(
-          below ? 'selection-handle-base' : 'selection-handle-extent',
+          mirrored ? 'selection-handle-base' : 'selection-handle-extent',
         ),
         behavior: HitTestBehavior.translucent,
         onPanStart: (_) => onPanStart(),
         onPanUpdate: onPanUpdate,
-        child: Center(
-          child: below
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[dot, stem],
-                )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[stem, dot],
-                ),
+        child: Align(
+          alignment: mirrored ? Alignment.topRight : Alignment.topLeft,
+          child: oriented,
         ),
       ),
     );
+  }
+}
+
+/// Matches Flutter Material text-selection handle geometry (teardrop).
+class _TextSelectionHandlePainter extends CustomPainter {
+  const _TextSelectionHandlePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()..color = color;
+    final double radius = size.width / 2;
+    canvas.drawCircle(Offset(radius, radius), radius, paint);
+    final Path path = Path()
+      ..moveTo(0, radius)
+      ..lineTo(radius, 0)
+      ..lineTo(radius * 2, radius)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_TextSelectionHandlePainter oldDelegate) {
+    return color != oldDelegate.color;
   }
 }

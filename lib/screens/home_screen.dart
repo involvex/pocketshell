@@ -36,6 +36,7 @@ import '../utils/terminal_enter_mapping.dart';
 import '../widgets/terminal_pinch_zoom.dart';
 import '../widgets/terminal_selection_handles.dart';
 import '../widgets/terminal_selection_input_guard.dart';
+import '../widgets/terminal_selection_shield.dart';
 import '../widgets/terminal_selection_toolbar.dart';
 
 enum AppTab { client, agents, logs }
@@ -860,88 +861,95 @@ class _ClientTabState extends State<ClientTab> {
                   final ScrollController scrollController =
                       _scrollControllerFor(active.id);
 
+                  Future<void> pasteFromClipboard() async {
+                    final text = await TerminalClipboard.readText();
+                    if (text == null) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Clipboard is empty'),
+                          ),
+                        );
+                      }
+                      return;
+                    }
+                    ssh.sendString(text);
+                  }
+
                   return TerminalSelectionInputGuard(
                     controller: controller,
                     child: Container(
                       color: terminalTheme.background,
-                      child: Column(
-                        children: <Widget>[
-                          TerminalSelectionToolbar(
-                            terminal: active.terminal,
-                            controller: controller,
-                            onPaste: () async {
-                              final text = await TerminalClipboard.readText();
-                              if (text == null) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Clipboard is empty'),
-                                    ),
+                      child: Builder(
+                        builder: (context) {
+                          final GlobalKey<TerminalViewState> viewKey =
+                              _viewKeyFor(active.id);
+                          Widget terminalStack = Stack(
+                            children: <Widget>[
+                              TerminalView(
+                                key: viewKey,
+                                active.terminal,
+                                controller: controller,
+                                scrollController: scrollController,
+                                padding: const EdgeInsets.all(8),
+                                theme: terminalTheme,
+                                textStyle:
+                                    TerminalStyleBuilder.buildTerminalStyle(
+                                  settings,
+                                ),
+                                autoResize: true,
+                                onSecondaryTapDown: (_, __) {
+                                  active.terminal.keyInput(
+                                    TerminalKey.f10,
+                                    shift: true,
                                   );
-                                }
-                                return;
-                              }
-                              ssh.sendString(text);
-                            },
-                          ),
-                          Expanded(
-                            child: Builder(
-                              builder: (context) {
-                                Widget terminalStack = Stack(
-                                  children: <Widget>[
-                                    TerminalView(
-                                      key: _viewKeyFor(active.id),
-                                      active.terminal,
-                                      controller: controller,
-                                      scrollController: scrollController,
-                                      padding: const EdgeInsets.all(8),
-                                      theme: terminalTheme,
-                                      textStyle: TerminalStyleBuilder
-                                          .buildTerminalStyle(
-                                        settings,
-                                      ),
-                                      autoResize: true,
-                                      onSecondaryTapDown: (_, __) {
-                                        active.terminal.keyInput(
-                                          TerminalKey.f10,
-                                          shift: true,
-                                        );
-                                      },
-                                    ),
-                                    Positioned.fill(
-                                      child: TerminalSelectionHandles(
-                                        viewKey: _viewKeyFor(active.id),
-                                        terminal: active.terminal,
-                                        controller: controller,
-                                        scrollController: scrollController,
-                                      ),
-                                    ),
-                                  ],
+                                },
+                              ),
+                              TerminalSelectionShield(
+                                viewKey: viewKey,
+                                terminal: active.terminal,
+                                controller: controller,
+                              ),
+                              Positioned.fill(
+                                child: TerminalSelectionHandles(
+                                  viewKey: viewKey,
+                                  terminal: active.terminal,
+                                  controller: controller,
+                                  scrollController: scrollController,
+                                ),
+                              ),
+                              Positioned.fill(
+                                child: TerminalSelectionToolbar(
+                                  viewKey: viewKey,
+                                  terminal: active.terminal,
+                                  controller: controller,
+                                  scrollController: scrollController,
+                                  onPaste: pasteFromClipboard,
+                                ),
+                              ),
+                            ],
+                          );
+
+                          if (settings.terminalPinchToZoom) {
+                            terminalStack = TerminalPinchZoom(
+                              fontSize: settings.terminalFontSize,
+                              minFontSize:
+                                  SettingsProvider.kTerminalFontSizeMin,
+                              maxFontSize:
+                                  SettingsProvider.kTerminalFontSizeMax,
+                              onChanged: (size) {
+                                settings.setTerminalFontSize(
+                                  size,
+                                  persist: false,
                                 );
-
-                                if (settings.terminalPinchToZoom) {
-                                  terminalStack = TerminalPinchZoom(
-                                    fontSize: settings.terminalFontSize,
-                                    minFontSize:
-                                        SettingsProvider.kTerminalFontSizeMin,
-                                    maxFontSize:
-                                        SettingsProvider.kTerminalFontSizeMax,
-                                    onChanged: (size) {
-                                      settings.setTerminalFontSize(
-                                        size,
-                                        persist: false,
-                                      );
-                                    },
-                                    onCommit: settings.setTerminalFontSize,
-                                    child: terminalStack,
-                                  );
-                                }
-
-                                return terminalStack;
                               },
-                            ),
-                          ),
-                        ],
+                              onCommit: settings.setTerminalFontSize,
+                              child: terminalStack,
+                            );
+                          }
+
+                          return terminalStack;
+                        },
                       ),
                     ),
                   );
@@ -956,6 +964,13 @@ class _ClientTabState extends State<ClientTab> {
                   child: _AccessoryArea(
                     theme: Theme.of(context),
                     ssh: ssh,
+                    terminal: ssh.activeSession?.terminal,
+                    controller: ssh.activeSessionId == null
+                        ? null
+                        : _controllerFor(
+                            ssh.activeSessionId!,
+                            settings.sendMouseTaps,
+                          ),
                     onAiGenerate: () =>
                         setState(() => _aiOverlayVisible = true),
                   ),
@@ -975,11 +990,15 @@ class _AccessoryArea extends StatelessWidget {
     required this.theme,
     required this.ssh,
     required this.onAiGenerate,
+    this.terminal,
+    this.controller,
   });
 
   final ThemeData theme;
   final SSHProvider ssh;
   final VoidCallback onAiGenerate;
+  final Terminal? terminal;
+  final TerminalController? controller;
 
   @override
   Widget build(BuildContext context) {
@@ -991,7 +1010,11 @@ class _AccessoryArea extends StatelessWidget {
         runSpacing: 8,
         children: [
           const SnippetButtonPanel(),
-          CtrlButtonPanel(onAiGenerate: onAiGenerate),
+          CtrlButtonPanel(
+            onAiGenerate: onAiGenerate,
+            terminal: terminal,
+            controller: controller,
+          ),
         ],
       ),
     );

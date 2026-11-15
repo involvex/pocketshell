@@ -186,6 +186,7 @@ class _TerminalSearchBarState extends State<TerminalSearchBar> {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
     final String counter = _session.query.isEmpty
         ? ''
         : _session.hasResults
@@ -194,9 +195,9 @@ class _TerminalSearchBarState extends State<TerminalSearchBar> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF16213E),
+        color: colors.surfaceContainerHighest,
         border: Border(
-          bottom: BorderSide(color: Colors.grey.shade700),
+          bottom: BorderSide(color: colors.outlineVariant),
         ),
       ),
       child: Row(
@@ -205,12 +206,17 @@ class _TerminalSearchBarState extends State<TerminalSearchBar> {
             child: TextField(
               controller: _queryController,
               autofocus: true,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Find in terminal',
                 isDense: true,
                 border: InputBorder.none,
+                hintStyle: TextStyle(color: colors.onSurfaceVariant),
               ),
-              style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+              style: TextStyle(
+                fontSize: 13,
+                fontFamily: 'monospace',
+                color: colors.onSurface,
+              ),
               onChanged: (_) => _runSearch(),
               onSubmitted: (_) => setState(_session.next),
             ),
@@ -220,21 +226,26 @@ class _TerminalSearchBarState extends State<TerminalSearchBar> {
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
                 counter,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontFamily: 'monospace',
-                  color: Colors.white70,
+                  color: colors.onSurfaceVariant,
                 ),
               ),
             ),
           IconButton(
-            icon: const Text(
+            icon: Text(
               'Aa',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: _caseSensitive
+                    ? colors.primary
+                    : colors.onSurfaceVariant,
+              ),
             ),
             tooltip:
                 _caseSensitive ? 'Case sensitive: on' : 'Case sensitive: off',
-            color: _caseSensitive ? Colors.tealAccent : Colors.white70,
             onPressed: () {
               setState(() {
                 _caseSensitive = !_caseSensitive;
