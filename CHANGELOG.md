@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [1.3.0] - 2026-11-15
+
+### Changed
+
+- SFTP queue, permissions, checksums; agent attachments, diff revert, usage footer
 ### Added
 
 - SFTP transfer queue with cancel-current / clear-queue and download resume.
