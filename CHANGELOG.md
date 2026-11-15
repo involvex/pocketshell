@@ -11,13 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Terminal search jump-to-match no longer breaks text selection (anchor ownership).
 - Selection handles stay aligned while scrolling the terminal scrollback.
+- Agents chat no longer shows a duplicate prompt input bar.
 
 ### Changed
 
 - Copy from the terminal selection toolbar clears the selection and shows a character count.
 - Mouse/tap events to the remote session are paused while a selection is active.
-
-
+- README and feature docs updated for PocketShell / Agents / SFTP; removed unused `flutter_pty` dependency.
 
 ## [1.2.1] - 2026-10-13
 

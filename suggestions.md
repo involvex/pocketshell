@@ -14,7 +14,7 @@ This file lists implementable features ordered by value. Each item notes the pro
 
 ## 1. Security (P0 — do first)
 
-### 1.1 Host-key verification with known_hosts (P0, M)
+### 1.1 Host-key verification with known_hosts (P0, M) — **SHIPPED**
 Problem: no `known_hosts` handling found in `lib/` (`SSHProvider` connects without pinning/checking host keys). Silent trust-on-every-connect exposes users to MITM.
 Proposal:
 - Store per-host key fingerprint on first connect, show full fingerprint + "Trust / Reject" dialog.
@@ -29,7 +29,7 @@ Proposal:
 - Lock overlays `HomeScreen`; `SSHProvider` sessions stay alive in background but terminal/SFTP content is hidden until unlock.
 - Add "Lock now" toolbar action.
 
-### 1.3 Encrypted backup with password (P0, M)
+### 1.3 Encrypted backup with password (P0, M) — **SHIPPED**
 Problem: `BackupService.export()` writes profiles, private keys, and passphrases as plain JSON to a temp file + system share. Any app with share access can read secrets.
 Proposal:
 - Add `Encrypted (recommended)` export: AES-GCM via `cryptography` package, password-based key (Argon2id or PBKDF2, 600k iterations), wrong-password error without leaking metadata.
@@ -49,7 +49,7 @@ Proposal:
 - Handle `dartssh2` keyboard-interactive prompts with a secure dialog (no echo, per-prompt labels).
 - Support OpenSSH certificates (`*-cert.pub`) alongside raw keys; show expiry and principals in key detail.
 
-### 1.6 Session idle timeout + auto-disconnect (P0, S)
+### 1.6 Session idle timeout + auto-disconnect (P0, S) — **SHIPPED**
 Problem: backgrounded sessions live forever via `AppLifecycleService`/`ConnectionForegroundService`.
 Proposal:
 - Configurable idle timeout (e.g. 30 min default off): disconnect SSH + agent sessions, clear terminal scrollback optionally.
@@ -67,10 +67,10 @@ Add `jumpProfileId` to `SSHProfile`; `SSHProvider.connectClient()` dials bastion
 Problem: no forwarding found in codebase. Users cannot reach RDP, DBs, or OpenCode behind NAT.
 Proposal: per-profile forward rules (local port → remote host:port, reverse optional); active-forwards list with stop/start; conflict detection on local port bind. Persist in profile JSON.
 
-### 2.4 Keepalive + auto-reconnect with backoff (P1, S)
+### 2.4 Keepalive + auto-reconnect with backoff (P1, S) — **SHIPPED** (keepalive + resume reconnect; full missed-heartbeat backoff still optional polish)
 Add heartbeat (SSH keepalive every 30 s, configurable), missed-heartbeat detection, and auto-reconnect (exponential backoff, max 5 tries) that re-attaches terminal without losing scrollback. Surface state in `AgentConnectionBar` / client header.
 
-### 2.5 Multi-session tabs (P1, L)
+### 2.5 Multi-session tabs (P1, L) — **SHIPPED**
 `SSHProvider.sessions` + `activeSessionId` already model multi-session, but `HomeScreen` shows one terminal. Add a session tab strip (name, status dot, close button), per-session `SftpController`, and per-session log filter. This unlocks the existing architecture.
 
 ### 2.6 Connection health dashboard (P1, S)
@@ -81,7 +81,7 @@ Send magic packet from `NetworkDiscovery` screen to a saved MAC. Natural fit: di
 
 ## 3. Terminal + input (P1)
 
-### 3.1 Search in scrollback + selection actions (P1, M)
+### 3.1 Search in scrollback + selection actions (P1, M) — **SHIPPED** (search + selection handles/copy; save-scrollback still open)
 `xterm` buffer search (Ctrl+F), match highlighting, jump-to-next/prev, copy-match. Plus "Copy all", "Save scrollback to file", "Clear". Addresses the most common terminal complaint.
 
 ### 3.2 Terminal recording and playback (P1, M)

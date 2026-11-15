@@ -1,62 +1,58 @@
-# Pocketshell
+# PocketShell
 
-A powerful and versatile Flutter-based SSH Client application for Mobile and Desktop.
+A Flutter SSH client for mobile and desktop — connect to remote hosts, browse
+files over SFTP, and chat with OpenCode agents on the same machine.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Flutter](https://img.shields.io/badge/flutter-%2302569B.svg?style=flat&logo=flutter&logoColor=white)
 
 ## Features
 
-### 🚀 SSH Client
+### SSH Client
 
-- Connect to any remote SSH server using passwords or private keys.
-- **Full Terminal Emulator**: Built-in `xterm` terminal with full color and interactive support.
-- **Session Persistence**: Keep your connections alive in the background.
-- **Control Panel**: Quick access buttons for Ctrl, Alt, Arrow keys, and more.
+- Connect with password or private-key auth (`dartssh2` + `xterm`).
+- Multi-session tabs, reconnect, host-key trust, and configurable idle timeout.
+- Shortcut bar (Ctrl/Alt/arrows), snippets, scrollback search, and selection copy.
+- Background keepalive on Android via a foreground service.
 
-### 🔑 Key Management
+### SFTP
 
-- Generate and manage SSH key pairs (RSA, ED25519, etc.).
-- Securely store and use private keys for passwordless authentication.
+- Browse remote files from an active session (sort, filter, mkdir/rename/delete).
+- Upload/download with progress and cancel; Windows drive switching.
+- Used by the Agents tab to pick an OpenCode project directory.
 
-### 📁 Profile Manager
+### Agents (OpenCode)
 
-- Save frequently used connection settings as profiles.
-- Quick connect with a single tap.
-- Organize your remote servers efficiently.
+- Native HTTP UI for OpenCode V2 (`/api/*`) — no WebView.
+- Sessions scoped by project directory; slash commands for `/agent`, `/model`,
+  `/models`, and `/connect`.
+- Config sheet plus remote import from the Windows host over SSH.
 
-### ⌨️ Keyboard & Shortcuts
+### Android extras
 
-- **Custom Shortcut Bar**: Add your own frequently used commands or keys to a scrollable bar.
-- **Global Hotkeys**: Use `Ctrl+N` (New Connection), `Ctrl+P` (Profiles), `Ctrl+K` (Keys), and `Ctrl+D` (Discovery).
-- **Snippet Manager**: Store and inject command fragments into your active terminal sessions.
+- Home-screen widgets for SSH quick-connect and latest agent session.
+- Deep links: `sshapp://widget/ssh|agent?profileId=...`
+- Share-to-clone: share a GitHub URL into the app to clone on a chosen profile.
 
-### 🔍 Network Discovery
+### Customization & backup
 
-- Scan your local network to find other devices and services.
-- Quickly identify available SSH targets.
-
-### 🎨 Highly Customizable
-
-- **Theme Engine**: Support for Light, Dark, and System modes.
-- **Accent Colors**: Choose your favorite color theme.
-- **Terminal Styling**: Configurable font sizes and styles.
+- Themes (system / light / dark / hacker), accent colors, terminal fonts.
+- Encrypted backup (password) or plain JSON export/import in Settings.
 
 ## Main Technologies
 
-- **Flutter**: Cross-platform UI framework.
-- **dartssh2**: Pure Dart implementation of the SSH2 protocol.
-- **xterm**: Robust terminal emulator widget.
-- **flutter_pty**: Pseudo-terminal support for local shell processes.
-- **Provider**: Clean and reactive state management.
-- **Network Info Plus**: For IP and network state detection.
+- **Flutter** — cross-platform UI
+- **dartssh2** — SSH2 client
+- **xterm** — terminal emulator
+- **Provider** — state management
+- **Dio** — OpenCode HTTP API
+- **home_widget** — Android home-screen widgets (vendored)
 
 ## Getting Started
 
 ### Prerequisites
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) (>= 3.2.0)
-- [Dart SDK](https://dart.dev/get-dart)
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) (see `.github/flutter-version`)
 
 ### Installation
 
@@ -89,12 +85,12 @@ A powerful and versatile Flutter-based SSH Client application for Mobile and Des
 
 ## Project Structure
 
-- `lib/models/`: Data structures for Profiles, Keys, Shortcuts, and Snippets.
-- `lib/providers/`: State management for SSH, Settings, and Snippets.
-- `lib/services/`: Core logic for configuration, key generation, and network discovery.
-- `lib/screens/`: Top-level UI pages and tabs.
-- `lib/widgets/`: Reusable UI components and modal dialogs.
+- `lib/models/` — Profiles, keys, sessions, agent connection, snippets
+- `lib/providers/` — SSH, Agents, Settings, Snippets, SFTP
+- `lib/services/` — Config, OpenCode, SFTP, backup, widgets, lifecycle
+- `lib/screens/` — Home, Agents, Settings, Splash
+- `lib/widgets/` — Terminal, SFTP, agent chat, profiles/keys
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.

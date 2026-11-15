@@ -41,5 +41,7 @@ provider configuration (`/model`, `/models`, `/connect`, `/agent`).
 
 ## Backup
 
-Export and import profiles, keys, snippets, and settings as JSON through the
-backup service in Settings.
+Export and import profiles, keys, snippets, and settings through Settings.
+Encrypted backup (password-protected AES-GCM envelope, schema v2) is the
+recommended path; plain JSON remains available behind an explicit risk
+acknowledgement.

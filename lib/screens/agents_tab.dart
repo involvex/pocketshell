@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
-import '../models/agent_connection.dart';
 import '../models/ssh_profile.dart';
 import '../providers/agent_provider.dart';
 import '../providers/settings_provider.dart';
@@ -13,7 +12,6 @@ import '../widgets/agent/agent_chat_pane.dart';
 import '../widgets/agent/agent_connection_bar.dart';
 import '../widgets/agent/agent_session_list.dart';
 import '../widgets/agent_permission_dialog.dart';
-import '../widgets/agent_prompt_input.dart';
 
 class AgentsTab extends StatefulWidget {
   const AgentsTab({this.onChatOpenChanged, super.key});
@@ -173,7 +171,6 @@ class AgentsTabState extends State<AgentsTab> {
                     ? AgentChatPane(agents: agents, active: active)
                     : const AgentSessionList(),
               ),
-              if (showingChat) _buildPromptInput(agents, active),
             ],
           ),
         );
@@ -301,19 +298,6 @@ class AgentsTabState extends State<AgentsTab> {
           label: const Text('Connect'),
         ),
       ],
-    );
-  }
-
-  Widget _buildPromptInput(AgentProvider agents, AgentConnection active) {
-    final canSend = active.activeSessionId != null;
-
-    return AgentPromptInput(
-      commands: active.availableCommands,
-      agents: active.availableAgents,
-      models: active.modelOptions,
-      enabled: canSend,
-      isSending: active.isSending,
-      onSubmit: (text) => agents.sendPrompt(active.id, text),
     );
   }
 
