@@ -1,9 +1,17 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:opencode_api/opencode_api.dart';
 
 import '../models/agent_model_option.dart';
+import '../models/agent_prompt_attachment.dart';
 import '../utils/agent_prompt_utils.dart';
+
+typedef AgentPromptSubmitCallback = void Function(AgentPromptSubmission submission);
+
+typedef AgentRemoteFilePicker = Future<AgentPromptAttachment?> Function();
 
 class AgentPromptInput extends StatefulWidget {
   const AgentPromptInput({
@@ -13,6 +21,7 @@ class AgentPromptInput extends StatefulWidget {
     required this.enabled,
     required this.isSending,
     required this.onSubmit,
+    this.onPickRemoteFile,
     this.contextChips = const <Widget>[],
     super.key,
   });
@@ -22,7 +31,8 @@ class AgentPromptInput extends StatefulWidget {
   final List<AgentModelOption> models;
   final bool enabled;
   final bool isSending;
-  final ValueChanged<String> onSubmit;
+  final AgentPromptSubmitCallback onSubmit;
+  final AgentRemoteFilePicker? onPickRemoteFile;
   final List<Widget> contextChips;
 
   @override
@@ -34,6 +44,7 @@ class _AgentPromptInputState extends State<AgentPromptInput> {
   final FocusNode _focusNode = FocusNode();
   int _selectedSuggestionIndex = 0;
   bool _showSuggestions = false;
+  final List<AgentPromptAttachment> _attachments = <AgentPromptAttachment>[];
 
   @override
   void initState() {
@@ -91,16 +102,83 @@ class _AgentPromptInputState extends State<AgentPromptInput> {
     });
   }
 
+  void _removeAttachment(int index) {
+    setState(() => _attachments.removeAt(index));
+  }
+
+  Future<void> _pickLocalFile() async {
+    if (!widget.enabled || widget.isSending) return;
+    final result = await FilePicker.pickFiles();
+    if (result.isEmpty) return;
+
+    final file = result.first;
+    final path = file.path;
+    if (path == null) return;
+
+    final bytes = await File(path).readAsBytes();
+    setState(() {
+      _attachments.add(
+        AgentPromptAttachment.localBytes(filename: file.name, bytes: bytes),
+      );
+    });
+  }
+
+  Future<void> _pickRemoteFile() async {
+    if (!widget.enabled || widget.isSending) return;
+    final picker = widget.onPickRemoteFile;
+    if (picker == null) return;
+    final attachment = await picker();
+    if (attachment == null || !mounted) return;
+    setState(() => _attachments.add(attachment));
+  }
+
+  Future<void> _showAttachMenu() async {
+    final hasRemote = widget.onPickRemoteFile != null;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.attach_file),
+                title: const Text('Local file'),
+                onTap: () => Navigator.pop(context, 'local'),
+              ),
+              if (hasRemote)
+                ListTile(
+                  leading: const Icon(Icons.cloud_outlined),
+                  title: const Text('Remote file (SFTP)'),
+                  onTap: () => Navigator.pop(context, 'remote'),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || choice == null) return;
+    if (choice == 'local') {
+      await _pickLocalFile();
+    } else if (choice == 'remote') {
+      await _pickRemoteFile();
+    }
+  }
+
   void _submit() {
     if (!widget.enabled || widget.isSending) return;
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && _attachments.isEmpty) return;
+    final attachments = List<AgentPromptAttachment>.from(_attachments);
     _controller.clear();
     setState(() {
+      _attachments.clear();
       _showSuggestions = false;
       _selectedSuggestionIndex = 0;
     });
-    widget.onSubmit(text);
+    widget.onSubmit(AgentPromptSubmission(text: text, attachments: attachments));
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
@@ -168,6 +246,7 @@ class _AgentPromptInputState extends State<AgentPromptInput> {
     final suggestions = _suggestions;
     final canSend = widget.enabled && !widget.isSending;
     final maxLines = _maxLinesForViewport(context);
+    final slashMode = isSlashCommand(_controller.text);
 
     return Padding(
       padding: const EdgeInsets.all(4),
@@ -182,6 +261,24 @@ class _AgentPromptInputState extends State<AgentPromptInput> {
                 spacing: 4,
                 runSpacing: 4,
                 children: widget.contextChips,
+              ),
+            ),
+          if (_attachments.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Wrap(
+                spacing: 4,
+                runSpacing: 4,
+                children: [
+                  for (var i = 0; i < _attachments.length; i++)
+                    InputChip(
+                      label: Text(
+                        _attachments[i].displayName,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onDeleted: canSend ? () => _removeAttachment(i) : null,
+                    ),
+                ],
               ),
             ),
           if (_showSuggestions && suggestions.isNotEmpty)
@@ -218,6 +315,15 @@ class _AgentPromptInputState extends State<AgentPromptInput> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: IconButton(
+                  tooltip: slashMode ? 'Attachments disabled for commands' : 'Attach file',
+                  onPressed: canSend && !slashMode ? _showAttachMenu : null,
+                  icon: const Icon(Icons.attach_file, size: 20),
+                ),
+              ),
               Expanded(
                 child: Focus(
                   onKeyEvent: _handleKeyEvent,

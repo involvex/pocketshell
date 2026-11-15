@@ -6,9 +6,11 @@ import 'package:uuid/uuid.dart';
 
 import '../models/agent_connection.dart';
 import '../models/agent_permission_request.dart';
+import '../models/agent_prompt_attachment.dart';
 import '../models/ssh_profile.dart';
 import '../services/config_repository.dart';
 import '../services/opencode_connection_service.dart';
+import '../services/opencode_v2_mappers.dart';
 import '../utils/agent_prompt_utils.dart';
 import '../utils/agent_session_utils.dart';
 
@@ -220,11 +222,14 @@ class AgentProvider extends ChangeNotifier {
     if (connection == null) return;
 
     connection.activeSessionId = sessionId;
+    connection.resetSessionUsage();
     connection.isLoadingMessages = true;
     notifyListeners();
 
     try {
-      connection.messages = await connection.service.getMessages(sessionId);
+      final raw = await connection.service.getRawMessages(sessionId);
+      connection.messages = raw.map(mapV2Message).toList();
+      _applyMessageListUsage(connection, raw);
     } finally {
       connection.isLoadingMessages = false;
       notifyListeners();
@@ -286,12 +291,16 @@ class AgentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> sendPrompt(String connectionId, String text) async {
+  Future<void> sendPrompt(
+    String connectionId,
+    String text, {
+    List<AgentPromptAttachment> attachments = const <AgentPromptAttachment>[],
+  }) async {
     final connection = _findConnection(connectionId);
     if (connection == null || connection.activeSessionId == null) return;
 
     final trimmed = text.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty && attachments.isEmpty) return;
 
     connection.isSending = true;
     notifyListeners();
@@ -302,9 +311,47 @@ class AgentProvider extends ChangeNotifier {
         await connection.service.executeCommand(sessionId, trimmed);
         onLog?.call('Agent command sent: $trimmed');
       } else {
-        await connection.service.sendMessageAsync(sessionId, trimmed);
+        final files = attachments
+            .map((AgentPromptAttachment a) => a.apiPayload)
+            .toList(growable: false);
+        await connection.service.sendMessageAsync(
+          sessionId,
+          trimmed,
+          files: files.isEmpty ? null : files,
+        );
         onLog?.call('Agent prompt sent to ${connection.profile.name}');
       }
+    } finally {
+      connection.isSending = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> revertMessagePart(
+    String connectionId,
+    String messageId, {
+    String? partId,
+  }) async {
+    final connection = _findConnection(connectionId);
+    if (connection == null || connection.activeSessionId == null) return;
+    if (messageId.isEmpty) return;
+
+    connection.isSending = true;
+    notifyListeners();
+
+    try {
+      final sessionId = connection.activeSessionId!;
+      await connection.service.revertStage(sessionId, messageId);
+      await connection.service.revertCommit(sessionId);
+      if (partId != null && partId.isNotEmpty) {
+        onLog?.call('Agent revert committed for $messageId ($partId)');
+      } else {
+        onLog?.call('Agent revert committed for $messageId');
+      }
+      await _reloadMessages(connectionId);
+    } catch (e) {
+      onLog?.call('Agent revert failed: $e');
+      rethrow;
     } finally {
       connection.isSending = false;
       notifyListeners();
@@ -493,9 +540,35 @@ class AgentProvider extends ChangeNotifier {
   Future<void> _reloadMessages(String connectionId) async {
     final connection = _findConnection(connectionId);
     if (connection == null || connection.activeSessionId == null) return;
-    connection.messages =
-        await connection.service.getMessages(connection.activeSessionId!);
+    final raw =
+        await connection.service.getRawMessages(connection.activeSessionId!);
+    connection.messages = raw.map(mapV2Message).toList();
+    _applyMessageListUsage(connection, raw);
     notifyListeners();
+  }
+
+  void _applyMessageListUsage(
+    AgentConnection connection,
+    List<Map<String, dynamic>> raw,
+  ) {
+    final totals = sumV2MessageUsage(raw);
+    connection.sessionInputTokens = totals.inputTokens;
+    connection.sessionOutputTokens = totals.outputTokens;
+    if (totals.cost != null && totals.cost! > 0) {
+      connection.sessionCost = totals.cost;
+    }
+  }
+
+  void _applyUsageEvent(AgentConnection connection, Map<String, dynamic> data) {
+    final snapshot = extractV2Usage(data);
+    if (snapshot == null) return;
+    if (snapshot.inputTokens > 0 || snapshot.outputTokens > 0) {
+      connection.sessionInputTokens = snapshot.inputTokens;
+      connection.sessionOutputTokens = snapshot.outputTokens;
+    }
+    if (snapshot.cost != null) {
+      connection.sessionCost = snapshot.cost;
+    }
   }
 
   void _handleEvent(String connectionId, Map<String, dynamic> event) {
@@ -537,6 +610,18 @@ class AgentProvider extends ChangeNotifier {
       );
       notifyListeners();
       return;
+    }
+
+    if (type == 'session.usage.updated' || type == 'session.usage.recorded') {
+      final connection = _findConnection(connectionId);
+      if (connection == null) return;
+      final data = props['data'];
+      if (data is Map) {
+        _applyUsageEvent(connection, Map<String, dynamic>.from(data));
+      } else {
+        _applyUsageEvent(connection, props);
+      }
+      notifyListeners();
     }
 
     if (type.startsWith('session.') ||

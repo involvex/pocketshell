@@ -27,6 +27,9 @@ class AgentConnection {
     this.selectedModelId,
     this.isLoadingMetadata = false,
     this.collapseToolParts = true,
+    this.sessionInputTokens = 0,
+    this.sessionOutputTokens = 0,
+    this.sessionCost,
   });
 
   final String id;
@@ -48,6 +51,20 @@ class AgentConnection {
   String? selectedModelId;
   bool isLoadingMetadata;
   bool collapseToolParts;
+  int sessionInputTokens;
+  int sessionOutputTokens;
+  double? sessionCost;
+
+  bool get hasSessionUsage =>
+      sessionInputTokens > 0 ||
+      sessionOutputTokens > 0 ||
+      (sessionCost != null && sessionCost! > 0);
+
+  void resetSessionUsage() {
+    sessionInputTokens = 0;
+    sessionOutputTokens = 0;
+    sessionCost = null;
+  }
 
   StreamSubscription<Map<String, dynamic>>? eventSub;
   StreamSubscription<ConnectionEvent>? connectionEventSub;

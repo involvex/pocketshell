@@ -246,20 +246,71 @@ class OpenCodeConnectionService {
     _ensureOk(response);
   }
 
-  Future<List<MessageWithParts>> getMessages(String sessionId) async {
+  Future<List<Map<String, dynamic>>> getRawMessages(String sessionId) async {
     final response = await _dio.get<dynamic>('/api/session/$sessionId/message');
     _ensureOk(response);
-    final messages =
-        unwrapV2ObjectList(response.data).map(mapV2Message).toList();
     // V2 returns newest-first; chat UI expects oldest-first.
-    return messages.reversed.toList();
+    return unwrapV2ObjectList(response.data).reversed.toList();
   }
 
-  Future<void> sendMessageAsync(String sessionId, String text) async {
+  Future<List<MessageWithParts>> getMessages(String sessionId) async {
+    final raw = await getRawMessages(sessionId);
+    return raw.map(mapV2Message).toList();
+  }
+
+  Future<void> sendMessageAsync(
+    String sessionId,
+    String text, {
+    List<Map<String, dynamic>>? files,
+  }) async {
+    final payload = <String, dynamic>{'text': text};
+    if (files != null && files.isNotEmpty) {
+      payload['files'] = files;
+    }
     final response = await _dio.post<dynamic>(
       '/api/session/$sessionId/prompt',
-      data: <String, dynamic>{'text': text},
+      data: payload,
     );
+    _ensureOk(response);
+  }
+
+  Future<List<Map<String, dynamic>>> getSessionDiff(
+    String sessionId, {
+    String? from,
+    String? to,
+  }) async {
+    final response = await _dio.get<dynamic>(
+      '/api/session/$sessionId/diff',
+      queryParameters: <String, dynamic>{
+        if (from != null && from.isNotEmpty) 'from': from,
+        if (to != null && to.isNotEmpty) 'to': to,
+      },
+    );
+    _ensureOk(response);
+    return unwrapV2ObjectList(response.data);
+  }
+
+  Future<void> revertStage(
+    String sessionId,
+    String messageId, {
+    bool applyFiles = true,
+  }) async {
+    final response = await _dio.post<dynamic>(
+      '/api/session/$sessionId/revert/stage',
+      data: <String, dynamic>{
+        'messageID': messageId,
+        'files': applyFiles,
+      },
+    );
+    _ensureOk(response);
+  }
+
+  Future<void> revertCommit(String sessionId) async {
+    final response = await _dio.post<dynamic>(
+      '/api/session/$sessionId/revert/commit',
+    );
+    final status = response.statusCode ?? 0;
+    if (status == 204) return;
     _ensureOk(response);
   }
 

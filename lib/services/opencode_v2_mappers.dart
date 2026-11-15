@@ -76,9 +76,76 @@ String _roleFromV2MessageType(String? type) {
   };
 }
 
+bool looksLikeUnifiedDiff(String text) {
+  final trimmed = text.trimLeft();
+  return trimmed.startsWith('diff --git') ||
+      trimmed.startsWith('--- ') ||
+      trimmed.contains('\n@@ ');
+}
+
+String? _patchFromToolState(Map<String, dynamic> state) {
+  final metadata = state['metadata'];
+  if (metadata is Map) {
+    final patch = metadata['patch'] as String?;
+    if (patch != null && patch.trim().isNotEmpty) {
+      return patch;
+    }
+    final diff = metadata['diff'] as String?;
+    if (diff != null && diff.trim().isNotEmpty) {
+      return diff;
+    }
+  }
+
+  final output = state['output'];
+  if (output is String && looksLikeUnifiedDiff(output)) {
+    return output;
+  }
+
+  final content = state['content'];
+  if (content is List) {
+    final buffer = StringBuffer();
+    for (final item in content) {
+      if (item is! Map) continue;
+      final type = item['type'] as String? ?? '';
+      if (type == 'text') {
+        final text = item['text'] as String? ?? '';
+        if (looksLikeUnifiedDiff(text)) {
+          if (buffer.isNotEmpty) buffer.writeln();
+          buffer.write(text);
+        }
+      } else if (type == 'file') {
+        final uri = item['uri'] as String? ?? item['name'] as String? ?? '';
+        if (uri.isNotEmpty) {
+          if (buffer.isNotEmpty) buffer.writeln();
+          buffer.write('file: $uri');
+        }
+      }
+    }
+    if (buffer.isNotEmpty) {
+      return buffer.toString();
+    }
+  }
+
+  final input = state['input'];
+  if (input is Map) {
+    final patch = input['patch'] as String? ?? input['diff'] as String?;
+    if (patch != null && patch.trim().isNotEmpty) {
+      return patch;
+    }
+  }
+  return null;
+}
+
 String _toolPartText(Map<String, dynamic> tool) {
   final name = tool['name'] as String? ?? 'tool';
   final state = tool['state'];
+  if (state is Map) {
+    final patch = _patchFromToolState(Map<String, dynamic>.from(state));
+    if (patch != null && patch.isNotEmpty) {
+      return patch;
+    }
+  }
+
   final buffer = StringBuffer(name);
   if (state is Map) {
     final status = state['status'] as String?;
@@ -326,3 +393,75 @@ Map<String, dynamic> normalizeV2Event(Map<String, dynamic> event) {
 
   return normalized;
 }
+
+/// Token/cost snapshot parsed from a V2 assistant message or usage event.
+class V2UsageSnapshot {
+  const V2UsageSnapshot({
+    this.inputTokens = 0,
+    this.outputTokens = 0,
+    this.reasoningTokens = 0,
+    this.cost,
+  });
+
+  final int inputTokens;
+  final int outputTokens;
+  final int reasoningTokens;
+  final double? cost;
+
+  V2UsageSnapshot operator +(V2UsageSnapshot other) {
+    return V2UsageSnapshot(
+      inputTokens: inputTokens + other.inputTokens,
+      outputTokens: outputTokens + other.outputTokens,
+      reasoningTokens: reasoningTokens + other.reasoningTokens,
+      cost: (cost ?? 0) + (other.cost ?? 0),
+    );
+  }
+}
+
+int _tokenField(Map<String, dynamic> tokens, String key) {
+  final value = tokens[key];
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return 0;
+}
+
+double? _moneyUsd(dynamic value) {
+  if (value is num) return value.toDouble();
+  return null;
+}
+
+/// Reads `tokens` / `cost` from a V2 message or SSE usage payload.
+V2UsageSnapshot? extractV2Usage(Map<String, dynamic> json) {
+  final tokens = json['tokens'];
+  final cost = _moneyUsd(json['cost']);
+  if (tokens is! Map) {
+    if (cost == null) return null;
+    return V2UsageSnapshot(cost: cost);
+  }
+  final map = Map<String, dynamic>.from(tokens);
+  final input = _tokenField(map, 'input');
+  final output = _tokenField(map, 'output');
+  final reasoning = _tokenField(map, 'reasoning');
+  if (input == 0 && output == 0 && reasoning == 0 && cost == null) {
+    return null;
+  }
+  return V2UsageSnapshot(
+    inputTokens: input,
+    outputTokens: output,
+    reasoningTokens: reasoning,
+    cost: cost,
+  );
+}
+
+/// Sums per-message usage across a session history (assistant turns).
+V2UsageSnapshot sumV2MessageUsage(Iterable<Map<String, dynamic>> messages) {
+  var total = const V2UsageSnapshot();
+  for (final message in messages) {
+    final usage = extractV2Usage(message);
+    if (usage != null) {
+      total = total + usage;
+    }
+  }
+  return total;
+}
+

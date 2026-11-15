@@ -1,35 +1,81 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:opencode_api/opencode_api.dart';
 
+import '../services/opencode_v2_mappers.dart';
 import '../utils/agent_message_grouping.dart';
 import 'agent_message_part_tile.dart';
+
+typedef AgentMessageRevertCallback = Future<void> Function(
+  String messageId,
+  String? partId,
+);
 
 class AgentMessageGroupBubble extends StatelessWidget {
   const AgentMessageGroupBubble({
     required this.group,
     this.collapseToolParts = true,
+    this.onRevertPart,
     super.key,
   });
 
   final AgentMessageGroup group;
   final bool collapseToolParts;
+  final AgentMessageRevertCallback? onRevertPart;
 
-  static bool _hasExpandableActivity(List<MessagePart> parts) {
-    return parts.any((MessagePart part) {
-      final body = (part.text ?? part.content ?? '').trim();
+  static bool _hasExpandableActivity(
+    List<({MessagePart part, String? messageId})> parts,
+  ) {
+    return parts.any((entry) {
+      final body = (entry.part.text ?? entry.part.content ?? '').trim();
       return body.isNotEmpty;
     });
+  }
+
+  List<({MessagePart part, String? messageId})> _entries() {
+    final entries = <({MessagePart part, String? messageId})>[];
+    for (final message in group.messages) {
+      final messageId = message.info?.id;
+      for (final part in message.parts ?? <MessagePart>[]) {
+        if (!isRenderablePart(part)) continue;
+        entries.add((part: part, messageId: messageId));
+      }
+    }
+    return entries;
+  }
+
+  Widget _partTile({
+    required MessagePart part,
+    required String? messageId,
+    required bool isUser,
+  }) {
+    final body = part.text ?? part.content ?? '';
+    final canRevert = !isUser &&
+        onRevertPart != null &&
+        messageId != null &&
+        looksLikeUnifiedDiff(body);
+
+    return AgentMessagePartTile(
+      part: part,
+      forceCollapsed: collapseToolParts,
+      compact: true,
+      canRevert: canRevert,
+      onRevert: canRevert
+          ? () => onRevertPart!(messageId, part.id)
+          : null,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final role = group.role;
     final isUser = role == 'user';
-    final parts = group.parts.where(isRenderablePart).toList();
-    if (parts.isEmpty) return const SizedBox.shrink();
+    final entries = _entries();
+    if (entries.isEmpty) return const SizedBox.shrink();
 
-    final textParts = parts.where(isTextPart).toList();
-    final activityParts = parts.where((p) => !isTextPart(p)).toList();
+    final textEntries =
+        entries.where((e) => isTextPart(e.part)).toList(growable: false);
+    final activityEntries =
+        entries.where((e) => !isTextPart(e.part)).toList(growable: false);
 
     final width = MediaQuery.sizeOf(context).width;
 
@@ -67,32 +113,34 @@ class AgentMessageGroupBubble extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _RoleChip(role: role, isUser: isUser),
-                  if (textParts.isNotEmpty) ...[
+                  if (textEntries.isNotEmpty) ...[
                     const SizedBox(height: 4),
-                    for (final part in textParts)
+                    for (final entry in textEntries)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 2),
-                        child: AgentMessagePartTile(
-                          part: part,
-                          forceCollapsed: collapseToolParts,
-                          compact: true,
+                        child: _partTile(
+                          part: entry.part,
+                          messageId: entry.messageId,
+                          isUser: isUser,
                         ),
                       ),
                   ],
-                  if (activityParts.isNotEmpty) ...[
-                    if (textParts.isNotEmpty) const SizedBox(height: 4),
-                    if (_hasExpandableActivity(activityParts) ||
-                        activityParts.length > 3)
+                  if (activityEntries.isNotEmpty) ...[
+                    if (textEntries.isNotEmpty) const SizedBox(height: 4),
+                    if (_hasExpandableActivity(activityEntries) ||
+                        activityEntries.length > 3)
                       _ActivitySection(
-                        parts: activityParts,
+                        entries: activityEntries,
                         collapseToolParts: collapseToolParts,
+                        isUser: isUser,
+                        onRevertPart: onRevertPart,
                       )
                     else
-                      for (final part in activityParts)
-                        AgentMessagePartTile(
-                          part: part,
-                          forceCollapsed: collapseToolParts,
-                          compact: true,
+                      for (final entry in activityEntries)
+                        _partTile(
+                          part: entry.part,
+                          messageId: entry.messageId,
+                          isUser: isUser,
                         ),
                   ],
                 ],
@@ -142,12 +190,16 @@ class _RoleChip extends StatelessWidget {
 
 class _ActivitySection extends StatelessWidget {
   const _ActivitySection({
-    required this.parts,
+    required this.entries,
     required this.collapseToolParts,
+    required this.isUser,
+    this.onRevertPart,
   });
 
-  final List<MessagePart> parts;
+  final List<({MessagePart part, String? messageId})> entries;
   final bool collapseToolParts;
+  final bool isUser;
+  final AgentMessageRevertCallback? onRevertPart;
 
   @override
   Widget build(BuildContext context) {
@@ -164,11 +216,25 @@ class _ActivitySection extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 2),
-          for (final part in parts)
-            AgentMessagePartTile(
-              part: part,
-              forceCollapsed: collapseToolParts,
-              compact: true,
+          for (final entry in entries)
+            Builder(
+              builder: (context) {
+                final body = entry.part.text ?? entry.part.content ?? '';
+                final messageId = entry.messageId;
+                final canRevert = !isUser &&
+                    onRevertPart != null &&
+                    messageId != null &&
+                    looksLikeUnifiedDiff(body);
+                return AgentMessagePartTile(
+                  part: entry.part,
+                  forceCollapsed: collapseToolParts,
+                  compact: true,
+                  canRevert: canRevert,
+                  onRevert: canRevert
+                      ? () => onRevertPart!(messageId, entry.part.id)
+                      : null,
+                );
+              },
             ),
         ],
       ),
@@ -181,11 +247,13 @@ class AgentMessageBubble extends StatelessWidget {
   const AgentMessageBubble({
     required this.message,
     this.collapseToolParts = true,
+    this.onRevertPart,
     super.key,
   });
 
   final MessageWithParts message;
   final bool collapseToolParts;
+  final AgentMessageRevertCallback? onRevertPart;
 
   @override
   Widget build(BuildContext context) {
@@ -195,6 +263,7 @@ class AgentMessageBubble extends StatelessWidget {
         messages: <MessageWithParts>[message],
       ),
       collapseToolParts: collapseToolParts,
+      onRevertPart: onRevertPart,
     );
   }
 }

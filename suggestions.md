@@ -98,13 +98,13 @@ Record session I/O to a local file (asciicast-compatible), replay in-app, share 
 
 ## 4. SFTP / file workflows (P1)
 
-### 4.1 Background transfer queue with resume (P1, M)
+### 4.1 Background transfer queue with resume (P1, M) — **SHIPPED** (sequential queue + download resume; system notification still open)
 Today transfers are modal and cancellable only. Add a persistent queue (per session): pause/resume, retry on reconnect, chunked resume via offset, system notification with progress. `SftpCancelToken` + `_transferBytes` plumbing already exists — extend it.
 
-### 4.2 Permission + ownership editor (P1, S)
+### 4.2 Permission + ownership editor (P1, S) — **SHIPPED** (chmod UI; chown still open)
 Numeric/symbolic chmod UI, recursive option, chown where permitted. Missing today; required for daily-driver server use (CHANGELOG 1.2.0 claims daily-driver UX).
 
-### 4.3 Checksum verify after transfer (P1, S)
+### 4.3 Checksum verify after transfer (P1, S) — **SHIPPED**
 SHA-256 compare (remote `sha256sum` via SSH exec vs local hash) with pass/fail badge in `sftp_transfer_banner.dart`. Catches truncated uploads on flaky mobile networks.
 
 ### 4.4 Archive handling (P1, M)
@@ -135,16 +135,16 @@ Backup already covers shortcuts; add per-shortcut export and a desktop global-ho
 
 ## 6. Agents / OpenCode tab (P1)
 
-### 6.1 File attachments + image input in chat (P1, M)
+### 6.1 File attachments + image input in chat (P1, M) — **SHIPPED**
 Attach local or SFTP-picked files to a prompt (`AgentPromptInput`); show upload progress; reference remote path in message. The SFTP directory picker already exists — wire it as the source.
 
-### 6.2 Diff + apply preview for agent edits (P1, M)
+### 6.2 Diff + apply preview for agent edits (P1, M) — **SHIPPED** (diff viewer + session revert; per-hunk apply not in V2 API)
 Render file-change parts as unified diffs with accept/reject per hunk in `AgentMessagePartTile`. Currently messages group by role (`groupAgentMessages`) but edits lack review UX — risky for agent-driven workflows.
 
 ### 6.3 Voice input + TTS readout (P2, M)
 Mic button in prompt input (on-device speech), optional TTS for agent replies. High value on Android mobile, the primary client.
 
-### 6.4 Cost + model usage footer (P1, S)
+### 6.4 Cost + model usage footer (P1, S) — **SHIPPED**
 Per-session token/cost tally from OpenCode metadata (`_loadMetadata` hook in `AgentProvider`), footer in `AgentChatPane` with per-model breakdown. Prevents billing surprises.
 
 ### 6.5 Offline prompt queue (P2, M)

@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:opencode_api/opencode_api.dart';
 
+import '../services/opencode_v2_mappers.dart';
+
 String _normalizePartType(MessagePart part) {
   final raw = (part.type ?? '').toLowerCase();
   if (raw.isEmpty && part.text != null) return 'text';
@@ -49,18 +51,24 @@ IconData _iconForType(String type) {
   return Icons.build_outlined;
 }
 
+typedef AgentPartRevertCallback = Future<void> Function();
+
 /// Renders a single agent message part with collapsible non-text sections.
 class AgentMessagePartTile extends StatefulWidget {
   const AgentMessagePartTile({
     required this.part,
     this.forceCollapsed = true,
     this.compact = false,
+    this.canRevert = false,
+    this.onRevert,
     super.key,
   });
 
   final MessagePart part;
   final bool forceCollapsed;
   final bool compact;
+  final bool canRevert;
+  final AgentPartRevertCallback? onRevert;
 
   @override
   State<AgentMessagePartTile> createState() => _AgentMessagePartTileState();
@@ -68,20 +76,69 @@ class AgentMessagePartTile extends StatefulWidget {
 
 class _AgentMessagePartTileState extends State<AgentMessagePartTile> {
   bool? _expanded;
+  bool _reverting = false;
 
   bool get _collapsed => !(_expanded ?? !widget.forceCollapsed);
+
+  Future<void> _revert() async {
+    final action = widget.onRevert;
+    if (action == null || _reverting) return;
+    setState(() => _reverting = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _reverting = false);
+    }
+  }
+
+  Widget _bodyText(BuildContext context, String body, {bool monospace = false}) {
+    final style = monospace
+        ? Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              height: 1.25,
+              fontSize: 11.5,
+            )
+        : Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.35);
+
+    return SelectableText(body, style: style);
+  }
+
+  Widget? _revertButton(BuildContext context) {
+    if (!widget.canRevert || widget.onRevert == null) return null;
+    return Align(
+      alignment: Alignment.centerRight,
+      child: TextButton.icon(
+        onPressed: _reverting ? null : _revert,
+        icon: _reverting
+            ? const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.undo, size: 16),
+        label: const Text('Revert'),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final type = _normalizePartType(widget.part);
     final body = widget.part.text ?? widget.part.content ?? '';
+    final isDiff = looksLikeUnifiedDiff(body);
 
     if (type == 'text' || (!_isCollapsibleType(type) && body.isEmpty)) {
       if (body.trim().isEmpty) return const SizedBox.shrink();
-      return SelectableText(
-        body,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.35),
-      );
+      if (isDiff) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _DiffPanel(body: body, compact: widget.compact),
+            if (_revertButton(context) != null) _revertButton(context)!,
+          ],
+        );
+      }
+      return _bodyText(context, body);
     }
 
     final label = _humanizeType(type);
@@ -93,37 +150,59 @@ class _AgentMessagePartTileState extends State<AgentMessagePartTile> {
       return _StaticStepRow(icon: icon, label: label, compact: widget.compact);
     }
 
-    if (!_isCollapsibleType(type)) {
-      return _CollapsiblePartShell(
-        icon: icon,
-        title: label,
-        summary: summary,
-        collapsed: _collapsed,
-        compact: widget.compact,
-        onToggle: () => setState(() => _expanded = _collapsed),
-        child: SelectableText(
-          body,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                fontFamily: 'monospace',
-                height: 1.3,
-              ),
-        ),
-      );
-    }
+    final child = isDiff
+        ? _DiffPanel(body: body, compact: widget.compact)
+        : _bodyText(context, body, monospace: true);
 
-    return _CollapsiblePartShell(
+    final shell = _CollapsiblePartShell(
       icon: icon,
       title: label,
       summary: summary,
       collapsed: _collapsed,
       compact: widget.compact,
       onToggle: () => setState(() => _expanded = _collapsed),
-      child: SelectableText(
-        body,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontFamily: 'monospace',
-              height: 1.3,
-            ),
+      child: child,
+    );
+
+    final revert = _revertButton(context);
+    if (revert == null) return shell;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        shell,
+        revert,
+      ],
+    );
+  }
+}
+
+class _DiffPanel extends StatelessWidget {
+  const _DiffPanel({required this.body, required this.compact});
+
+  final String body;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = Theme.of(context).colorScheme.outline.withValues(alpha: 0.22);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: borderColor),
+        borderRadius: BorderRadius.circular(6),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.all(compact ? 6 : 8),
+        child: SelectableText(
+          body,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontFamily: 'monospace',
+                height: 1.25,
+                fontSize: 11.5,
+              ),
+        ),
       ),
     );
   }

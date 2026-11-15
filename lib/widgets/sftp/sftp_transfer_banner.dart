@@ -7,13 +7,17 @@ class SftpTransferBanner extends StatelessWidget {
     required this.onCancel,
     this.transferredBytes,
     this.totalBytes,
+    this.queuedCount = 0,
+    this.onClearQueue,
     super.key,
   });
 
   final String label;
   final int? transferredBytes;
   final int? totalBytes;
+  final int queuedCount;
   final VoidCallback onCancel;
+  final VoidCallback? onClearQueue;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +47,11 @@ class SftpTransferBanner extends StatelessWidget {
                     style: theme.textTheme.titleSmall,
                   ),
                 ),
+                if (queuedCount > 0 && onClearQueue != null)
+                  TextButton(
+                    onPressed: onClearQueue,
+                    child: const Text('Clear queue'),
+                  ),
                 TextButton(
                   onPressed: onCancel,
                   child: const Text('Cancel'),

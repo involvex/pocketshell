@@ -1,12 +1,16 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:provider/provider.dart';
 
 import '../../models/agent_connection.dart';
+import '../../models/agent_prompt_attachment.dart';
 import '../../providers/agent_provider.dart';
+import '../../providers/ssh_provider.dart';
 import '../../utils/agent_message_grouping.dart';
 import '../../widgets/agent_message_bubble.dart';
 import '../../widgets/agent_model_provider_sheet.dart';
 import '../../widgets/agent_prompt_input.dart';
 import '../../widgets/opencode_config_sheet.dart';
+import '../../widgets/sftp_file_picker.dart';
 import 'agent_scroll_fab.dart';
 
 /// Chat pane showing messages and prompt input for an active agent session.
@@ -40,10 +44,12 @@ class AgentChatPane extends StatelessWidget {
         Expanded(
           child: _AgentChatScrollView(
             key: ValueKey<String>(sessionId),
+            agents: agents,
             connection: active,
           ),
         ),
-        _buildPromptInput(),
+        if (active.hasSessionUsage) _UsageFooter(connection: active),
+        _buildPromptInput(context),
       ],
     );
   }
@@ -132,8 +138,38 @@ class AgentChatPane extends StatelessWidget {
     );
   }
 
-  Widget _buildPromptInput() {
+  Future<AgentPromptAttachment?> _pickRemoteFile(BuildContext context) async {
+    final ssh = Provider.of<SSHProvider>(context, listen: false);
+    final session = ssh.findConnectedSessionForHost(active.profile.host);
+    if (session?.client == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Connect SSH to ${active.profile.host} to pick a remote file.',
+            ),
+          ),
+        );
+      }
+      return null;
+    }
+
+    final path = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SftpFilePicker(
+        client: session!.client!,
+        initialPath: active.selectedDirectory,
+      ),
+    );
+    if (path == null || path.isEmpty) return null;
+    return AgentPromptAttachment.remotePath(path);
+  }
+
+  Widget _buildPromptInput(BuildContext context) {
     final canSend = active.activeSessionId != null;
+    final ssh = Provider.of<SSHProvider>(context);
+    final hasSsh =
+        ssh.findConnectedSessionForHost(active.profile.host)?.client != null;
 
     return AgentPromptInput(
       commands: active.availableCommands,
@@ -141,15 +177,59 @@ class AgentChatPane extends StatelessWidget {
       models: active.modelOptions,
       enabled: canSend,
       isSending: active.isSending,
-      onSubmit: (text) => agents.sendPrompt(active.id, text),
+      onPickRemoteFile:
+          hasSsh ? () => _pickRemoteFile(context) : null,
+      onSubmit: (submission) => agents.sendPrompt(
+        active.id,
+        submission.text,
+        attachments: submission.attachments,
+      ),
+    );
+  }
+}
+
+class _UsageFooter extends StatelessWidget {
+  const _UsageFooter({required this.connection});
+
+  final AgentConnection connection;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.outline,
+        );
+    final parts = <String>[];
+    if (connection.sessionInputTokens > 0 ||
+        connection.sessionOutputTokens > 0) {
+      parts.add(
+        'Tokens in ${connection.sessionInputTokens} · out ${connection.sessionOutputTokens}',
+      );
+    }
+    final cost = connection.sessionCost;
+    if (cost != null && cost > 0) {
+      parts.add('Cost \$${cost.toStringAsFixed(4)}');
+    }
+    if (parts.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(parts.join(' · '), style: style),
+      ),
     );
   }
 }
 
 /// Internal scroll view for agent chat messages.
 class _AgentChatScrollView extends StatefulWidget {
-  const _AgentChatScrollView({required this.connection, super.key});
+  const _AgentChatScrollView({
+    required this.agents,
+    required this.connection,
+    super.key,
+  });
 
+  final AgentProvider agents;
   final AgentConnection connection;
 
   @override
@@ -219,6 +299,21 @@ class _AgentChatScrollViewState extends State<_AgentChatScrollView> {
     );
   }
 
+  Future<void> _revertPart(String messageId, String? partId) async {
+    try {
+      await widget.agents.revertMessagePart(
+        widget.connection.id,
+        messageId,
+        partId: partId,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Revert failed: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final connection = widget.connection;
@@ -261,6 +356,7 @@ class _AgentChatScrollViewState extends State<_AgentChatScrollView> {
             return AgentMessageGroupBubble(
               group: group,
               collapseToolParts: connection.collapseToolParts,
+              onRevertPart: _revertPart,
             );
           },
         ),

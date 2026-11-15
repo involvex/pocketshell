@@ -15,6 +15,7 @@ import 'package:ssh_app/utils/remote_fs_sort.dart';
 import 'package:ssh_app/widgets/sftp/sftp_browser_header.dart';
 import 'package:ssh_app/widgets/sftp/sftp_entry_list.dart';
 import 'package:ssh_app/widgets/sftp/sftp_image_preview.dart';
+import 'package:ssh_app/widgets/sftp/sftp_permissions_sheet.dart';
 import 'package:ssh_app/widgets/sftp/sftp_text_preview.dart';
 import 'package:ssh_app/widgets/sftp/sftp_transfer_banner.dart';
 
@@ -110,6 +111,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
       successMessage:
           completed == 1 ? 'Uploaded' : 'Uploaded $completed file(s)',
     );
+    _maybeShowVerifyMessage(controller);
   }
 
   Future<void> _uploadDirectory() async {
@@ -251,6 +253,45 @@ class _SftpBrowserState extends State<SftpBrowser> {
       success: success,
       successMessage: 'Downloaded',
     );
+    _maybeShowVerifyMessage(controller);
+  }
+
+  void _maybeShowVerifyMessage(SftpController controller) {
+    final String? message = controller.transferVerifyMessage;
+    if (!mounted || message == null) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _editPermissions(RemoteFsEntry entry) async {
+    final SftpController? controller = _controller;
+    if (controller == null) {
+      return;
+    }
+    final int? mode = await controller.statEntryMode(entry);
+    if (!mounted) {
+      return;
+    }
+    await showSftpPermissionsSheet(
+      context: context,
+      entry: entry,
+      initialMode: mode,
+      onApply: (int appliedMode, bool recursive) {
+        return controller.setPermissions(
+          entry,
+          appliedMode,
+          recursive: recursive,
+        );
+      },
+    );
+    _showOperationSnackBar(
+      controller: controller,
+      success: controller.error == null,
+      successMessage: 'Permissions updated',
+    );
   }
 
   Future<bool> _confirmOverwrite({
@@ -380,6 +421,10 @@ class _SftpBrowserState extends State<SftpBrowser> {
                 onCreateDirectory: _createDirectory,
                 onUpload: _upload,
                 onUploadDirectory: _uploadDirectory,
+                verifyTransfers: controller.verifyTransfers,
+                onVerifyTransfersChanged: (bool value) {
+                  controller.verifyTransfers = value;
+                },
               ),
               if (controller.selectionMode)
                 Material(
@@ -410,7 +455,9 @@ class _SftpBrowserState extends State<SftpBrowser> {
                   label: controller.transferLabel!,
                   transferredBytes: controller.transferBytes,
                   totalBytes: controller.transferTotal,
+                  queuedCount: controller.queuedCount,
                   onCancel: controller.cancelTransfer,
+                  onClearQueue: controller.clearQueue,
                 ),
               Expanded(
                 child: SftpEntryList(
@@ -429,6 +476,7 @@ class _SftpBrowserState extends State<SftpBrowser> {
                   onDeleteEntry: controller.deleteEntry,
                   onCopyEntry: _copyEntry,
                   onMoveEntry: _moveEntry,
+                  onPermissionsEntry: _editPermissions,
                 ),
               ),
             ],

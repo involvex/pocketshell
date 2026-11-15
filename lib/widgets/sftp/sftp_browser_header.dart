@@ -19,6 +19,8 @@ class SftpBrowserHeader extends StatefulWidget {
     this.onCreateDirectory,
     this.onUpload,
     this.onUploadDirectory,
+    this.verifyTransfers = true,
+    this.onVerifyTransfersChanged,
     this.showSectionTitle = true,
     this.compactWidthBreakpoint = 480,
     super.key,
@@ -38,6 +40,8 @@ class SftpBrowserHeader extends StatefulWidget {
   final Future<void> Function(String name)? onCreateDirectory;
   final Future<void> Function()? onUpload;
   final Future<void> Function()? onUploadDirectory;
+  final bool verifyTransfers;
+  final ValueChanged<bool>? onVerifyTransfersChanged;
   final bool showSectionTitle;
   final double compactWidthBreakpoint;
 
@@ -209,6 +213,23 @@ class _SftpBrowserHeaderState extends State<SftpBrowserHeader> {
           },
           icon: const Icon(Icons.refresh),
         ),
+        if (widget.onVerifyTransfersChanged != null)
+          IconButton(
+            tooltip: widget.verifyTransfers
+                ? 'Verify checksums after transfer (on)'
+                : 'Verify checksums after transfer (off)',
+            onPressed: () {
+              widget.onVerifyTransfersChanged?.call(!widget.verifyTransfers);
+            },
+            icon: Icon(
+              widget.verifyTransfers
+                  ? Icons.verified_outlined
+                  : Icons.verified_outlined,
+              color: widget.verifyTransfers
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
+          ),
         if (widget.onCreateDirectory != null)
           IconButton(
             tooltip: 'New folder',

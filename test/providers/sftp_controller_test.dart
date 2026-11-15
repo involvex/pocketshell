@@ -163,6 +163,119 @@ void main() {
             'C:/bundle/nested',
           ]));
     });
+    test('processes upload jobs in FIFO order', () async {
+      await loadPrefs();
+      final fake = FakeSftpFileSystem(
+        directories: <String, List<RemoteFsEntry>>{
+          'C:/': const <RemoteFsEntry>[],
+        },
+      );
+      final controller = SftpController(helper: fake);
+      await controller.navigateTo('C:/');
+
+      final Directory temp = await Directory.systemTemp.createTemp('sftp_q_');
+      addTearDown(() async {
+        if (await temp.exists()) {
+          await temp.delete(recursive: true);
+        }
+      });
+      final File a = File('${temp.path}${Platform.pathSeparator}a.txt');
+      final File b = File('${temp.path}${Platform.pathSeparator}b.txt');
+      await a.writeAsBytes(<int>[1]);
+      await b.writeAsBytes(<int>[2]);
+
+      final int completed = await controller.uploadMany(<File>[a, b]);
+
+      expect(completed, 2);
+      expect(fake.uploadedPaths, <String>['C:/a.txt', 'C:/b.txt']);
+    });
+
+    test('cancel active transfer leaves queued jobs', () async {
+      await loadPrefs();
+      final fake = FakeSftpFileSystem(
+        directories: <String, List<RemoteFsEntry>>{
+          'C:/': const <RemoteFsEntry>[],
+        },
+        downloadDelay: const Duration(milliseconds: 200),
+        fileContents: <String, List<int>>{
+          'C:/slow.bin': List<int>.generate(4096, (int i) => i % 256),
+        },
+      );
+      final controller = SftpController(helper: fake);
+      await controller.navigateTo('C:/');
+
+      final Directory temp = await Directory.systemTemp.createTemp('sftp_c_');
+      addTearDown(() async {
+        if (await temp.exists()) {
+          await temp.delete(recursive: true);
+        }
+      });
+
+      final List<Future<bool>> waits = <Future<bool>>[
+        controller.download(
+          const RemoteFsEntry(
+            name: 'slow.bin',
+            isDirectory: false,
+            size: 4096,
+          ),
+          temp,
+        ),
+        controller.download(
+          const RemoteFsEntry(
+            name: 'slow.bin',
+            isDirectory: false,
+            size: 4096,
+          ),
+          temp,
+          localName: 'second.bin',
+        ),
+      ];
+
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      controller.cancelTransfer();
+
+      final List<bool> results = await Future.wait(waits);
+      expect(results.first, isFalse);
+      expect(results.last, isTrue);
+    });
+
+    test('clearQueue removes queued jobs without cancelling active', () async {
+      await loadPrefs();
+      final fake = FakeSftpFileSystem(
+        directories: <String, List<RemoteFsEntry>>{
+          'C:/': const <RemoteFsEntry>[],
+        },
+        downloadDelay: const Duration(milliseconds: 150),
+        fileContents: <String, List<int>>{
+          'C:/x.bin': <int>[1, 2, 3],
+        },
+      );
+      final controller = SftpController(helper: fake);
+      await controller.navigateTo('C:/');
+      final Directory temp = await Directory.systemTemp.createTemp('sftp_clr_');
+      addTearDown(() async {
+        if (await temp.exists()) {
+          await temp.delete(recursive: true);
+        }
+      });
+
+      final Future<bool> first = controller.download(
+        const RemoteFsEntry(name: 'x.bin', isDirectory: false, size: 3),
+        temp,
+      );
+      final Future<bool> queued = controller.download(
+        const RemoteFsEntry(name: 'x.bin', isDirectory: false, size: 3),
+        temp,
+        localName: 'queued.bin',
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      controller.clearQueue();
+      expect(controller.queuedCount, 0);
+      expect(await queued, isFalse);
+
+      await first;
+    });
   });
 }
 
@@ -173,13 +286,18 @@ class FakeSftpFileSystem implements SftpFileSystem {
         const <String, List<RemoteFsEntry>>{},
     Set<String> existingPaths = const <String>{},
     Map<String, List<int>> fileContents = const <String, List<int>>{},
+    Map<String, int> fileModes = const <String, int>{},
+    this.downloadDelay = Duration.zero,
   })  : _directories = Map<String, List<RemoteFsEntry>>.from(directories),
         _existingPaths = Set<String>.from(existingPaths),
-        _fileContents = Map<String, List<int>>.from(fileContents);
+        _fileContents = Map<String, List<int>>.from(fileContents),
+        _fileModes = Map<String, int>.from(fileModes);
 
   final Map<String, List<RemoteFsEntry>> _directories;
   final Set<String> _existingPaths;
   final Map<String, List<int>> _fileContents;
+  final Map<String, int> _fileModes;
+  final Duration downloadDelay;
   final List<String> drives;
   final List<String> uploadedPaths = <String>[];
   final List<String> createdDirs = <String>[];
@@ -194,14 +312,41 @@ class FakeSftpFileSystem implements SftpFileSystem {
     SftpProgress? onProgress,
     SftpCancelToken? cancelToken,
     int? knownSize,
+    bool resumeFromLocal = false,
   }) async {
     final bytes = _fileContents[remotePath];
     if (bytes == null) {
       throw StateError('Missing remote file: $remotePath');
     }
     await localFile.parent.create(recursive: true);
-    await localFile.writeAsBytes(bytes, flush: true);
+    var start = 0;
+    if (resumeFromLocal && await localFile.exists()) {
+      start = await localFile.length();
+    }
+    if (downloadDelay > Duration.zero) {
+      await Future<void>.delayed(downloadDelay);
+      if (cancelToken?.isCancelled == true) {
+        throw StateError('Transfer cancelled');
+      }
+    }
+    if (start > 0) {
+      await localFile.writeAsBytes(
+        bytes.sublist(start),
+        mode: FileMode.append,
+        flush: true,
+      );
+    } else {
+      await localFile.writeAsBytes(bytes, flush: true);
+    }
     onProgress?.call(bytes.length, knownSize ?? bytes.length);
+  }
+
+  @override
+  Future<int?> statMode(String path) async => _fileModes[path];
+
+  @override
+  Future<void> setPermissions(String path, int mode) async {
+    _fileModes[path] = mode;
   }
 
   @override

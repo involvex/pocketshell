@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SFTP transfer queue with cancel-current / clear-queue and download resume.
+- SFTP permissions (chmod) sheet with recursive option and soft-fail on unsupported hosts.
+- Optional SHA-256 verify after single-file SFTP transfers (incl. Windows Get-FileHash fallback).
+- Agent chat file attachments (local + remote SFTP) via OpenCode `files[]`.
+- Agent diff preview with session revert (stage/commit) for file edits.
+- Agent session token/cost usage footer when the server reports usage.
+
 ## [1.2.2] - 2026-11-15
 
 ### Fixed

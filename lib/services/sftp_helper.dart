@@ -24,7 +24,10 @@ abstract interface class SftpFileSystem {
     SftpProgress? onProgress,
     SftpCancelToken? cancelToken,
     int? knownSize,
+    bool resumeFromLocal = false,
   });
+  Future<int?> statMode(String path);
+  Future<void> setPermissions(String path, int mode);
   Future<void> upload(
     File localFile,
     String remotePath, {
@@ -145,6 +148,7 @@ class SftpHelper implements SftpFileSystem {
     SftpProgress? onProgress,
     SftpCancelToken? cancelToken,
     int? knownSize,
+    bool resumeFromLocal = false,
   }) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
@@ -153,10 +157,23 @@ class SftpHelper implements SftpFileSystem {
       normalizedPath,
       mode: SftpFileOpenMode.read,
     );
-    final sink = localFile.openWrite();
-    var transferred = 0;
+
+    var offset = 0;
+    if (resumeFromLocal && await localFile.exists()) {
+      offset = await localFile.length();
+    }
+
+    final IOSink sink = offset > 0
+        ? localFile.openWrite(mode: FileMode.append)
+        : localFile.openWrite();
+
+    var transferred = offset;
+    if (offset > 0) {
+      onProgress?.call(transferred, knownSize);
+    }
+
     try {
-      await for (final chunk in remoteFile.read()) {
+      await for (final chunk in remoteFile.read(offset: offset)) {
         if (cancelToken?.isCancelled == true) {
           throw StateError('Transfer cancelled');
         }
@@ -169,6 +186,31 @@ class SftpHelper implements SftpFileSystem {
     } finally {
       await remoteFile.close();
       await sink.close();
+    }
+  }
+
+  @override
+  Future<int?> statMode(String path) async {
+    final sftp = await _sftp();
+    final normalizedPath = RemotePath.normalize(path);
+    _validatePathTraversal(normalizedPath);
+    final attrs = await sftp.stat(normalizedPath);
+    return attrs.mode?.value;
+  }
+
+  @override
+  Future<void> setPermissions(String path, int mode) async {
+    // Soft-fail for hosts that reject mode bits (common on Windows OpenSSH).
+    try {
+      final sftp = await _sftp();
+      final normalizedPath = RemotePath.normalize(path);
+      _validatePathTraversal(normalizedPath);
+      await sftp.setStat(
+        normalizedPath,
+        SftpFileAttrs(mode: SftpFileMode.value(mode)),
+      );
+    } catch (_) {
+      throw StateError('Permissions not supported');
     }
   }
 

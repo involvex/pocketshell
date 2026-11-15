@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ssh_app/models/agent_prompt_attachment.dart';
 import 'package:ssh_app/services/opencode_v2_mappers.dart';
 
 void main() {
@@ -50,6 +51,32 @@ void main() {
 
       expect(message.info?.role, 'user');
       expect(message.parts?.single.text, 'hello');
+    });
+
+    test('maps tool part patch from metadata', () {
+      final message = mapV2Message(<String, dynamic>{
+        'id': 'msg_patch',
+        'type': 'assistant',
+        'content': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'type': 'tool',
+            'id': 'call_patch',
+            'name': 'edit',
+            'state': <String, dynamic>{
+              'status': 'completed',
+              'metadata': <String, dynamic>{
+                'patch': '--- a/foo\n+++ b/foo\n@@\n-old\n+new',
+              },
+            },
+          },
+        ],
+      });
+
+      expect(message.parts?.single.text, contains('@@'));
+      expect(
+        looksLikeUnifiedDiff(message.parts!.single.text!),
+        isTrue,
+      );
     });
 
     test('maps assistant content parts', () {
@@ -124,6 +151,64 @@ void main() {
       expect(event['type'], 'permission.asked');
       final props = event['properties'] as Map<String, dynamic>;
       expect(props['permissionID'], 'perm_1');
+    });
+  });
+
+  group('extractV2Usage', () {
+    test('reads assistant tokens and cost', () {
+      final usage = extractV2Usage(<String, dynamic>{
+        'type': 'assistant',
+        'tokens': <String, dynamic>{
+          'input': 1200,
+          'output': 340,
+          'reasoning': 0,
+          'cache': <String, dynamic>{'read': 0, 'write': 0},
+        },
+        'cost': 0.0042,
+      });
+
+      expect(usage?.inputTokens, 1200);
+      expect(usage?.outputTokens, 340);
+      expect(usage?.cost, closeTo(0.0042, 0.0001));
+    });
+
+    test('sumV2MessageUsage aggregates assistant turns', () {
+      final total = sumV2MessageUsage(<Map<String, dynamic>>[
+        <String, dynamic>{
+          'type': 'assistant',
+          'tokens': <String, dynamic>{
+            'input': 100,
+            'output': 50,
+            'reasoning': 0,
+            'cache': <String, dynamic>{'read': 0, 'write': 0},
+          },
+          'cost': 0.001,
+        },
+        <String, dynamic>{
+          'type': 'assistant',
+          'tokens': <String, dynamic>{
+            'input': 200,
+            'output': 25,
+            'reasoning': 0,
+            'cache': <String, dynamic>{'read': 0, 'write': 0},
+          },
+          'cost': 0.002,
+        },
+      ]);
+
+      expect(total.inputTokens, 300);
+      expect(total.outputTokens, 75);
+      expect(total.cost, closeTo(0.003, 0.0001));
+    });
+  });
+
+  group('AgentPromptAttachment', () {
+    test('remote path payload uses uri source', () {
+      final attachment =
+          AgentPromptAttachment.remotePath(r'I:\dev\proj\main.dart');
+      expect(attachment.apiPayload['uri'], r'I:\dev\proj\main.dart');
+      final source = attachment.apiPayload['source'] as Map<String, dynamic>;
+      expect(source['type'], 'uri');
     });
   });
 

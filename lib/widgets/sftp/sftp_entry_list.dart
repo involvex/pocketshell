@@ -26,6 +26,7 @@ class SftpEntryList extends StatelessWidget {
     this.onDeleteEntry,
     this.onCopyEntry,
     this.onMoveEntry,
+    this.onPermissionsEntry,
     this.listBottomPadding = 0,
     super.key,
   });
@@ -47,6 +48,7 @@ class SftpEntryList extends StatelessWidget {
   final Future<void> Function(RemoteFsEntry entry)? onDeleteEntry;
   final Future<void> Function(RemoteFsEntry entry)? onCopyEntry;
   final Future<void> Function(RemoteFsEntry entry)? onMoveEntry;
+  final Future<void> Function(RemoteFsEntry entry)? onPermissionsEntry;
   final double listBottomPadding;
 
   @override
@@ -109,6 +111,7 @@ class SftpEntryList extends StatelessWidget {
                     onDeleteEntry: onDeleteEntry,
                     onCopyEntry: onCopyEntry,
                     onMoveEntry: onMoveEntry,
+                    onPermissionsEntry: onPermissionsEntry,
                   );
                 },
               ),
@@ -143,6 +146,7 @@ class _EntryTile extends StatelessWidget {
     this.onDeleteEntry,
     this.onCopyEntry,
     this.onMoveEntry,
+    this.onPermissionsEntry,
   });
 
   final RemoteFsEntry entry;
@@ -160,6 +164,7 @@ class _EntryTile extends StatelessWidget {
   final Future<void> Function(RemoteFsEntry entry)? onDeleteEntry;
   final Future<void> Function(RemoteFsEntry entry)? onCopyEntry;
   final Future<void> Function(RemoteFsEntry entry)? onMoveEntry;
+  final Future<void> Function(RemoteFsEntry entry)? onPermissionsEntry;
 
   @override
   Widget build(BuildContext context) {
@@ -296,6 +301,15 @@ class _EntryTile extends StatelessWidget {
                   onTap: () async {
                     Navigator.of(sheetContext).pop();
                     await onPreviewEntry?.call(entry);
+                  },
+                ),
+              if (onPermissionsEntry != null)
+                ListTile(
+                  leading: const Icon(Icons.lock_outline),
+                  title: const Text('Permissions'),
+                  onTap: () async {
+                    Navigator.of(sheetContext).pop();
+                    await onPermissionsEntry?.call(entry);
                   },
                 ),
               if (onRenameEntry != null)

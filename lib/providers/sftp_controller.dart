@@ -5,7 +5,9 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 
 import 'package:ssh_app/models/remote_fs_entry.dart';
+import 'package:ssh_app/models/sftp_transfer_job.dart';
 import 'package:ssh_app/services/config_repository.dart';
+import 'package:ssh_app/services/sftp_checksum_service.dart';
 import 'package:ssh_app/services/sftp_helper.dart';
 import 'package:ssh_app/utils/remote_fs_sort.dart';
 import 'package:ssh_app/utils/remote_path_utils.dart';
@@ -16,12 +18,22 @@ class SftpController extends ChangeNotifier {
     SSHClient? client,
     SftpFileSystem? helper,
     ConfigRepository? config,
+    SftpChecksumService? checksum,
   })  : assert(client != null || helper != null),
         _helper = helper ?? SftpHelper(client!),
-        _config = config ?? ConfigServiceRepository();
+        _config = config ?? ConfigServiceRepository(),
+        _checksum = checksum ?? (client != null ? SftpChecksumService(client) : null);
 
   final SftpFileSystem _helper;
   final ConfigRepository _config;
+  final SftpChecksumService? _checksum;
+
+  final List<SftpTransferJob> _queue = <SftpTransferJob>[];
+  SftpTransferJob? _activeJob;
+  bool _isPumping = false;
+  int _nextJobId = 0;
+  bool _verifyTransfers = true;
+  String? _transferVerifyMessage;
 
   String _currentPath = '/';
   final List<RemoteFsEntry> _raw = <RemoteFsEntry>[];
@@ -53,6 +65,22 @@ class SftpController extends ChangeNotifier {
   int? get transferBytes => _transferBytes;
   int? get transferTotal => _transferTotal;
   String? get transferLabel => _transferLabel;
+
+  List<SftpTransferJob> get queue => List<SftpTransferJob>.unmodifiable(_queue);
+  SftpTransferJob? get activeJob => _activeJob;
+  int get queuedCount =>
+      _queue.where((SftpTransferJob j) => j.status == SftpTransferStatus.queued).length;
+
+  bool get verifyTransfers => _verifyTransfers;
+  String? get transferVerifyMessage => _transferVerifyMessage;
+
+  set verifyTransfers(bool value) {
+    if (_verifyTransfers == value) {
+      return;
+    }
+    _verifyTransfers = value;
+    notifyListeners();
+  }
 
   Set<String> get selectedNames => Set<String>.unmodifiable(_selectedNames);
   bool get selectionMode => _selectionMode;
@@ -213,29 +241,82 @@ class SftpController extends ChangeNotifier {
     });
   }
 
+  SftpTransferJob enqueueUpload(File localFile, {String? remoteName}) {
+    final String filename = (remoteName ?? _fileNameFor(localFile)).trim();
+    final String remotePath = RemotePath.join(_currentPath, filename);
+    final int total = localFile.lengthSync();
+    final SftpTransferJob job = SftpTransferJob(
+      id: _allocateJobId(),
+      direction: SftpTransferDirection.upload,
+      remotePath: remotePath,
+      localPath: localFile.path,
+      label: 'Uploading $filename',
+      knownSize: total,
+    );
+    _enqueue(job);
+    return job;
+  }
+
+  SftpTransferJob enqueueDownload(
+    RemoteFsEntry entry,
+    Directory localDirectory, {
+    String? localName,
+  }) {
+    final String filename = (localName ?? entry.name).trim();
+    final String remotePath = RemotePath.join(_currentPath, entry.name);
+    final String localPath = _joinLocalPath(localDirectory.path, filename);
+    final SftpTransferJob job = SftpTransferJob(
+      id: _allocateJobId(),
+      direction: SftpTransferDirection.download,
+      remotePath: remotePath,
+      localPath: localPath,
+      label: 'Downloading ${entry.name}',
+      knownSize: entry.size,
+    );
+    _enqueue(job);
+    return job;
+  }
+
+  void enqueueDownloadSelected(Directory localDirectory) {
+    for (final RemoteFsEntry entry in selectedEntries) {
+      if (entry.isDirectory) {
+        final String remoteRoot = RemotePath.join(_currentPath, entry.name);
+        final String localRoot =
+            _joinLocalPath(localDirectory.path, entry.name);
+        _enqueue(
+          SftpTransferJob(
+            id: _allocateJobId(),
+            direction: SftpTransferDirection.download,
+            remotePath: remoteRoot,
+            localPath: localRoot,
+            label: 'Downloading ${entry.name}',
+            isDirectoryTree: true,
+            refreshAfterSuccess: false,
+          ),
+        );
+      } else {
+        enqueueDownload(entry, localDirectory);
+      }
+    }
+    unawaited(_pumpQueue());
+  }
+
+  List<SftpTransferJob> enqueueUploadMany(List<File> files) {
+    final List<SftpTransferJob> jobs = <SftpTransferJob>[
+      for (final File file in files) enqueueUpload(file),
+    ];
+    unawaited(_pumpQueue());
+    return jobs;
+  }
+
   Future<bool> upload(File localFile, {String? remoteName}) async {
-    final filename = (remoteName ?? _fileNameFor(localFile)).trim();
+    final String filename = (remoteName ?? _fileNameFor(localFile)).trim();
     if (filename.isEmpty) {
       return false;
     }
-
-    final remotePath = RemotePath.join(_currentPath, filename);
-
-    return _runMutation(() async {
-      final totalBytes = await localFile.length();
-      _startTransfer(
-        label: 'Uploading $filename',
-        totalBytes: totalBytes,
-      );
-      await _helper.upload(
-        localFile,
-        remotePath,
-        onProgress: (bytesTransferred, knownTotalBytes) {
-          _updateTransferProgress(bytesTransferred, knownTotalBytes);
-        },
-        cancelToken: _cancel,
-      );
-    });
+    final SftpTransferJob job = enqueueUpload(localFile, remoteName: remoteName);
+    unawaited(_pumpQueue());
+    return job.completer.future;
   }
 
   Future<bool> download(
@@ -252,33 +333,20 @@ class SftpController extends ChangeNotifier {
       return completed > 0 && _error == null;
     }
 
-    final filename = (localName ?? entry.name).trim();
+    final String filename = (localName ?? entry.name).trim();
     if (filename.isEmpty) {
       return false;
     }
 
-    final remotePath = RemotePath.join(_currentPath, entry.name);
-    final localPath = _joinLocalPath(localDirectory.path, filename);
-    final localFile = File(localPath);
-
-    final success = await _runMutation(() async {
-      _startTransfer(
-        label: 'Downloading ${entry.name}',
-        totalBytes: entry.size,
-      );
-      await _helper.downloadStream(
-        remotePath,
-        localFile,
-        knownSize: entry.size,
-        onProgress: (bytesTransferred, knownTotalBytes) {
-          _updateTransferProgress(bytesTransferred, knownTotalBytes);
-        },
-        cancelToken: _cancel,
-      );
-    }, refreshAfter: false);
-
+    final SftpTransferJob job = enqueueDownload(
+      entry,
+      localDirectory,
+      localName: localName,
+    );
+    unawaited(_pumpQueue());
+    final bool success = await job.completer.future;
     if (!success) {
-      await _deletePartialLocalFile(localFile);
+      await _deletePartialLocalFile(File(job.localPath));
     }
     return success;
   }
@@ -294,52 +362,37 @@ class SftpController extends ChangeNotifier {
       return 0;
     }
 
-    final remoteRoot = RemotePath.join(_currentPath, entry.name);
-    final localRoot = Directory(
-      _joinLocalPath(localDirectory.path, entry.name),
+    final String remoteRoot = RemotePath.join(_currentPath, entry.name);
+    final String localRootPath =
+        _joinLocalPath(localDirectory.path, entry.name);
+
+    final SftpTransferJob job = SftpTransferJob(
+      id: _allocateJobId(),
+      direction: SftpTransferDirection.download,
+      remotePath: remoteRoot,
+      localPath: localRootPath,
+      label: 'Downloading ${entry.name}',
+      isDirectoryTree: true,
+      refreshAfterSuccess: false,
     );
-
-    _loading = true;
-    _error = null;
-    notifyListeners();
-
-    try {
-      await localRoot.create(recursive: true);
-      final int completed = await _downloadTree(
-        remoteDir: remoteRoot,
-        localDir: localRoot,
-      );
-      return completed;
-    } catch (e) {
-      if (!_isCancelledError(e)) {
-        _error = e.toString();
-      }
-      return 0;
-    } finally {
-      _loading = false;
-      _clearTransfer();
-      notifyListeners();
-    }
+    _enqueue(job);
+    unawaited(_pumpQueue());
+    final bool ok = await job.completer.future;
+    return ok ? (job.completedCount ?? 0) : 0;
   }
 
   /// Sequentially downloads selected files and folders into [localDirectory].
   Future<int> downloadSelected(Directory localDirectory) async {
-    final entries = selectedEntries.toList(growable: false);
+    final int queueStart = _queue.length;
+    enqueueDownloadSelected(localDirectory);
+    final List<SftpTransferJob> jobs = _queue.sublist(queueStart);
     var completed = 0;
-    for (final entry in entries) {
-      if (entry.isDirectory) {
-        final int n = await downloadDirectory(entry, localDirectory);
-        if (n == 0 && _error != null) {
-          break;
-        }
-        completed += n;
-      } else {
-        final ok = await download(entry, localDirectory);
-        if (!ok) {
-          break;
-        }
-        completed++;
+    for (final SftpTransferJob job in jobs) {
+      final bool ok = await job.completer.future;
+      if (!ok) {
+        break;
       }
+      completed += job.completedCount ?? 1;
     }
     clearSelection();
     return completed;
@@ -347,13 +400,14 @@ class SftpController extends ChangeNotifier {
 
   /// Sequentially uploads [files], stopping on cancel/error.
   Future<int> uploadMany(List<File> files) async {
+    final List<SftpTransferJob> jobs = enqueueUploadMany(files);
     var completed = 0;
-    for (final file in files) {
-      final ok = await upload(file);
-      if (!ok) {
+    for (final SftpTransferJob job in jobs) {
+      if (await job.completer.future) {
+        completed++;
+      } else {
         break;
       }
-      completed++;
     }
     return completed;
   }
@@ -365,39 +419,25 @@ class SftpController extends ChangeNotifier {
     Directory localDirectory, {
     String? remoteName,
   }) async {
-    final folderName = (remoteName ?? _directoryNameFor(localDirectory)).trim();
+    final String folderName =
+        (remoteName ?? _directoryNameFor(localDirectory)).trim();
     if (folderName.isEmpty) {
       return 0;
     }
 
-    final remoteRoot = RemotePath.join(_currentPath, folderName);
-
-    _loading = true;
-    _error = null;
-    notifyListeners();
-
-    try {
-      try {
-        await _helper.mkdir(remoteRoot);
-      } catch (_) {
-        // Directory may already exist; continue uploading into it.
-      }
-      final int completed = await _uploadTree(
-        localDir: localDirectory,
-        remoteDir: remoteRoot,
-      );
-      await _loadAndPersistCurrentPath();
-      return completed;
-    } catch (e) {
-      if (!_isCancelledError(e)) {
-        _error = e.toString();
-      }
-      return 0;
-    } finally {
-      _loading = false;
-      _clearTransfer();
-      notifyListeners();
-    }
+    final String remoteRoot = RemotePath.join(_currentPath, folderName);
+    final SftpTransferJob job = SftpTransferJob(
+      id: _allocateJobId(),
+      direction: SftpTransferDirection.upload,
+      remotePath: remoteRoot,
+      localPath: localDirectory.path,
+      label: 'Uploading $folderName',
+      isDirectoryTree: true,
+    );
+    _enqueue(job);
+    unawaited(_pumpQueue());
+    final bool ok = await job.completer.future;
+    return ok ? (job.completedCount ?? 0) : 0;
   }
 
   /// Moves [entry] to [destinationDir] (same host) via rename.
@@ -465,6 +505,60 @@ class SftpController extends ChangeNotifier {
     _cancel?.cancel();
   }
 
+  void clearQueue() {
+    for (final SftpTransferJob job in _queue) {
+      if (job.status == SftpTransferStatus.queued) {
+        job.status = SftpTransferStatus.cancelled;
+        job.completeFailure(false);
+      }
+    }
+    _queue.removeWhere(
+      (SftpTransferJob job) => job.status == SftpTransferStatus.cancelled,
+    );
+    if (_activeJob != null) {
+      _syncTransferFromJob(_activeJob!);
+    } else {
+      notifyListeners();
+    }
+  }
+
+  Future<int?> statEntryMode(RemoteFsEntry entry) {
+    if (entry.isParentLink) {
+      return Future<int?>.value();
+    }
+    return _helper.statMode(remotePathForEntry(entry));
+  }
+
+  Future<bool> setPermissions(
+    RemoteFsEntry entry,
+    int mode, {
+    bool recursive = false,
+  }) async {
+    if (entry.isParentLink) {
+      return false;
+    }
+    final String path = remotePathForEntry(entry);
+    if (!recursive || !entry.isDirectory) {
+      return _runMutation(() => _helper.setPermissions(path, mode));
+    }
+
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      await _helper.setPermissions(path, mode);
+      await _setPermissionsRecursive(path, mode);
+      await _loadAndPersistCurrentPath();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      return false;
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
   void toggleSelectionMode([bool? enabled]) {
     _selectionMode = enabled ?? !_selectionMode;
     if (!_selectionMode) {
@@ -494,6 +588,184 @@ class SftpController extends ChangeNotifier {
     _selectedNames.clear();
     _selectionMode = false;
     notifyListeners();
+  }
+
+  String _allocateJobId() {
+    _nextJobId++;
+    return 'sftp_job_$_nextJobId';
+  }
+
+  void _enqueue(SftpTransferJob job) {
+    _queue.add(job);
+    notifyListeners();
+  }
+
+  Future<void> _pumpQueue() async {
+    if (_isPumping) {
+      return;
+    }
+    _isPumping = true;
+    try {
+      while (true) {
+        SftpTransferJob? next;
+        for (final SftpTransferJob candidate in _queue) {
+          if (candidate.status == SftpTransferStatus.queued) {
+            next = candidate;
+            break;
+          }
+        }
+        if (next == null) {
+          break;
+        }
+      _activeJob = next;
+      next.status = SftpTransferStatus.active;
+      _cancel = SftpCancelToken();
+      next.bytes = 0;
+      _syncTransferFromJob(next);
+      notifyListeners();
+      try {
+        await _executeJob(next);
+        if (_cancel?.isCancelled == true) {
+          next.status = SftpTransferStatus.cancelled;
+          next.completeFailure(false);
+        } else {
+          next.status = SftpTransferStatus.done;
+          await _verifyJob(next);
+          if (next.refreshAfterSuccess) {
+            await _loadAndPersistCurrentPath();
+          }
+          next.completeSuccess();
+        }
+      } catch (e) {
+        if (_isCancelledError(e) || _cancel?.isCancelled == true) {
+          next.status = SftpTransferStatus.cancelled;
+          next.error = e.toString();
+          next.completeFailure(false);
+        } else {
+          next.status = SftpTransferStatus.failed;
+          next.error = e.toString();
+          _error = e.toString();
+          next.completeFailure(false);
+        }
+        if (next.direction == SftpTransferDirection.download &&
+            !next.isDirectoryTree) {
+          await _deletePartialLocalFile(File(next.localPath));
+        }
+      } finally {
+        _activeJob = null;
+        _clearTransfer();
+        notifyListeners();
+      }
+      }
+    } finally {
+      _isPumping = false;
+    }
+  }
+
+  Future<void> _executeJob(SftpTransferJob job) async {
+    if (job.isDirectoryTree) {
+      if (job.direction == SftpTransferDirection.download) {
+        final Directory localRoot = Directory(job.localPath);
+        await localRoot.create(recursive: true);
+        job.completedCount = await _downloadTree(
+          remoteDir: job.remotePath,
+          localDir: localRoot,
+        );
+        return;
+      }
+      try {
+        await _helper.mkdir(job.remotePath);
+      } catch (_) {
+        // May already exist.
+      }
+      job.completedCount = await _uploadTree(
+        localDir: Directory(job.localPath),
+        remoteDir: job.remotePath,
+      );
+      return;
+    }
+
+    if (job.direction == SftpTransferDirection.upload) {
+      final File localFile = File(job.localPath);
+      final int totalBytes = await localFile.length();
+      job.total = totalBytes;
+      _syncTransferFromJob(job);
+      await _helper.upload(
+        localFile,
+        job.remotePath,
+        onProgress: (int bytesTransferred, int? knownTotalBytes) {
+          _updateTransferProgress(bytesTransferred, knownTotalBytes);
+        },
+        cancelToken: _cancel,
+      );
+      return;
+    }
+
+    final File localFile = File(job.localPath);
+    _syncTransferFromJob(job);
+    await _helper.downloadStream(
+      job.remotePath,
+      localFile,
+      knownSize: job.knownSize,
+      resumeFromLocal: job.resumeDownload,
+      onProgress: (int bytesTransferred, int? knownTotalBytes) {
+        _updateTransferProgress(bytesTransferred, knownTotalBytes);
+      },
+      cancelToken: _cancel,
+    );
+  }
+
+  Future<void> _verifyJob(SftpTransferJob job) async {
+    _transferVerifyMessage = null;
+    final checksum = _checksum;
+    if (!_verifyTransfers ||
+        job.isDirectoryTree ||
+        checksum == null ||
+        _cancel?.isCancelled == true) {
+      return;
+    }
+    try {
+      final String localHash =
+          await checksum.localSha256(File(job.localPath));
+      final String? remoteHash = await checksum.remoteSha256(job.remotePath);
+      if (remoteHash == null) {
+        _transferVerifyMessage = 'Checksum skipped (remote command unavailable)';
+      } else if (localHash != remoteHash) {
+        _transferVerifyMessage = 'Checksum mismatch';
+        _error = 'Checksum mismatch for ${job.label}';
+      } else {
+        _transferVerifyMessage = 'Checksum verified';
+      }
+    } catch (e) {
+      _transferVerifyMessage = 'Checksum failed: $e';
+    }
+    notifyListeners();
+  }
+
+  Future<void> _setPermissionsRecursive(String dirPath, int mode) async {
+    final List<RemoteFsEntry> entries = await _helper.listDir(dirPath);
+    for (final RemoteFsEntry entry in entries) {
+      final String childPath = RemotePath.join(dirPath, entry.name);
+      await _helper.setPermissions(childPath, mode);
+      if (entry.isDirectory) {
+        await _setPermissionsRecursive(childPath, mode);
+      }
+    }
+  }
+
+  void _syncTransferFromJob(SftpTransferJob job) {
+    final int waiting = _queue
+        .where(
+          (SftpTransferJob j) => j.status == SftpTransferStatus.queued,
+        )
+        .length;
+    var label = job.label;
+    if (waiting > 0) {
+      label = '$label (+$waiting queued)';
+    }
+    _transferLabel = label;
+    _transferBytes = job.bytes;
+    _transferTotal = job.total ?? job.knownSize;
   }
 
   Future<bool> _runMutation(
@@ -530,15 +802,28 @@ class SftpController extends ChangeNotifier {
     int? totalBytes,
   }) {
     _cancel ??= SftpCancelToken();
-    _transferLabel = label;
-    _transferBytes = 0;
-    _transferTotal = totalBytes;
+    final SftpTransferJob? job = _activeJob;
+    if (job != null) {
+      job.label = label;
+      job.bytes = 0;
+      job.total = totalBytes ?? job.total;
+      _syncTransferFromJob(job);
+    } else {
+      _transferLabel = label;
+      _transferBytes = 0;
+      _transferTotal = totalBytes;
+    }
     notifyListeners();
   }
 
   void _updateTransferProgress(int bytesTransferred, int? totalBytes) {
     _transferBytes = bytesTransferred;
     _transferTotal = totalBytes;
+    final SftpTransferJob? job = _activeJob;
+    if (job != null) {
+      job.bytes = bytesTransferred;
+      job.total = totalBytes ?? job.total;
+    }
 
     // Throttle notifyListeners to max 100ms to avoid jank
     if (_progressThrottleTimer?.isActive ?? false) {
