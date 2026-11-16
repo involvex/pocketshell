@@ -2,9 +2,11 @@
 
 ## SSH client
 
-Connect to remote hosts with password or private-key auth. The built-in xterm
-terminal supports colors, scrollback, and a shortcut bar for Ctrl, Alt, arrows,
-and custom snippets.
+Connect to remote hosts with password, private-key, or keyboard-interactive
+(2FA/TOTP) auth. The built-in xterm terminal supports colors, scrollback, and a
+shortcut bar for Ctrl, Alt, arrows, and custom snippets. Profiles can be
+searched, pinned as favorites, duplicated, or imported from the host’s
+`~/.ssh/config` over an active SFTP session.
 
 ### SFTP (Client + Agents)
 
@@ -23,6 +25,10 @@ Split terminal|files “workstation” layout remains out of scope.
 The **Agents** tab talks to an OpenCode HTTP API on the connected host.
 Sessions are scoped by project directory; slash commands handle model and
 provider configuration (`/model`, `/models`, `/connect`, `/agent`).
+
+When OpenCode listens only on the Windows host loopback, enable **Tunnel agent
+over SSH** on the profile: the app opens an SSH local forward to
+`127.0.0.1:agentPort` and connects Agents through that tunnel.
 
 ## Android extras
 

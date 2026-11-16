@@ -77,5 +77,29 @@ void main() {
       expect(profile.useHttps, isTrue);
       expect(profile.allowSelfSignedCerts, isTrue);
     });
+
+    test('fromJson defaults tunnelAgent and isFavorite when missing', () {
+      final profile = SSHProfile.fromJson(<String, dynamic>{
+        'id': 'legacy',
+        'name': 'n',
+        'host': 'h',
+        'username': 'u',
+      });
+      expect(profile.tunnelAgent, isFalse);
+      expect(profile.isFavorite, isFalse);
+    });
+
+    test('toJson round-trips tunnelAgent and isFavorite', () {
+      final profile = SSHProfile(
+        name: 'n',
+        host: 'h',
+        username: 'u',
+        tunnelAgent: true,
+        isFavorite: true,
+      );
+      final restored = SSHProfile.fromJson(profile.toJson());
+      expect(restored.tunnelAgent, isTrue);
+      expect(restored.isFavorite, isTrue);
+    });
   });
 }

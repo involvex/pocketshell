@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SSH keyboard-interactive authentication (2FA/TOTP prompts) with secure dialog.
+- Opt-in OpenCode agent tunnel over SSH local forward to remote `127.0.0.1:agentPort`.
+- Import OpenSSH `~/.ssh/config` from the connected host into profiles.
+- Profile search, favorites pin, and duplicate in the profile manager.
 
 ## [1.3.0] - 2026-11-15
 

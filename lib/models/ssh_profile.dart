@@ -22,6 +22,13 @@ class SSHProfile {
   final String? agentPassword;
   final SessionManager sessionManager;
 
+  /// When true, Agents HTTP goes through an SSH local forward to
+  /// `127.0.0.1:agentPort` on the remote host (for OpenCode bound to loopback).
+  final bool tunnelAgent;
+
+  /// Pinned to the top of the profile list when true.
+  final bool isFavorite;
+
   SSHProfile({
     required this.name,
     required this.host,
@@ -38,6 +45,8 @@ class SSHProfile {
     this.agentUsername = 'opencode',
     this.agentPassword,
     this.sessionManager = SessionManager.none,
+    this.tunnelAgent = false,
+    this.isFavorite = false,
   }) : id = id ?? const Uuid().v4();
 
   String get agentBaseUrl =>
@@ -72,6 +81,8 @@ class SSHProfile {
     String? agentUsername,
     String? agentPassword,
     SessionManager? sessionManager,
+    bool? tunnelAgent,
+    bool? isFavorite,
   }) {
     return SSHProfile(
       id: id ?? this.id,
@@ -89,6 +100,8 @@ class SSHProfile {
       agentUsername: agentUsername ?? this.agentUsername,
       agentPassword: agentPassword ?? this.agentPassword,
       sessionManager: sessionManager ?? this.sessionManager,
+      tunnelAgent: tunnelAgent ?? this.tunnelAgent,
+      isFavorite: isFavorite ?? this.isFavorite,
     );
   }
 
@@ -110,6 +123,8 @@ class SSHProfile {
       'agentUsername': agentUsername,
       if (includePassword) 'agentPassword': agentPassword,
       'sessionManager': sessionManager.name,
+      'tunnelAgent': tunnelAgent,
+      'isFavorite': isFavorite,
     };
   }
 
@@ -132,6 +147,8 @@ class SSHProfile {
       sessionManager: SessionManagerX.fromStorage(
         json['sessionManager'] as String?,
       ),
+      tunnelAgent: json['tunnelAgent'] as bool? ?? false,
+      isFavorite: json['isFavorite'] as bool? ?? false,
     );
   }
 }

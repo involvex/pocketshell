@@ -43,7 +43,7 @@ Proposal:
 - Zero out / drop decrypted key bytes after auth; never include private material in logs or `toJson()` (audit `SSHKey.toJson`, `SSHProfile.toJson`).
 - Add "Require passphrase to use key" setting.
 
-### 1.5 Keyboard-interactive / 2FA and SSH-certificate auth (P0, M)
+### 1.5 Keyboard-interactive / 2FA and SSH-certificate auth (P0, M) — **SHIPPED** (keyboard-interactive; certificates still open)
 Problem: password + static private key only. Many Windows hosts (primary target) and corporate servers require keyboard-interactive (2FA/TOTP) or certificates.
 Proposal:
 - Handle `dartssh2` keyboard-interactive prompts with a secure dialog (no echo, per-prompt labels).
@@ -57,13 +57,13 @@ Proposal:
 
 ## 2. SSH connection core (P1)
 
-### 2.1 SSH config import (`~/.ssh/config`) (P1, M)
+### 2.1 SSH config import (`~/.ssh/config`) (P1, M) — **SHIPPED** (Host/HostName/User/Port + IdentityFile hints; ProxyJump still open)
 Import host, hostname, user, port, identity file, jump host from desktop/server `~/.ssh/config` over existing SFTP channel or file picker. Map to `SSHProfile` fields; report skipped directives. Reduces manual profile setup, the top onboarding friction.
 
 ### 2.2 Jump host / bastion support (P1, M)
 Add `jumpProfileId` to `SSHProfile`; `SSHProvider.connectClient()` dials bastion first, then tunnels (TCP forward via `dartssh2`) to target. UI: "Via jump host" picker in `ssh_client_form.dart`. Essential for Windows lab + cloud setups.
 
-### 2.3 Local/remote port forwarding UI (P1, M)
+### 2.3 Local/remote port forwarding UI (P1, M) — **PARTIAL** (agent tunnel opt-in via `tunnelAgent` + SSH local forward to remote loopback agent port; general forward rules UI still open)
 Problem: no forwarding found in codebase. Users cannot reach RDP, DBs, or OpenCode behind NAT.
 Proposal: per-profile forward rules (local port → remote host:port, reverse optional); active-forwards list with stop/start; conflict detection on local port bind. Persist in profile JSON.
 
@@ -118,10 +118,10 @@ Open text preview → edit → save back with atomic rename + backup (`.bak`) op
 
 ## 5. Profiles, keys, snippets organization (P1–P2)
 
-### 5.1 Folders, tags, favorites, search (P1, M)
+### 5.1 Folders, tags, favorites, search (P1, M) — **SHIPPED** (search + favorites; folders/tags still open)
 Flat profile list does not scale. Add folders/tags + favorites pin + search bar in `ProfileManager`. Persist `folderId`, `tags`, `isFavorite` in profile JSON (backward compatible via nullable fields).
 
-### 5.2 Duplicate, QR share, deep-link connect (P1, S)
+### 5.2 Duplicate, QR share, deep-link connect (P1, S) — **SHIPPED** (duplicate; QR/`ssh://` still open)
 Duplicate-profile action; share a profile (host/port/username only, never secrets) via QR or `ssh://user@host:port` link; handle incoming links. Complements existing `sshapp://widget/ssh?profileId=` scheme.
 
 ### 5.3 `.ppk` (PuTTY) + OpenSSH import/export (P1, S)
@@ -198,8 +198,9 @@ Profile long-scrollback rendering and large SFTP directories (1k+ entries); virt
 ## Suggested build order (if resourced as 3 milestones)
 
 1. **Trust release (1.1, 1.3, 1.4, 2.4):** host-key trust, encrypted backup, key hygiene, keepalive/reconnect. Ships as 1.3.0.
-2. **Daily-driver release (2.5, 3.1, 4.1–4.3, 5.1):** multi-session tabs, scrollback search, transfer queue + checksums, profile folders/search. Ships as 1.4.0.
-3. **Agent-power release (6.1, 6.2, 6.4, 8.1, 8.5):** attachments, diff review, cost footer, first locale, onboarding wizard. Ships as 1.5.0.
+2. **Daily-driver release (2.5, 3.1, 4.1–4.3, 5.1):** multi-session tabs, scrollback search, transfer queue + checksums, profile folders/search. (Core shipped across 1.2–1.3; search/favorites in 1.4.)
+3. **Host-access release (1.5 kbd-interactive, 2.1 config import, 2.3 agent tunnel):** Windows OpenSSH reachability. Ships as 1.4.0.
+4. **Agent-power / polish (8.1, 8.5, 2.2 jump, certificates):** first locale, onboarding wizard, jump host. Ships as 1.5.0.
 
 ## Out of scope (deliberately not suggested)
 

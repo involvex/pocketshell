@@ -33,6 +33,7 @@ class MyApp extends StatelessWidget {
           update: (context, ssh, agent) {
             final provider = agent ?? AgentProvider();
             provider.onLog = ssh.addLog;
+            provider.ssh = ssh;
             return provider;
           },
         ),
