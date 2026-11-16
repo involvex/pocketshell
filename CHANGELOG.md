@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [1.3.1] - 2026-11-16
+
+### Changed
+
+- v1.3.1
 ### Added
 
 - SSH keyboard-interactive authentication (2FA/TOTP prompts) with secure dialog.
