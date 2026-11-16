@@ -5,6 +5,7 @@ import 'package:opencode_api/opencode_api.dart';
 import '../models/agent_model_option.dart';
 import '../models/ssh_profile.dart';
 import '../services/opencode_connection_service.dart';
+import '../services/ssh_local_forward.dart';
 
 class AgentConnection {
   AgentConnection({
@@ -30,11 +31,14 @@ class AgentConnection {
     this.sessionInputTokens = 0,
     this.sessionOutputTokens = 0,
     this.sessionCost,
+    this.agentTunnel,
   });
 
   final String id;
   final SSHProfile profile;
   final OpenCodeConnectionService service;
+  /// Active SSH local forward when [SSHProfile.tunnelAgent] is enabled.
+  final SshLocalForward? agentTunnel;
   List<Session> sessions;
   String? activeSessionId;
   List<MessageWithParts> messages;
@@ -74,5 +78,9 @@ class AgentConnection {
     unawaited(connectionEventSub?.cancel());
     eventSub = null;
     connectionEventSub = null;
+    final tunnel = agentTunnel;
+    if (tunnel != null && !tunnel.isClosed) {
+      unawaited(tunnel.close());
+    }
   }
 }

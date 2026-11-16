@@ -135,6 +135,11 @@ class SSHProvider extends ChangeNotifier {
     required String presentedFingerprint,
   })? onHostKeyMismatch;
 
+  /// UI hook for SSH keyboard-interactive prompts (2FA/TOTP). Return null to
+  /// cancel / skip the method. When null, keyboard-interactive is not offered.
+  Future<List<String>?> Function(SSHUserInfoRequest request)?
+      onUserInfoRequest;
+
   Future<void> loadConfig() async {
     var profileData = await _config.getProfiles();
     final migratedProfiles =
@@ -294,6 +299,17 @@ class SSHProvider extends ChangeNotifier {
     return null;
   }
 
+  /// Prefers a connected session for [profile.id], else any session to the host.
+  SessionEntry? findConnectedSessionForProfile(SSHProfile profile) {
+    for (final session in sessions) {
+      if (!session.isConnected || session.client == null) continue;
+      if (session.profile.id == profile.id) {
+        return session;
+      }
+    }
+    return findConnectedSessionForHost(profile.host);
+  }
+
   bool _hostsMatch(String a, String b) {
     final na = a.toLowerCase();
     final nb = b.toLowerCase();
@@ -309,7 +325,10 @@ class SSHProvider extends ChangeNotifier {
     try {
       addLog('Connecting to ${profile.host}:${profile.port}...');
       final auth = await resolveSshAuthMaterial(profile);
-      if (!auth.hasKeyAuth && !auth.hasPasswordAuth) {
+      final canKeyboardInteractive = onUserInfoRequest != null;
+      if (!auth.hasKeyAuth &&
+          !auth.hasPasswordAuth &&
+          !canKeyboardInteractive) {
         throw StateError(
           'No credentials: set a password or select an SSH key for this profile',
         );
@@ -325,6 +344,24 @@ class SSHProvider extends ChangeNotifier {
         username: profile.username,
         identities: auth.identities,
         onPasswordRequest: auth.hasPasswordAuth ? () => auth.password! : null,
+        onUserInfoRequest: canKeyboardInteractive
+            ? (request) async {
+                final hook = onUserInfoRequest;
+                if (hook == null) {
+                  return null;
+                }
+                addLog(
+                  'Keyboard-interactive auth for ${profile.host}:${profile.port}',
+                );
+                return hook(request);
+              }
+            : null,
+        onUserauthBanner: (banner) {
+          final trimmed = banner.trim();
+          if (trimmed.isNotEmpty) {
+            addLog('SSH banner: $trimmed');
+          }
+        },
         keepAliveInterval: const Duration(seconds: 15),
         onVerifyHostKey: (type, fingerprintBytes) async {
           final fingerprint = String.fromCharCodes(fingerprintBytes);

@@ -12,6 +12,7 @@ import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
 import '../widgets/log_viewer.dart';
 import '../widgets/host_key_dialog.dart';
+import '../widgets/keyboard_interactive_dialog.dart';
 import '../widgets/profile_manager.dart';
 import '../widgets/key_manager.dart';
 import '../widgets/keyboard_shortcut_bar.dart';
@@ -103,6 +104,12 @@ class _HomeScreenState extends State<HomeScreen> {
           expectedFingerprint: expectedFingerprint,
           presentedFingerprint: presentedFingerprint,
         );
+      };
+      ssh.onUserInfoRequest = (request) {
+        if (!mounted) {
+          return Future<List<String>?>.value(null);
+        }
+        return showKeyboardInteractiveDialog(context, request);
       };
     });
   }

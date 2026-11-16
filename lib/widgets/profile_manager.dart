@@ -4,6 +4,7 @@ import '../providers/ssh_provider.dart';
 import '../models/ssh_key.dart';
 import '../models/ssh_profile.dart';
 import '../services/config_service.dart';
+import '../services/ssh_config_import_service.dart';
 import '../utils/session_manager.dart';
 import '../utils/ssh_auth_utils.dart';
 
@@ -15,6 +16,36 @@ class ProfileManager extends StatefulWidget {
 }
 
 class _ProfileManagerState extends State<ProfileManager> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+  bool _importing = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<SSHProfile> _filteredSorted(List<SSHProfile> profiles) {
+    final q = _query.trim().toLowerCase();
+    final filtered = q.isEmpty
+        ? List<SSHProfile>.from(profiles)
+        : profiles
+            .where((p) {
+              return p.name.toLowerCase().contains(q) ||
+                  p.host.toLowerCase().contains(q) ||
+                  p.username.toLowerCase().contains(q);
+            })
+            .toList();
+    filtered.sort((a, b) {
+      if (a.isFavorite != b.isFavorite) {
+        return a.isFavorite ? -1 : 1;
+      }
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return filtered;
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
@@ -38,20 +69,49 @@ class _ProfileManagerState extends State<ProfileManager> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
-                    const Text(
-                      'SSH Profiles',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    const Expanded(
+                      child: Text(
+                        'SSH Profiles',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Import ~/.ssh/config from connected host',
+                      icon: _importing
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.download, color: Colors.orange),
+                      onPressed: _importing
+                          ? null
+                          : () => _importSshConfig(context),
                     ),
                     IconButton(
                       icon: const Icon(Icons.add, color: Colors.green),
                       onPressed: () => _showProfileDialog(context),
                     ),
                   ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search),
+                    hintText: 'Search name, host, user',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  onChanged: (value) => setState(() => _query = value),
                 ),
               ),
               Expanded(
@@ -62,31 +122,66 @@ class _ProfileManagerState extends State<ProfileManager> {
                         child: Text('No profiles saved yet'),
                       );
                     }
+                    final visible = _filteredSorted(ssh.profiles);
+                    if (visible.isEmpty) {
+                      return const Center(
+                        child: Text('No profiles match the search'),
+                      );
+                    }
                     return ListView.builder(
                       controller: scrollController,
-                      itemCount: ssh.profiles.length,
+                      itemCount: visible.length,
                       itemBuilder: (context, index) {
-                        final profile = ssh.profiles[index];
+                        final profile = visible[index];
                         return ListTile(
-                          leading: const Icon(
-                            Icons.computer,
-                            color: Colors.blue,
+                          leading: IconButton(
+                            tooltip: profile.isFavorite
+                                ? 'Unpin favorite'
+                                : 'Pin favorite',
+                            icon: Icon(
+                              profile.isFavorite
+                                  ? Icons.star
+                                  : Icons.star_border,
+                              color: profile.isFavorite
+                                  ? Colors.amber
+                                  : Colors.blue,
+                            ),
+                            onPressed: () {
+                              ssh.saveProfile(
+                                profile.copyWith(
+                                  isFavorite: !profile.isFavorite,
+                                ),
+                              );
+                            },
                           ),
                           title: Text(profile.name),
                           subtitle: Text(
-                            'SSH ${profile.host}:${profile.port} · Agent ${profile.agentBaseUrl}',
+                            'SSH ${profile.host}:${profile.port} · '
+                            'Agent ${profile.agentBaseUrl}'
+                            '${profile.tunnelAgent ? ' · tunnel' : ''}',
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
                               IconButton(
-                                icon: const Icon(Icons.edit, size: 20),
-                                onPressed: () => _showProfileDialog(context,
-                                    profile: profile),
+                                tooltip: 'Duplicate',
+                                icon: const Icon(Icons.copy, size: 20),
+                                onPressed: () =>
+                                    _duplicateProfile(context, profile),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete,
-                                    size: 20, color: Colors.red),
+                                icon: const Icon(Icons.edit, size: 20),
+                                onPressed: () => _showProfileDialog(
+                                  context,
+                                  profile: profile,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  size: 20,
+                                  color: Colors.red,
+                                ),
                                 onPressed: () =>
                                     _deleteProfile(context, profile.id),
                               ),
@@ -104,6 +199,104 @@ class _ProfileManagerState extends State<ProfileManager> {
         );
       },
     );
+  }
+
+  Future<void> _importSshConfig(BuildContext context) async {
+    final ssh = Provider.of<SSHProvider>(context, listen: false);
+    final session = ssh.activeSession;
+    if (session == null || !session.isConnected || session.client == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Connect an SSH session first, then import config.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _importing = true);
+    try {
+      const importer = SshConfigImportService();
+      final remote = await importer.readRemoteConfig(
+        client: session.client!,
+        username: session.profile.username,
+      );
+      if (remote == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No OpenSSH config found on the host.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final merged = importer.mergeIntoProfiles(
+        existing: ssh.profiles,
+        sourcePath: remote.path,
+        contents: remote.contents,
+        fallbackUsername: session.profile.username,
+      );
+
+      for (final profile in merged.profiles) {
+        await ssh.saveProfile(profile);
+      }
+
+      if (!context.mounted) {
+        return;
+      }
+      final r = merged.result;
+      final hint = r.identityHints.isEmpty
+          ? ''
+          : '\nIdentityFile hints: ${r.identityHints.take(3).join('; ')}';
+      final skipped = r.skippedDirectives.isEmpty
+          ? ''
+          : '\nSkipped: ${r.skippedDirectives.take(5).join(', ')}';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Imported from ${r.sourcePath}: '
+            '${r.created} created, ${r.updated} updated.$hint$skipped',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Import failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _importing = false);
+      }
+    }
+  }
+
+  void _duplicateProfile(BuildContext context, SSHProfile profile) {
+    final copy = SSHProfile(
+      name: '${profile.name} (copy)',
+      host: profile.host,
+      port: profile.port,
+      username: profile.username,
+      password: profile.password,
+      privateKey: profile.privateKey,
+      startupCommand: profile.startupCommand,
+      agentPort: profile.agentPort,
+      useHttps: profile.useHttps,
+      allowSelfSignedCerts: profile.allowSelfSignedCerts,
+      agentUsername: profile.agentUsername,
+      agentPassword: profile.agentPassword,
+      sessionManager: profile.sessionManager,
+      tunnelAgent: profile.tunnelAgent,
+      isFavorite: false,
+    );
+    Provider.of<SSHProvider>(context, listen: false).saveProfile(copy);
   }
 
   void _showProfileDialog(BuildContext context, {SSHProfile? profile}) {
@@ -128,6 +321,8 @@ class _ProfileManagerState extends State<ProfileManager> {
         TextEditingController(text: profile?.startupCommand ?? '');
     var useHttps = profile?.useHttps ?? false;
     var allowSelfSignedCerts = profile?.allowSelfSignedCerts ?? false;
+    var tunnelAgent = profile?.tunnelAgent ?? false;
+    var isFavorite = profile?.isFavorite ?? false;
     var sessionManager = profile?.sessionManager ?? SessionManager.none;
     String? selectedKeyId = profile?.privateKey != null &&
             !looksLikePemPrivateKey(profile!.privateKey!)
@@ -227,7 +422,8 @@ class _ProfileManagerState extends State<ProfileManager> {
                               (k) => DropdownMenuItem<String?>(
                                 value: k.id,
                                 child: Text(
-                                    '${k.name} (${k.keyType.displayName})'),
+                                  '${k.name} (${k.keyType.displayName})',
+                                ),
                               ),
                             ),
                           ],
@@ -262,6 +458,22 @@ class _ProfileManagerState extends State<ProfileManager> {
                           ),
                         ),
                         const SizedBox(height: 8),
+                        SwitchListTile(
+                          title: const Text('Favorite'),
+                          value: isFavorite,
+                          onChanged: (value) =>
+                              setDialogState(() => isFavorite = value),
+                        ),
+                        SwitchListTile(
+                          title: const Text('Tunnel agent over SSH'),
+                          subtitle: const Text(
+                            'Forward to 127.0.0.1:agentPort on the host '
+                            '(OpenCode bound to loopback). Requires SSH session.',
+                          ),
+                          value: tunnelAgent,
+                          onChanged: (value) =>
+                              setDialogState(() => tunnelAgent = value),
+                        ),
                         SwitchListTile(
                           title: const Text('Use HTTPS for Agent'),
                           value: useHttps,
@@ -325,6 +537,8 @@ class _ProfileManagerState extends State<ProfileManager> {
                               ? null
                               : agentPasswordController.text,
                           sessionManager: sessionManager,
+                          tunnelAgent: tunnelAgent,
+                          isFavorite: isFavorite,
                         );
                         Provider.of<SSHProvider>(context, listen: false)
                             .saveProfile(newProfile);
@@ -381,8 +595,9 @@ class _ProfileManagerState extends State<ProfileManager> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Connection failed: $e'),
-              backgroundColor: Colors.red),
+            content: Text('Connection failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }

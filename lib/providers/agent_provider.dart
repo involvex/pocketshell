@@ -8,9 +8,11 @@ import '../models/agent_connection.dart';
 import '../models/agent_permission_request.dart';
 import '../models/agent_prompt_attachment.dart';
 import '../models/ssh_profile.dart';
+import '../providers/ssh_provider.dart';
 import '../services/config_repository.dart';
 import '../services/opencode_connection_service.dart';
 import '../services/opencode_v2_mappers.dart';
+import '../services/ssh_local_forward.dart';
 import '../utils/agent_prompt_utils.dart';
 import '../utils/agent_session_utils.dart';
 
@@ -19,6 +21,10 @@ class AgentProvider extends ChangeNotifier {
       : _config = config ?? ConfigServiceRepository();
 
   final ConfigRepository _config;
+  SSHProvider? _ssh;
+
+  /// Wired from [ChangeNotifierProxyProvider] so agent tunnels can reuse SSH.
+  set ssh(SSHProvider value) => _ssh = value;
 
   final List<AgentConnection> _connections = [];
   String? _activeConnectionId;
@@ -49,8 +55,17 @@ class AgentProvider extends ChangeNotifier {
   }
 
   Future<AgentConnection> connectFromProfile(SSHProfile profile) async {
+    SshLocalForward? tunnel;
+    var baseUrl = profile.agentBaseUrl;
+
+    if (profile.tunnelAgent) {
+      final prepared = await _prepareAgentTunnel(profile);
+      tunnel = prepared.tunnel;
+      baseUrl = prepared.baseUrl;
+    }
+
     final service = OpenCodeConnectionService(
-      baseUrl: profile.agentBaseUrl,
+      baseUrl: baseUrl,
       username: profile.effectiveAgentUsername,
       password: profile.effectiveAgentPassword,
       allowInsecureTls: profile.useHttps && profile.allowSelfSignedCerts,
@@ -72,6 +87,7 @@ class AgentProvider extends ChangeNotifier {
         sessions: sessions,
         isConnected: true,
         selectedDirectory: directory,
+        agentTunnel: tunnel,
       );
 
       _wireConnection(connection);
@@ -79,7 +95,7 @@ class AgentProvider extends ChangeNotifier {
       _connections.add(connection);
       _activeConnectionId = connection.id;
       onLog?.call(
-        'Agent connected: ${profile.name} (${profile.agentBaseUrl})',
+        'Agent connected: ${profile.name} ($baseUrl)',
       );
       notifyListeners();
       // ignore: unawaited_futures
@@ -87,8 +103,54 @@ class AgentProvider extends ChangeNotifier {
       return connection;
     } catch (e) {
       service.dispose();
+      if (tunnel != null && !tunnel.isClosed) {
+        await tunnel.close();
+      }
       rethrow;
     }
+  }
+
+  /// Ensures an SSH session exists and opens a loopback forward to the agent.
+  Future<({SshLocalForward tunnel, String baseUrl})> _prepareAgentTunnel(
+    SSHProfile profile,
+  ) async {
+    final ssh = _ssh;
+    if (ssh == null) {
+      throw StateError(
+        'SSH provider unavailable. Cannot tunnel agent without SSH.',
+      );
+    }
+
+    var session = ssh.findConnectedSessionForProfile(profile);
+    if (session == null) {
+      onLog?.call(
+        'Agent tunnel: connecting SSH session for ${profile.name}...',
+      );
+      session = ssh.createSessionFromProfile(profile, name: profile.name);
+      await ssh.connectSession(session.id);
+      session = ssh.findConnectedSessionForProfile(profile);
+    }
+
+    final client = session?.client;
+    if (session == null || client == null || !session.isConnected) {
+      throw StateError(
+        'No SSH session for ${profile.host}. Connect Client first, '
+        'or check credentials, then retry Agents with "Tunnel agent" enabled.',
+      );
+    }
+
+    final tunnel = await SshLocalForward.start(
+      client: client,
+      remoteHost: '127.0.0.1',
+      remotePort: profile.agentPort,
+    );
+    final scheme = profile.useHttps ? 'https' : 'http';
+    final baseUrl = '$scheme://127.0.0.1:${tunnel.localPort}';
+    onLog?.call(
+      'Agent tunnel ready: $baseUrl -> '
+      '${profile.host} 127.0.0.1:${profile.agentPort}',
+    );
+    return (tunnel: tunnel, baseUrl: baseUrl);
   }
 
   Future<AgentConnection> connectFromUrl({
