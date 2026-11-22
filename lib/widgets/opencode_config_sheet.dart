@@ -85,19 +85,80 @@ class _OpenCodeConfigSheetState extends State<_OpenCodeConfigSheet> {
   }
 
   Future<void> _applyPatch() async {
+    Map<String, dynamic> body;
     try {
-      final body = json.decode(_patchController.text) as Map<String, dynamic>;
-      final updated = await widget.connection.service.updateConfig(body);
-      setState(() => _config = updated);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Config updated on server')),
-      );
+      body = json.decode(_patchController.text) as Map<String, dynamic>;
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Update failed: $e'),
+          content: Text('Invalid JSON: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // V2 only accepts an experimental shell patch over HTTP. Everything else
+    // is written to the host opencode.json over SFTP.
+    if (body.length == 1 && body.containsKey('shell')) {
+      try {
+        final updated = await widget.connection.service.updateConfig(body);
+        setState(() => _config = updated);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Shell config patched on server')),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Update failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    await _writeConfigViaSftp(body);
+  }
+
+  Future<void> _writeConfigViaSftp(Map<String, dynamic> body) async {
+    final ssh = Provider.of<SSHProvider>(context, listen: false);
+    final session =
+        ssh.findConnectedSessionForHost(widget.connection.profile.host);
+    if (session?.client == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Connect SSH to the agent host to write opencode.json '
+            '(or send {"shell": ...} for the experimental HTTP patch)',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      const service = OpenCodeRemoteConfigService();
+      final path = await service.writeConfigViaSshClient(
+        client: session!.client!,
+        profile: widget.connection.profile,
+        body: body,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Wrote config to $path (.bak kept if present)')),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('SFTP config write failed: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -247,13 +308,18 @@ class _OpenCodeConfigSheetState extends State<_OpenCodeConfigSheet> {
                                 body: _prettyJson(_providers!.toJson()),
                               ),
                             const SizedBox(height: 12),
-                            const Text('PATCH body (JSON)'),
+                            const Text('Config JSON'),
+                            Text(
+                              'Writes to the host opencode.json over SSH/SFTP. '
+                              'Send {"shell": ...} alone for the experimental HTTP patch.',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                             const SizedBox(height: 4),
                             TextField(
                               controller: _patchController,
                               decoration: const InputDecoration(
                                 border: OutlineInputBorder(),
-                                hintText: '{"key": "value"}',
+                                hintText: '{"model": "..."}',
                               ),
                               minLines: 3,
                               maxLines: 6,
@@ -261,7 +327,7 @@ class _OpenCodeConfigSheetState extends State<_OpenCodeConfigSheet> {
                             const SizedBox(height: 8),
                             FilledButton(
                               onPressed: _applyPatch,
-                              child: const Text('Update on server'),
+                              child: const Text('Save to host'),
                             ),
                           ],
                         ),

@@ -68,10 +68,19 @@ void main() {
       );
     });
 
-    test('psmux provides a windows-oriented command', () {
-      final cmd = SessionManager.psmux.attachOrNewCommand;
-      expect(cmd, isNotNull);
-      expect(cmd, contains('psmux'));
+    test('psmux and wt do not inject a non-PTY startup command', () {
+      expect(SessionManager.psmux.attachOrNewCommand, isNull);
+      expect(SessionManager.wt.attachOrNewCommand, isNull);
+      expect(SessionManager.psmux.isPtyCompatible, isFalse);
+      expect(SessionManager.wt.isPtyCompatible, isFalse);
+      expect(
+        SessionManagerX.selectableValues,
+        isNot(contains(SessionManager.psmux)),
+      );
+      expect(
+        SessionManagerX.selectableValues,
+        isNot(contains(SessionManager.wt)),
+      );
     });
   });
 }

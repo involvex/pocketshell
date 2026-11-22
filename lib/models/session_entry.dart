@@ -32,6 +32,13 @@ class SessionEntry {
   bool isConnected;
   bool disconnectedWhileBackgrounded;
   bool shouldReconnectOnResume;
+
+  /// When true, [shell.done] must not trigger foreground auto-reconnect
+  /// (used while [SSHProvider.reconnectSession] closes the old shell).
+  bool suppressAutoReconnect;
+
+  /// Consecutive foreground reconnect attempts; reset on a successful connect.
+  int reconnectAttempts;
   String? lastError;
   DateTime? lastActivityAt;
   final List<ActivePortForward> activeForwards = <ActivePortForward>[];
@@ -46,6 +53,8 @@ class SessionEntry {
         isConnected = false,
         disconnectedWhileBackgrounded = false,
         shouldReconnectOnResume = false,
+        suppressAutoReconnect = false,
+        reconnectAttempts = 0,
         lastError = null;
 
   void touch() {

@@ -132,7 +132,7 @@ lib/
 - The local SSH Server tab was removed (it was a non-functional stub); do not reintroduce a Server tab without a real host implementation.
 - Use **PocketShell** as the user-facing display name (display-only rename; keep `ssh_app` package/id unchanged).
 - Primary usage is Android client connecting to **Windows** hosts for SSH and OpenCode agents.
-- OpenCode config should use the connected server API (`getConfig`/`updateConfig`) plus remote import from the Windows host over SSH, not local mobile config files.
+- OpenCode config should use the connected server API (`getConfig`) plus remote import/write of host `opencode.json` over SSH/SFTP; arbitrary V2 HTTP PATCH is limited to experimental `shell` only.
 - Agents tab should use master-detail navigation on all screen sizes (hide session list when chat is open), not a side-by-side split on wide screens.
 
 ## Learned Workspace Facts
@@ -150,7 +150,9 @@ lib/
 - Agents tab uses master-detail navigation on all screen sizes with `PopScope` and Android predictive back.
 - `AppLifecycleService` and `ConnectionForegroundService` keep SSH/agent sessions alive when Android is backgrounded.
 - Agent chat groups consecutive same-role messages via `groupAgentMessages` in `lib/utils/agent_message_grouping.dart`; rendering uses `AgentMessageBubble` and `AgentMessagePartTile`.
-- `OpenCodeRemoteConfigService` imports Windows host config over SSH from `%USERPROFILE%\.config\opencode\`; Android build uses AGP 9.3.1 / Kotlin 2.4.20 with vendored `packages/home_widget`.
+- `OpenCodeRemoteConfigService` imports and writes Windows host config over SSH/SFTP under `%USERPROFILE%\.config\opencode\` (and Roaming fallback); Android build uses AGP 9.3.1 / Kotlin 2.4.20 with vendored `packages/home_widget`.
+- SFTP `listDrives` probes remote `C:/`–`Z:/` regardless of client OS; `writeRemoteBytes` uses temp + rename with optional `.bak`.
+- Foreground SSH link drops auto-reconnect with backoff in `SSHProvider`; clean remote `exit` clears `shouldReconnectOnResume`.
 - CI/release Flutter SDK is pinned in `.github/flutter-version` (currently `3.47.9` / Dart 3.13). Bump that file before merging pub deps that need a newer Dart SDK; Dependabot ignores major `very_good_analysis` bumps for the same reason.
 
 ## Cursor Cloud specific instructions

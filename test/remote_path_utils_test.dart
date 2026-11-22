@@ -38,4 +38,22 @@ void main() {
       expect(RemotePath.isRoot('C:/Users'), isFalse);
     });
   });
+
+  group('RemotePath.assertNoTraversal', () {
+    test('allows windows absolute paths regardless of client OS', () {
+      expect(() => RemotePath.assertNoTraversal('C:/Users/lukas'), returnsNormally);
+      expect(() => RemotePath.assertNoTraversal('D:/Projects'), returnsNormally);
+    });
+
+    test('rejects .. segments on unix and windows paths', () {
+      expect(
+        () => RemotePath.assertNoTraversal('/home/../etc/passwd'),
+        throwsStateError,
+      );
+      expect(
+        () => RemotePath.assertNoTraversal('C:/Users/../Windows'),
+        throwsStateError,
+      );
+    });
+  });
 }

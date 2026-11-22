@@ -412,7 +412,11 @@ class FakeSftpFileSystem implements SftpFileSystem {
   }
 
   @override
-  Future<void> writeRemoteBytes(String remotePath, Uint8List data) {
+  Future<void> writeRemoteBytes(
+    String remotePath,
+    Uint8List data, {
+    bool backup = true,
+  }) {
     throw UnimplementedError();
   }
 

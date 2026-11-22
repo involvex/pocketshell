@@ -45,7 +45,8 @@ class Snippet {
     );
   }
 
-  static List<Snippet> get defaults => [
+  /// Unix/bash-oriented defaults (Linux, macOS, WSL).
+  static List<Snippet> get unixDefaults => [
         Snippet(name: 'List files', content: 'ls -la', category: 'File'),
         Snippet(name: 'Current directory', content: 'pwd', category: 'System'),
         Snippet(name: 'Disk usage', content: 'df -h', category: 'System'),
@@ -56,5 +57,57 @@ class Snippet {
         Snippet(name: 'Network info', content: 'ip addr', category: 'Network'),
         Snippet(
             name: 'Ping', content: 'ping -c 4 8.8.8.8', category: 'Network'),
+      ];
+
+  /// PowerShell pack for Windows OpenSSH hosts.
+  static List<Snippet> get windowsDefaults => [
+        Snippet(
+          name: 'List files',
+          content: 'Get-ChildItem -Force',
+          category: 'PowerShell',
+        ),
+        Snippet(
+          name: 'Current directory',
+          content: 'Get-Location',
+          category: 'PowerShell',
+        ),
+        Snippet(
+          name: 'Disk usage',
+          content: 'Get-PSDrive -PSProvider FileSystem',
+          category: 'PowerShell',
+        ),
+        Snippet(
+          name: 'Memory usage',
+          content:
+              r'Get-CimInstance Win32_OperatingSystem | Select-Object FreePhysicalMemory,TotalVisibleMemorySize',
+          category: 'PowerShell',
+        ),
+        Snippet(
+          name: 'Process list',
+          content: 'Get-Process | Sort-Object CPU -Descending | Select-Object -First 20',
+          category: 'PowerShell',
+        ),
+        Snippet(
+          name: 'Top processes',
+          content:
+              'Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 15 Name,Id,CPU,WorkingSet64',
+          category: 'PowerShell',
+        ),
+        Snippet(
+          name: 'Network info',
+          content: 'Get-NetIPAddress -AddressFamily IPv4 | Format-Table',
+          category: 'PowerShell',
+        ),
+        Snippet(
+          name: 'Ping',
+          content: 'Test-Connection -Count 4 8.8.8.8',
+          category: 'PowerShell',
+        ),
+      ];
+
+  /// Combined seed list: Unix plus PowerShell for Android→Windows workflows.
+  static List<Snippet> get defaults => [
+        ...unixDefaults,
+        ...windowsDefaults,
       ];
 }

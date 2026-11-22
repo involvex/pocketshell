@@ -39,7 +39,11 @@ abstract interface class SftpFileSystem {
     String remotePath, {
     int maxBytes = kSftpPreviewMaxBytes,
   });
-  Future<void> writeRemoteBytes(String remotePath, Uint8List data);
+  Future<void> writeRemoteBytes(
+    String remotePath,
+    Uint8List data, {
+    bool backup = true,
+  });
   Future<void> copyRemoteFile(String fromPath, String toPath);
   Future<String?> readRemoteText(String remotePath);
   Future<List<String>> listDrives({bool forceRefresh = false});
@@ -72,7 +76,7 @@ class SftpHelper implements SftpFileSystem {
   Future<List<RemoteFsEntry>> listDir(String path) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(path);
-    _validatePathTraversal(normalizedPath);
+    RemotePath.assertNoTraversal(normalizedPath);
     final names = await sftp.listdir(normalizedPath);
     final entries = <RemoteFsEntry>[];
     for (final name in names) {
@@ -152,7 +156,7 @@ class SftpHelper implements SftpFileSystem {
   }) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
-    _validatePathTraversal(normalizedPath);
+    RemotePath.assertNoTraversal(normalizedPath);
     final remoteFile = await sftp.open(
       normalizedPath,
       mode: SftpFileOpenMode.read,
@@ -193,7 +197,7 @@ class SftpHelper implements SftpFileSystem {
   Future<int?> statMode(String path) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(path);
-    _validatePathTraversal(normalizedPath);
+    RemotePath.assertNoTraversal(normalizedPath);
     final attrs = await sftp.stat(normalizedPath);
     return attrs.mode?.value;
   }
@@ -204,7 +208,7 @@ class SftpHelper implements SftpFileSystem {
     try {
       final sftp = await _sftp();
       final normalizedPath = RemotePath.normalize(path);
-      _validatePathTraversal(normalizedPath);
+      RemotePath.assertNoTraversal(normalizedPath);
       await sftp.setStat(
         normalizedPath,
         SftpFileAttrs(mode: SftpFileMode.value(mode)),
@@ -223,7 +227,7 @@ class SftpHelper implements SftpFileSystem {
   }) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
-    _validatePathTraversal(normalizedPath);
+    RemotePath.assertNoTraversal(normalizedPath);
     final file = await sftp.open(
       normalizedPath,
       mode: SftpFileOpenMode.write |
@@ -254,7 +258,7 @@ class SftpHelper implements SftpFileSystem {
   }) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
-    _validatePathTraversal(normalizedPath);
+    RemotePath.assertNoTraversal(normalizedPath);
     final int? knownSize = (await sftp.stat(normalizedPath)).size;
     if (knownSize != null && knownSize > maxBytes) {
       throw StateError(
@@ -291,20 +295,57 @@ class SftpHelper implements SftpFileSystem {
   }
 
   @override
-  Future<void> writeRemoteBytes(String remotePath, Uint8List data) async {
+  Future<void> writeRemoteBytes(
+    String remotePath,
+    Uint8List data, {
+    bool backup = true,
+  }) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
-    _validatePathTraversal(normalizedPath);
-    final remoteFile = await sftp.open(
-      normalizedPath,
+    RemotePath.assertNoTraversal(normalizedPath);
+    final tempPath = '$normalizedPath.pocketshell.tmp';
+    RemotePath.assertNoTraversal(tempPath);
+
+    // Write to a sibling temp file first so a dropped link never truncates
+    // the real target to an empty/partial file.
+    final tempFile = await sftp.open(
+      tempPath,
       mode: SftpFileOpenMode.write |
           SftpFileOpenMode.create |
           SftpFileOpenMode.truncate,
     );
     try {
-      await remoteFile.writeBytes(data);
+      await tempFile.writeBytes(data);
     } finally {
-      await remoteFile.close();
+      await tempFile.close();
+    }
+
+    final targetExisted = await exists(normalizedPath);
+    if (targetExisted && backup) {
+      final bakPath = '$normalizedPath.bak';
+      try {
+        if (await exists(bakPath)) {
+          await removeFile(bakPath);
+        }
+        await rename(normalizedPath, bakPath);
+      } catch (_) {
+        // Soft-fail backup — still try to replace the target below.
+        if (await exists(normalizedPath)) {
+          await removeFile(normalizedPath);
+        }
+      }
+    } else if (targetExisted) {
+      // Windows OpenSSH often cannot rename over an existing file.
+      await removeFile(normalizedPath);
+    }
+
+    try {
+      await rename(tempPath, normalizedPath);
+    } catch (_) {
+      if (await exists(normalizedPath)) {
+        await removeFile(normalizedPath);
+      }
+      await rename(tempPath, normalizedPath);
     }
   }
 
@@ -313,8 +354,8 @@ class SftpHelper implements SftpFileSystem {
     final sftp = await _sftp();
     final sourcePath = RemotePath.normalize(fromPath);
     final destPath = RemotePath.normalize(toPath);
-    _validatePathTraversal(sourcePath);
-    _validatePathTraversal(destPath);
+    RemotePath.assertNoTraversal(sourcePath);
+    RemotePath.assertNoTraversal(destPath);
     final source = await sftp.open(sourcePath, mode: SftpFileOpenMode.read);
     final dest = await sftp.open(
       destPath,
@@ -339,7 +380,7 @@ class SftpHelper implements SftpFileSystem {
   Future<String?> readRemoteText(String remotePath) async {
     final sftp = await _sftp();
     final normalizedPath = RemotePath.normalize(remotePath);
-    _validatePathTraversal(normalizedPath);
+    RemotePath.assertNoTraversal(normalizedPath);
     try {
       final remoteFile =
           await sftp.open(normalizedPath, mode: SftpFileOpenMode.read);
@@ -363,11 +404,8 @@ class SftpHelper implements SftpFileSystem {
 
   @override
   Future<List<String>> listDrives({bool forceRefresh = false}) async {
-    // Windows-only operation
-    if (!Platform.isWindows) {
-      return <String>[];
-    }
-
+    // Probe the *remote* host for Windows drive letters. The client OS does
+    // not matter — Android talking to Windows OpenSSH still needs C:/ etc.
     if (!forceRefresh &&
         _drives != null &&
         _drivesFetchedAt != null &&
@@ -419,24 +457,6 @@ class SftpHelper implements SftpFileSystem {
     }
   }
 
-  /// Validates that [path] does not escape the intended root (traversal guard).
-  /// Call with RemotePath.normalize(path) result.
-  static void _validatePathTraversal(String path) {
-    // On Windows, allow absolute paths like C:/...
-    if (Platform.isWindows) {
-      if (!RegExp(r'^[A-Za-z]:/').hasMatch(path)) {
-        // Not an absolute Windows path - treat as relative
-        if (path.contains('..')) {
-          throw StateError('Path traversal detected: $path');
-        }
-      }
-    } else {
-      // Unix-like: must not contain .. segments after normalization
-      if (path.split('/').contains('..')) {
-        throw StateError('Path traversal detected: $path');
-      }
-    }
-  }
 }
 
 String _formatPreviewLimit(int maxBytes) {

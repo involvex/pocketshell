@@ -25,6 +25,13 @@ void main() {
         Snippet(id: 'a', name: 'A', content: 'a').toJson(),
         Snippet(id: 'b', name: 'B', content: 'b').toJson(),
         Snippet(id: 'c', name: 'C', content: 'c').toJson(),
+        // PowerShell category skips the windowsDefaults migrate-on-load path.
+        Snippet(
+          id: 'ps',
+          name: 'PS',
+          content: 'Get-Location',
+          category: 'PowerShell',
+        ).toJson(),
       ];
     final provider = SnippetProvider(config: config);
     await provider.loadSnippets();
@@ -34,11 +41,11 @@ void main() {
 
     expect(
       provider.snippets.map((s) => s.id).toList(),
-      <String>['b', 'c', 'a'],
+      <String>['b', 'c', 'a', 'ps'],
     );
     expect(
       config.snippets.map((s) => s['id']).toList(),
-      <String>['b', 'c', 'a'],
+      <String>['b', 'c', 'a', 'ps'],
     );
   });
 }

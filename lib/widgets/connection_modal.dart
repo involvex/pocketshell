@@ -197,11 +197,14 @@ class _ConnectionModalState extends State<ConnectionModal> {
                 const SizedBox(height: 8),
                 DropdownButtonFormField<SessionManager>(
                   key: ValueKey(_sessionManager),
-                  initialValue: _sessionManager,
+                  initialValue: SessionManagerX.selectableValues
+                          .contains(_sessionManager)
+                      ? _sessionManager
+                      : SessionManager.none,
                   decoration: const InputDecoration(
                     labelText: 'Session Manager',
                   ),
-                  items: SessionManager.values.map((manager) {
+                  items: SessionManagerX.selectableValues.map((manager) {
                     return DropdownMenuItem(
                       value: manager,
                       child: Text(manager.displayName),

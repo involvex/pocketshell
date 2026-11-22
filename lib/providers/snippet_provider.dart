@@ -30,8 +30,16 @@ class SnippetProvider extends ChangeNotifier {
         _snippets = data
             .map((e) => Snippet.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList();
+        // One-time migrate: older installs only had Unix defaults.
+        final hasPowerShell =
+            _snippets.any((s) => s.category == 'PowerShell');
+        if (!hasPowerShell) {
+          _snippets = [..._snippets, ...Snippet.windowsDefaults];
+          await _saveSnippets();
+        }
       } else {
         _snippets = Snippet.defaults;
+        await _saveSnippets();
       }
     } catch (_) {
       _snippets = Snippet.defaults;
