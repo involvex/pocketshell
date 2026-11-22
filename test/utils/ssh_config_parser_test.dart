@@ -35,20 +35,24 @@ Host *
       expect(bare.port, 22);
     });
 
-    test('records skipped ProxyJump and does not leak secrets', () {
+    test('parses ProxyJump and LocalForward; skips ProxyCommand', () {
       const raw = '''
 Host jumpbox
   HostName bastion.example
   User ops
   ProxyJump jump@gateway
+  LocalForward 3389 127.0.0.1:3389
   ProxyCommand ssh -W %h:%p gateway
   PasswordAuthentication yes
 ''';
       final result = parseSshConfig(raw);
       expect(result.hosts, hasLength(1));
       final host = result.hosts.single;
-      expect(host.skippedDirectives, contains('ProxyJump'));
+      expect(host.proxyJump, 'jump@gateway');
+      expect(host.localForwards, hasLength(1));
+      expect(host.localForwards.single.localPort, 3389);
       expect(host.skippedDirectives, contains('ProxyCommand'));
+      expect(host.skippedDirectives, isNot(contains('ProxyJump')));
       final encoded = '${host.alias}|${host.hostName}|${host.user}|'
           '${host.port}|${host.identityFile}|${host.skippedDirectives}';
       expect(encoded.contains('password'), isFalse);

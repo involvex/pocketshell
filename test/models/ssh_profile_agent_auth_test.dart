@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ssh_app/models/port_forward_rule.dart';
 import 'package:ssh_app/models/ssh_profile.dart';
 
 void main() {
@@ -100,6 +101,29 @@ void main() {
       final restored = SSHProfile.fromJson(profile.toJson());
       expect(restored.tunnelAgent, isTrue);
       expect(restored.isFavorite, isTrue);
+    });
+
+    test('round-trips jumpProfileId, macAddress, and localForwards', () {
+      final profile = SSHProfile(
+        name: 'win',
+        host: '10.0.0.5',
+        username: 'lukas',
+        jumpProfileId: 'bastion',
+        macAddress: 'AA:BB:CC:DD:EE:FF',
+        localForwards: [
+          PortForwardRule(
+            label: 'RDP',
+            localPort: 3389,
+            remoteHost: '127.0.0.1',
+            remotePort: 3389,
+          ),
+        ],
+      );
+      final restored = SSHProfile.fromJson(profile.toJson());
+      expect(restored.jumpProfileId, 'bastion');
+      expect(restored.macAddress, 'AA:BB:CC:DD:EE:FF');
+      expect(restored.localForwards, hasLength(1));
+      expect(restored.localForwards.single.localPort, 3389);
     });
   });
 }

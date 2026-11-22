@@ -1,5 +1,6 @@
 import 'package:uuid/uuid.dart';
 
+import 'package:ssh_app/models/port_forward_rule.dart';
 import '../utils/session_manager.dart';
 
 class SSHProfile {
@@ -29,6 +30,15 @@ class SSHProfile {
   /// Pinned to the top of the profile list when true.
   final bool isFavorite;
 
+  /// Optional bastion profile id used for jump-host (ProxyJump) connects.
+  final String? jumpProfileId;
+
+  /// Optional NIC MAC for Wake-on-LAN (`AA:BB:CC:DD:EE:FF`).
+  final String? macAddress;
+
+  /// Named local port-forward rules started with the SSH session.
+  final List<PortForwardRule> localForwards;
+
   SSHProfile({
     required this.name,
     required this.host,
@@ -47,7 +57,13 @@ class SSHProfile {
     this.sessionManager = SessionManager.none,
     this.tunnelAgent = false,
     this.isFavorite = false,
-  }) : id = id ?? const Uuid().v4();
+    this.jumpProfileId,
+    this.macAddress,
+    List<PortForwardRule>? localForwards,
+  })  : id = id ?? const Uuid().v4(),
+        localForwards = List<PortForwardRule>.unmodifiable(
+          localForwards ?? const <PortForwardRule>[],
+        );
 
   String get agentBaseUrl =>
       '${useHttps ? 'https' : 'http'}://$host:$agentPort';
@@ -83,6 +99,11 @@ class SSHProfile {
     SessionManager? sessionManager,
     bool? tunnelAgent,
     bool? isFavorite,
+    String? jumpProfileId,
+    bool clearJumpProfileId = false,
+    String? macAddress,
+    bool clearMacAddress = false,
+    List<PortForwardRule>? localForwards,
   }) {
     return SSHProfile(
       id: id ?? this.id,
@@ -102,6 +123,10 @@ class SSHProfile {
       sessionManager: sessionManager ?? this.sessionManager,
       tunnelAgent: tunnelAgent ?? this.tunnelAgent,
       isFavorite: isFavorite ?? this.isFavorite,
+      jumpProfileId:
+          clearJumpProfileId ? null : (jumpProfileId ?? this.jumpProfileId),
+      macAddress: clearMacAddress ? null : (macAddress ?? this.macAddress),
+      localForwards: localForwards ?? this.localForwards,
     );
   }
 
@@ -125,10 +150,25 @@ class SSHProfile {
       'sessionManager': sessionManager.name,
       'tunnelAgent': tunnelAgent,
       'isFavorite': isFavorite,
+      if (jumpProfileId != null) 'jumpProfileId': jumpProfileId,
+      if (macAddress != null) 'macAddress': macAddress,
+      'localForwards':
+          localForwards.map((PortForwardRule r) => r.toJson()).toList(),
     };
   }
 
   factory SSHProfile.fromJson(Map<String, dynamic> json) {
+    final forwardsRaw = json['localForwards'];
+    final forwards = <PortForwardRule>[];
+    if (forwardsRaw is List) {
+      for (final entry in forwardsRaw) {
+        if (entry is Map) {
+          forwards.add(
+            PortForwardRule.fromJson(Map<String, dynamic>.from(entry)),
+          );
+        }
+      }
+    }
     return SSHProfile(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -149,6 +189,9 @@ class SSHProfile {
       ),
       tunnelAgent: json['tunnelAgent'] as bool? ?? false,
       isFavorite: json['isFavorite'] as bool? ?? false,
+      jumpProfileId: json['jumpProfileId'] as String?,
+      macAddress: json['macAddress'] as String?,
+      localForwards: forwards,
     );
   }
 }

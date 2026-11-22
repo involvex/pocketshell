@@ -2,7 +2,20 @@
 import 'package:uuid/uuid.dart';
 import 'package:xterm/xterm.dart';
 import 'package:dartssh2/dartssh2.dart';
+import 'package:ssh_app/models/port_forward_rule.dart';
+import 'package:ssh_app/services/ssh_local_forward.dart';
 import 'ssh_profile.dart';
+
+/// An active named local forward bound for a session.
+class ActivePortForward {
+  ActivePortForward({
+    required this.rule,
+    required this.forward,
+  });
+
+  final PortForwardRule rule;
+  final SshLocalForward forward;
+}
 
 class SessionEntry {
   final String id;
@@ -11,6 +24,9 @@ class SessionEntry {
 
   // runtime fields (not serialized)
   SSHClient? client;
+
+  /// Bastion client when connecting via [SSHProfile.jumpProfileId].
+  SSHClient? jumpClient;
   SSHSession? shellSession;
   Terminal terminal;
   bool isConnected;
@@ -18,6 +34,7 @@ class SessionEntry {
   bool shouldReconnectOnResume;
   String? lastError;
   DateTime? lastActivityAt;
+  final List<ActivePortForward> activeForwards = <ActivePortForward>[];
 
   SessionEntry({
     required this.name,
@@ -35,8 +52,18 @@ class SessionEntry {
     lastActivityAt = DateTime.now();
   }
 
+  Future<void> closeForwards() async {
+    for (final active in List<ActivePortForward>.from(activeForwards)) {
+      await active.forward.close();
+    }
+    activeForwards.clear();
+  }
+
   void disposeRuntime() {
+    // ignore: discarded_futures
+    closeForwards();
     shellSession?.close();
     client?.close();
+    jumpClient?.close();
   }
 }

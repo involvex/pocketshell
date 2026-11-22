@@ -1,10 +1,13 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import '../providers/ssh_provider.dart';
+import '../models/port_forward_rule.dart';
 import '../models/ssh_key.dart';
 import '../models/ssh_profile.dart';
 import '../services/config_service.dart';
 import '../services/ssh_config_import_service.dart';
+import '../services/wake_on_lan_service.dart';
+import '../utils/jump_host_utils.dart';
 import '../utils/session_manager.dart';
 import '../utils/ssh_auth_utils.dart';
 
@@ -158,7 +161,9 @@ class _ProfileManagerState extends State<ProfileManager> {
                           subtitle: Text(
                             'SSH ${profile.host}:${profile.port} · '
                             'Agent ${profile.agentBaseUrl}'
-                            '${profile.tunnelAgent ? ' · tunnel' : ''}',
+                            '${profile.tunnelAgent ? ' · tunnel' : ''}'
+                            '${profile.jumpProfileId != null ? ' · jump' : ''}'
+                            '${profile.macAddress != null ? ' · WoL' : ''}',
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -295,6 +300,19 @@ class _ProfileManagerState extends State<ProfileManager> {
       sessionManager: profile.sessionManager,
       tunnelAgent: profile.tunnelAgent,
       isFavorite: false,
+      jumpProfileId: profile.jumpProfileId,
+      macAddress: profile.macAddress,
+      localForwards: profile.localForwards
+          .map(
+            (r) => PortForwardRule(
+              label: r.label,
+              localPort: r.localPort,
+              remoteHost: r.remoteHost,
+              remotePort: r.remotePort,
+              enabled: r.enabled,
+            ),
+          )
+          .toList(),
     );
     Provider.of<SSHProvider>(context, listen: false).saveProfile(copy);
   }
@@ -324,6 +342,12 @@ class _ProfileManagerState extends State<ProfileManager> {
     var tunnelAgent = profile?.tunnelAgent ?? false;
     var isFavorite = profile?.isFavorite ?? false;
     var sessionManager = profile?.sessionManager ?? SessionManager.none;
+    String? jumpProfileId = profile?.jumpProfileId;
+    final macController =
+        TextEditingController(text: profile?.macAddress ?? '');
+    var localForwards = List<PortForwardRule>.from(
+      profile?.localForwards ?? const <PortForwardRule>[],
+    );
     String? selectedKeyId = profile?.privateKey != null &&
             !looksLikePemPrivateKey(profile!.privateKey!)
         ? profile.privateKey
@@ -338,6 +362,10 @@ class _ProfileManagerState extends State<ProfileManager> {
           ),
           builder: (context, snapshot) {
             final keys = snapshot.data ?? <SSHKey>[];
+            final ssh = Provider.of<SSHProvider>(context, listen: false);
+            final jumpCandidates = ssh.profiles
+                .where((p) => p.id != profile?.id)
+                .toList();
             return StatefulBuilder(
               builder: (context, setDialogState) {
                 return AlertDialog(
@@ -364,6 +392,40 @@ class _ProfileManagerState extends State<ProfileManager> {
                           decoration:
                               const InputDecoration(labelText: 'SSH Port'),
                           keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String?>(
+                          initialValue: jumpProfileId != null &&
+                                  jumpCandidates
+                                      .any((p) => p.id == jumpProfileId)
+                              ? jumpProfileId
+                              : null,
+                          decoration: const InputDecoration(
+                            labelText: 'Via jump host',
+                          ),
+                          items: <DropdownMenuItem<String?>>[
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('None (direct)'),
+                            ),
+                            ...jumpCandidates.map(
+                              (p) => DropdownMenuItem<String?>(
+                                value: p.id,
+                                child: Text('${p.name} (${p.host})'),
+                              ),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setDialogState(() => jumpProfileId = value);
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: macController,
+                          decoration: const InputDecoration(
+                            labelText: 'MAC address (Wake-on-LAN)',
+                            hintText: 'AA:BB:CC:DD:EE:FF',
+                          ),
                         ),
                         const SizedBox(height: 8),
                         TextField(
@@ -457,6 +519,81 @@ class _ProfileManagerState extends State<ProfileManager> {
                             hintText: 'Overrides session manager when set',
                           ),
                         ),
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Local port forwards',
+                            style: TextStyle(
+                              color: Colors.grey[300],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        ...localForwards.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final rule = entry.value;
+                          return ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              rule.label.isNotEmpty
+                                  ? rule.label
+                                  : '${rule.localPort} → '
+                                      '${rule.remoteHost}:${rule.remotePort}',
+                            ),
+                            subtitle: Text(
+                              '${rule.localPort} → '
+                              '${rule.remoteHost}:${rule.remotePort}'
+                              '${rule.enabled ? '' : ' (disabled)'}',
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete, size: 20),
+                              onPressed: () {
+                                setDialogState(() {
+                                  localForwards = List<PortForwardRule>.from(
+                                    localForwards,
+                                  )..removeAt(index);
+                                });
+                              },
+                            ),
+                          );
+                        }),
+                        Wrap(
+                          spacing: 8,
+                          children: <Widget>[
+                            TextButton.icon(
+                              onPressed: () {
+                                setDialogState(() {
+                                  localForwards = <PortForwardRule>[
+                                    ...localForwards,
+                                    PortForwardRule.rdpPreset,
+                                  ];
+                                });
+                              },
+                              icon: const Icon(Icons.desktop_windows, size: 18),
+                              label: const Text('Add RDP'),
+                            ),
+                            TextButton.icon(
+                              onPressed: () async {
+                                final added = await _promptPortForward(
+                                  dialogContext,
+                                );
+                                if (added != null) {
+                                  setDialogState(() {
+                                    localForwards = <PortForwardRule>[
+                                      ...localForwards,
+                                      added,
+                                    ];
+                                  });
+                                }
+                              },
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('Add forward'),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 8),
                         SwitchListTile(
                           title: const Text('Favorite'),
@@ -506,10 +643,24 @@ class _ProfileManagerState extends State<ProfileManager> {
                       child: const Text('Cancel'),
                     ),
                     ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         if (nameController.text.isEmpty ||
                             hostController.text.isEmpty) {
                           return;
+                        }
+                        final macRaw = macController.text.trim();
+                        String? mac;
+                        if (macRaw.isNotEmpty) {
+                          final parsed = WakeOnLanService.parseMac(macRaw);
+                          if (parsed == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Invalid MAC address'),
+                              ),
+                            );
+                            return;
+                          }
+                          mac = WakeOnLanService.formatMac(parsed);
                         }
                         final agentUser = agentUsernameController.text.trim();
                         final newProfile = SSHProfile(
@@ -539,10 +690,34 @@ class _ProfileManagerState extends State<ProfileManager> {
                           sessionManager: sessionManager,
                           tunnelAgent: tunnelAgent,
                           isFavorite: isFavorite,
+                          jumpProfileId: jumpProfileId,
+                          macAddress: mac,
+                          localForwards: localForwards,
                         );
-                        Provider.of<SSHProvider>(context, listen: false)
-                            .saveProfile(newProfile);
-                        Navigator.pop(dialogContext);
+                        if (createsJumpCycle(
+                          ssh.profiles,
+                          newProfile.id,
+                          newProfile.jumpProfileId,
+                        )) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Jump host would create a cycle'),
+                            ),
+                          );
+                          return;
+                        }
+                        try {
+                          await ssh.saveProfile(newProfile);
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('$e')),
+                            );
+                          }
+                        }
                       },
                       child: const Text('Save'),
                     ),
@@ -554,6 +729,82 @@ class _ProfileManagerState extends State<ProfileManager> {
         );
       },
     );
+  }
+
+  Future<PortForwardRule?> _promptPortForward(BuildContext context) async {
+    final labelController = TextEditingController();
+    final localController = TextEditingController(text: '3389');
+    final remoteHostController = TextEditingController(text: '127.0.0.1');
+    final remotePortController = TextEditingController(text: '3389');
+    final result = await showDialog<PortForwardRule>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: const Text('Local port forward'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                controller: labelController,
+                decoration: const InputDecoration(
+                  labelText: 'Label (optional)',
+                ),
+              ),
+              TextField(
+                controller: localController,
+                decoration: const InputDecoration(labelText: 'Local port'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(
+                controller: remoteHostController,
+                decoration: const InputDecoration(labelText: 'Remote host'),
+              ),
+              TextField(
+                controller: remotePortController,
+                decoration: const InputDecoration(labelText: 'Remote port'),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final local = int.tryParse(localController.text.trim());
+                final remote = int.tryParse(remotePortController.text.trim());
+                final host = remoteHostController.text.trim();
+                if (local == null ||
+                    remote == null ||
+                    local <= 0 ||
+                    remote <= 0 ||
+                    host.isEmpty) {
+                  return;
+                }
+                Navigator.pop(
+                  dialogContext,
+                  PortForwardRule(
+                    label: labelController.text.trim(),
+                    localPort: local,
+                    remoteHost: host,
+                    remotePort: remote,
+                  ),
+                );
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+    labelController.dispose();
+    localController.dispose();
+    remoteHostController.dispose();
+    remotePortController.dispose();
+    return result;
   }
 
   void _deleteProfile(BuildContext context, String id) {

@@ -1,3 +1,5 @@
+import 'package:ssh_app/models/port_forward_rule.dart';
+
 /// One Host block extracted from an OpenSSH client config.
 class SshConfigHostEntry {
   const SshConfigHostEntry({
@@ -6,6 +8,8 @@ class SshConfigHostEntry {
     required this.user,
     required this.port,
     this.identityFile,
+    this.proxyJump,
+    this.localForwards = const <PortForwardRule>[],
     this.skippedDirectives = const <String>[],
   });
 
@@ -24,7 +28,13 @@ class SshConfigHostEntry {
   /// Optional `IdentityFile` path (hint only — never downloaded).
   final String? identityFile;
 
-  /// Directives that were present but not applied (ProxyJump, etc.).
+  /// First hop from `ProxyJump` when present (unresolved alias/token).
+  final String? proxyJump;
+
+  /// Parsed `LocalForward` rules from this host block.
+  final List<PortForwardRule> localForwards;
+
+  /// Directives that were present but not applied (ProxyCommand, etc.).
   final List<String> skippedDirectives;
 }
 
@@ -43,9 +53,10 @@ class SshConfigParseResult {
 
 /// Parses OpenSSH `~/.ssh/config` text into host entries.
 ///
-/// Supports `Host`, `HostName`, `User`, `Port`, and records `IdentityFile`
-/// as a hint. `ProxyJump`, `ProxyCommand`, and other directives are collected
-/// in [SshConfigHostEntry.skippedDirectives] / [SshConfigParseResult.skippedDirectives].
+/// Supports `Host`, `HostName`, `User`, `Port`, `IdentityFile` (hint),
+/// `ProxyJump` (single hop token), and `LocalForward`. `ProxyCommand` and
+/// other unsupported directives are collected in
+/// [SshConfigHostEntry.skippedDirectives] / [SshConfigParseResult.skippedDirectives].
 /// Wildcards (`*`, `?`) in Host patterns are skipped. No secrets are returned.
 SshConfigParseResult parseSshConfig(String contents) {
   final hosts = <SshConfigHostEntry>[];
@@ -73,6 +84,8 @@ SshConfigParseResult parseSshConfig(String contents) {
         user: builder.user ?? '',
         port: builder.port ?? 22,
         identityFile: builder.identityFile,
+        proxyJump: builder.proxyJump,
+        localForwards: List<PortForwardRule>.from(builder.localForwards),
         skippedDirectives: List<String>.from(builder.skipped),
       ),
     );
@@ -135,6 +148,21 @@ SshConfigParseResult parseSshConfig(String contents) {
       case 'identityfile':
         builder.identityFile = value;
         break;
+      case 'proxyjump':
+        // Take the first hop only; multi-hop chains stay partially unsupported.
+        final firstHop = value.split(',').first.trim();
+        if (firstHop.isNotEmpty) {
+          builder.proxyJump = firstHop;
+        }
+        break;
+      case 'localforward':
+        final rule = PortForwardRule.tryParseLocalForward(value);
+        if (rule != null) {
+          builder.localForwards.add(rule);
+        } else {
+          builder.skipped.add('LocalForward');
+        }
+        break;
       default:
         if (_isKnownSkipDirective(key) || key.isNotEmpty) {
           builder.skipped.add(_canonicalDirective(key));
@@ -154,11 +182,9 @@ bool _isWildcardHost(String alias) =>
 
 bool _isKnownSkipDirective(String key) {
   const skipped = <String>{
-    'proxyjump',
     'proxycommand',
     'match',
     'include',
-    'localforward',
     'remoteforward',
     'dynamicforward',
     'canonicaldomains',
@@ -203,5 +229,7 @@ class _HostBuilder {
   String? user;
   int? port;
   String? identityFile;
+  String? proxyJump;
+  final List<PortForwardRule> localForwards = <PortForwardRule>[];
   final List<String> skipped = <String>[];
 }

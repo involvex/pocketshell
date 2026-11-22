@@ -22,7 +22,7 @@ Proposal:
 - On mismatch: hard-block connect with "Host key changed" warning, require explicit re-trust + log via `addLog()`.
 - Show fingerprint in profile detail and connection modal.
 
-### 1.2 App lock with biometrics + auto-lock (P0, M)
+### 1.2 App lock with biometrics + auto-lock (P0, M) — **SHIPPED** (1.4.0)
 Problem: profiles, private keys (even via `SecureStorageService`), and agent passwords are one tap away once the app is open.
 Proposal:
 - Opt-in lock via `local_auth`: biometric or device PIN on cold start / resume after N minutes (configurable 1/5/15 min, in `SettingsProvider`).
@@ -57,13 +57,13 @@ Proposal:
 
 ## 2. SSH connection core (P1)
 
-### 2.1 SSH config import (`~/.ssh/config`) (P1, M) — **SHIPPED** (Host/HostName/User/Port + IdentityFile hints; ProxyJump still open)
+### 2.1 SSH config import (`~/.ssh/config`) (P1, M) — **SHIPPED** (Host/HostName/User/Port + IdentityFile + ProxyJump + LocalForward; ProxyCommand still open)
 Import host, hostname, user, port, identity file, jump host from desktop/server `~/.ssh/config` over existing SFTP channel or file picker. Map to `SSHProfile` fields; report skipped directives. Reduces manual profile setup, the top onboarding friction.
 
-### 2.2 Jump host / bastion support (P1, M)
+### 2.2 Jump host / bastion support (P1, M) — **SHIPPED** (1.4.0; nested multi-hop still open)
 Add `jumpProfileId` to `SSHProfile`; `SSHProvider.connectClient()` dials bastion first, then tunnels (TCP forward via `dartssh2`) to target. UI: "Via jump host" picker in `ssh_client_form.dart`. Essential for Windows lab + cloud setups.
 
-### 2.3 Local/remote port forwarding UI (P1, M) — **PARTIAL** (agent tunnel opt-in via `tunnelAgent` + SSH local forward to remote loopback agent port; general forward rules UI still open)
+### 2.3 Local/remote port forwarding UI (P1, M) — **SHIPPED** local (1.4.0; reverse/dynamic still open)
 Problem: no forwarding found in codebase. Users cannot reach RDP, DBs, or OpenCode behind NAT.
 Proposal: per-profile forward rules (local port → remote host:port, reverse optional); active-forwards list with stop/start; conflict detection on local port bind. Persist in profile JSON.
 
@@ -76,7 +76,7 @@ Add heartbeat (SSH keepalive every 30 s, configurable), missed-heartbeat detecti
 ### 2.6 Connection health dashboard (P1, S)
 Latency (ping over SSH channel), uptime, bytes in/out, reconnect count per session. Small header chip + details sheet. Cheap to build on existing session objects; high trust value.
 
-### 2.7 Wake-on-LAN (P1, S)
+### 2.7 Wake-on-LAN (P1, S) — **SHIPPED** (1.4.0)
 Send magic packet from `NetworkDiscovery` screen to a saved MAC. Natural fit: discover → wake → connect flow for home Windows hosts.
 
 ## 3. Terminal + input (P1)
@@ -124,7 +124,7 @@ Flat profile list does not scale. Add folders/tags + favorites pin + search bar 
 ### 5.2 Duplicate, QR share, deep-link connect (P1, S) — **SHIPPED** (duplicate; QR/`ssh://` still open)
 Duplicate-profile action; share a profile (host/port/username only, never secrets) via QR or `ssh://user@host:port` link; handle incoming links. Complements existing `sshapp://widget/ssh?profileId=` scheme.
 
-### 5.3 `.ppk` (PuTTY) + OpenSSH import/export (P1, S)
+### 5.3 `.ppk` (PuTTY) + OpenSSH import/export (P1, S) — **SHIPPED** import (1.4.0; export still open)
 Primary usage is Android → Windows hosts, where `.ppk` is common. Convert on import via `pointycastle`; export to OpenSSH/PEM. Show key type, bits, fingerprint in list.
 
 ### 5.4 Snippet variables and shell quoting (P1, S)

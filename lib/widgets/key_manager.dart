@@ -1,8 +1,13 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:material_ui/material_ui.dart';
 import '../models/ssh_key.dart';
 import '../services/ssh_key_generator.dart';
 import '../services/config_service.dart';
+import '../services/ppk_import_service.dart';
 import '../services/secure_storage_service.dart';
+import '../utils/ssh_key_fingerprint.dart';
 
 class KeyManager extends StatefulWidget {
   const KeyManager({super.key});
@@ -80,6 +85,99 @@ class _KeyManagerState extends State<KeyManager> {
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _importPpk() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const <String>['ppk'],
+    );
+    if (result.isEmpty) {
+      return;
+    }
+    final file = result.first;
+    final path = file.path;
+    if (path == null) {
+      return;
+    }
+    final contents = await File(path).readAsString();
+    if (!PpkImportService.looksLikePpk(contents)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Not a PuTTY PPK v2/v3 file')),
+      );
+      return;
+    }
+
+    String? passphrase;
+    if (contents.contains('Encryption: aes256-cbc')) {
+      passphrase = await _promptPassphrase('PPK passphrase');
+      if (passphrase == null) {
+        return;
+      }
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final imported = await const PpkImportService().importPpk(
+        contents,
+        passphrase: passphrase,
+        name: file.name.replaceAll(RegExp(r'\.ppk$', caseSensitive: false), ''),
+      );
+      setState(() {
+        _keys.add(imported.key);
+      });
+      await _saveKeys();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Imported ${imported.key.name} (${imported.key.keyType.displayName}) '
+            '· ${imported.fingerprint}',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PPK import failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<String?> _promptPassphrase(String title) async {
+    final controller = TextEditingController();
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            obscureText: true,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Passphrase'),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              child: const Text('Continue'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    return saved;
   }
 
   void _showGenerateKeyDialog() {
@@ -219,6 +317,11 @@ class _KeyManagerState extends State<KeyManager> {
               children: <Widget>[
                 Text('Type: ${key.keyType.displayName}'),
                 const SizedBox(height: 8),
+                Text(
+                  'Fingerprint: ${sshPublicKeyFingerprint(key.publicKey)}',
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                ),
+                const SizedBox(height: 8),
                 Text('Created: ${key.createdAt.toLocal()}'),
                 const SizedBox(height: 8),
                 if (!_hasPassphrase(key))
@@ -343,15 +446,28 @@ class _KeyManagerState extends State<KeyManager> {
                       style:
                           TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
-                    IconButton(
-                      icon: _isLoading
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.add, color: Colors.green),
-                      onPressed: _isLoading ? null : _showGenerateKeyDialog,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        IconButton(
+                          tooltip: 'Import PuTTY .ppk',
+                          icon: const Icon(Icons.upload_file, color: Colors.cyan),
+                          onPressed: _isLoading ? null : _importPpk,
+                        ),
+                        IconButton(
+                          tooltip: 'Generate key',
+                          icon: _isLoading
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.add, color: Colors.green),
+                          onPressed:
+                              _isLoading ? null : _showGenerateKeyDialog,
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -381,7 +497,8 @@ class _KeyManagerState extends State<KeyManager> {
                             ),
                             subtitle: Text(
                               hasPassphrase
-                                  ? key.keyType.displayName
+                                  ? '${key.keyType.displayName} · '
+                                      '${sshPublicKeyFingerprint(key.publicKey)}'
                                   : '${key.keyType.displayName} • No passphrase',
                             ),
                             trailing: Row(

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:ssh_app/constants/app_metadata.dart';
+import '../providers/app_lock_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/backup_crypto.dart';
 import '../services/backup_service.dart';
@@ -370,6 +371,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       value: settings.requireKeyPassphrase,
                       onChanged: settings.setRequireKeyPassphrase,
+                    ),
+                    const Divider(height: 1, indent: 16),
+                    Consumer<AppLockProvider>(
+                      builder: (context, lock, _) {
+                        return Column(
+                          children: [
+                            SwitchListTile(
+                              title: const Text('App lock'),
+                              subtitle: const Text(
+                                'Require biometric or device PIN after '
+                                'launch and when returning from background',
+                              ),
+                              value: lock.enabled,
+                              onChanged: lock.setEnabled,
+                            ),
+                            if (lock.enabled)
+                              ListTile(
+                                title: const Text('Auto-lock after'),
+                                subtitle: const Text(
+                                  'Lock when the app was backgrounded this long',
+                                ),
+                                trailing: DropdownButton<int>(
+                                  value: lock.autoLockMinutes,
+                                  items: const [
+                                    DropdownMenuItem(
+                                      value: 1,
+                                      child: Text('1 min'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 5,
+                                      child: Text('5 min'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 15,
+                                      child: Text('15 min'),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      lock.setAutoLockMinutes(value);
+                                    }
+                                  },
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     ),
                     const Divider(height: 1, indent: 16),
                     ListTile(

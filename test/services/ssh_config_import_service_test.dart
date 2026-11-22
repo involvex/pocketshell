@@ -48,5 +48,38 @@ Host other
       expect(created.username, 'admin');
       expect(created.password, isNull);
     });
+
+    test('resolves ProxyJump to an existing profile by alias', () {
+      const importer = SshConfigImportService();
+      final existing = <SSHProfile>[
+        SSHProfile(
+          id: 'bastion-id',
+          name: 'bastion',
+          host: '10.0.0.1',
+          username: 'ops',
+        ),
+      ];
+
+      const raw = '''
+Host winlab
+  HostName 10.0.0.50
+  User lukas
+  ProxyJump bastion
+  LocalForward 3389 127.0.0.1:3389
+''';
+
+      final merged = importer.mergeIntoProfiles(
+        existing: existing,
+        sourcePath: 'C:/Users/lukas/.ssh/config',
+        contents: raw,
+        fallbackUsername: 'lukas',
+      );
+
+      final win = merged.profiles.firstWhere((p) => p.name == 'winlab');
+      expect(win.jumpProfileId, 'bastion-id');
+      expect(win.localForwards, hasLength(1));
+      expect(win.localForwards.single.localPort, 3389);
+      expect(merged.result.unresolvedProxyJumps, isEmpty);
+    });
   });
 }

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Jump host (ProxyJump) support via a saved bastion profile, including config import.
+- Named local port forwards per profile (RDP preset) with start/stop while connected.
+- PuTTY `.ppk` v2/v3 key import (ssh-ed25519 / ssh-rsa) into OpenSSH PEM keys.
+- Wake-on-LAN from Network Discovery using a profile MAC or a manual address.
+- Opt-in app lock (biometric / device credential) with auto-lock delay and Lock now.
+
 
 ## [1.3.1] - 2026-11-16
 

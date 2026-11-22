@@ -1,7 +1,9 @@
 import 'package:dartssh2/dartssh2.dart';
 
+import 'package:ssh_app/models/port_forward_rule.dart';
 import 'package:ssh_app/models/ssh_profile.dart';
 import 'package:ssh_app/services/sftp_helper.dart';
+import 'package:ssh_app/utils/jump_host_utils.dart';
 import 'package:ssh_app/utils/ssh_config_parser.dart';
 
 /// Outcome of importing OpenSSH config hosts into app profiles.
@@ -13,6 +15,7 @@ class SshConfigImportResult {
     required this.skipped,
     required this.identityHints,
     required this.skippedDirectives,
+    this.unresolvedProxyJumps = const <String>[],
   });
 
   final String sourcePath;
@@ -21,6 +24,9 @@ class SshConfigImportResult {
   final int skipped;
   final List<String> identityHints;
   final List<String> skippedDirectives;
+
+  /// ProxyJump tokens that could not be mapped to an existing profile.
+  final List<String> unresolvedProxyJumps;
 }
 
 /// Reads remote OpenSSH config over SFTP and maps hosts to [SSHProfile]s.
@@ -59,6 +65,10 @@ class SshConfigImportService {
   ///
   /// Match key is host + port + user (case-insensitive host/user).
   /// Returns updated profile list and a summary.
+  ///
+  /// ProxyJump is applied when the jump alias/host already exists as a profile
+  /// (including hosts created earlier in the same import). Unresolved jumps are
+  /// listed in [SshConfigImportResult.unresolvedProxyJumps].
   ({List<SSHProfile> profiles, SshConfigImportResult result}) mergeIntoProfiles({
     required List<SSHProfile> existing,
     required String sourcePath,
@@ -74,11 +84,14 @@ class SshConfigImportService {
     final skippedDirectives = <String>{
       ...parsed.skippedDirectives,
     };
+    final unresolvedProxyJumps = <String>{};
+
+    // First pass: create/update host/port/user fields and local forwards.
+    final pendingJumps = <String, String?>{};
 
     for (final host in parsed.hosts) {
       skippedDirectives.addAll(host.skippedDirectives);
-      final user =
-          host.user.isNotEmpty ? host.user : fallbackUsername;
+      final user = host.user.isNotEmpty ? host.user : fallbackUsername;
       if (host.hostName.isEmpty) {
         skipped++;
         continue;
@@ -96,26 +109,60 @@ class SshConfigImportService {
             p.username.toLowerCase() == user.toLowerCase(),
       );
 
+      final forwards = host.localForwards.isEmpty
+          ? null
+          : List<PortForwardRule>.from(host.localForwards);
+
       if (matchIndex >= 0) {
         final current = profiles[matchIndex];
         profiles[matchIndex] = current.copyWith(
           name: host.alias.isNotEmpty ? host.alias : current.name,
+          localForwards: forwards ?? current.localForwards,
         );
+        pendingJumps[profiles[matchIndex].id] = host.proxyJump;
         updated++;
       } else {
-        profiles.add(
-          SSHProfile(
-            name: host.alias,
-            host: host.hostName,
-            port: host.port,
-            username: user,
-          ),
+        final createdProfile = SSHProfile(
+          name: host.alias,
+          host: host.hostName,
+          port: host.port,
+          username: user,
+          localForwards: forwards,
         );
+        profiles.add(createdProfile);
+        pendingJumps[createdProfile.id] = host.proxyJump;
         created++;
       }
     }
 
+    // Second pass: resolve ProxyJump against the merged profile list.
+    for (final entry in pendingJumps.entries) {
+      final token = entry.value;
+      if (token == null || token.isEmpty) {
+        continue;
+      }
+      final jumpId = resolveProxyJumpProfileId(
+        profiles: profiles,
+        proxyJump: token,
+      );
+      final index = profiles.indexWhere((p) => p.id == entry.key);
+      if (index < 0) {
+        continue;
+      }
+      if (jumpId == null) {
+        unresolvedProxyJumps.add(token);
+        skippedDirectives.add('ProxyJump');
+        continue;
+      }
+      if (createsJumpCycle(profiles, entry.key, jumpId)) {
+        unresolvedProxyJumps.add(token);
+        continue;
+      }
+      profiles[index] = profiles[index].copyWith(jumpProfileId: jumpId);
+    }
+
     final sortedSkipped = skippedDirectives.toList()..sort();
+    final sortedUnresolved = unresolvedProxyJumps.toList()..sort();
     return (
       profiles: profiles,
       result: SshConfigImportResult(
@@ -125,6 +172,7 @@ class SshConfigImportService {
         skipped: skipped,
         identityHints: identityHints,
         skippedDirectives: sortedSkipped,
+        unresolvedProxyJumps: sortedUnresolved,
       ),
     );
   }

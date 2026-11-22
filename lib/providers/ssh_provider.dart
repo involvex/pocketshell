@@ -4,15 +4,20 @@ import 'package:flutter/foundation.dart';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:xterm/xterm.dart';
 
+import 'dart:io' show SocketException;
+
 import '../models/ssh_profile.dart';
 import '../models/known_host.dart';
+import '../models/port_forward_rule.dart';
 import '../services/config_repository.dart';
 import '../services/network_discovery_service.dart';
 import '../services/app_lifecycle_service.dart';
 import '../services/secure_storage_service.dart';
+import '../services/ssh_local_forward.dart';
 import '../services/widget_profile_service.dart';
 import '../services/host_key_verification_service.dart';
 import '../models/session_entry.dart';
+import '../utils/jump_host_utils.dart';
 import '../utils/session_manager.dart';
 import '../utils/ssh_auth_utils.dart';
 import '../utils/terminal_context.dart';
@@ -190,6 +195,10 @@ class SSHProvider extends ChangeNotifier {
   }
 
   Future<void> saveProfile(SSHProfile profile) async {
+    if (createsJumpCycle(profiles, profile.id, profile.jumpProfileId)) {
+      throw StateError('Jump host cycle detected');
+    }
+
     final index = profiles.indexWhere((p) => p.id == profile.id);
     if (index >= 0) {
       profiles[index] = profile;
@@ -321,6 +330,7 @@ class SSHProvider extends ChangeNotifier {
   Future<void> connectSession(String sessionId) async {
     final entry = sessions.firstWhere((s) => s.id == sessionId);
     final profile = entry.profile;
+    SSHClient? jumpClient;
 
     try {
       addLog('Connecting to ${profile.host}:${profile.port}...');
@@ -334,11 +344,10 @@ class SSHProvider extends ChangeNotifier {
         );
       }
 
-      final socket = await SSHSocket.connect(
-        profile.host,
-        profile.port,
-        timeout: const Duration(seconds: 20),
-      );
+      final socketAndJump = await _openSocketForProfile(profile);
+      jumpClient = socketAndJump.jumpClient;
+      final socket = socketAndJump.socket;
+
       final client = SSHClient(
         socket,
         username: profile.username,
@@ -363,57 +372,12 @@ class SSHProvider extends ChangeNotifier {
           }
         },
         keepAliveInterval: const Duration(seconds: 15),
-        onVerifyHostKey: (type, fingerprintBytes) async {
-          final fingerprint = String.fromCharCodes(fingerprintBytes);
-          final verifier = HostKeyVerificationService(_config);
-          final stored = await verifier.loadHosts();
-          final decision = verifier.evaluate(
-            stored: stored,
-            host: profile.host,
-            port: profile.port,
-            keyType: type,
-            fingerprint: fingerprint,
-          );
-          switch (decision) {
-            case HostKeyDecision.trusted:
-              return true;
-            case HostKeyDecision.mismatch:
-              final expected = stored
-                  .where((h) => h.matches(profile.host, profile.port))
-                  .map((h) => h.fingerprint)
-                  .join(', ');
-              addLog(
-                'Host key changed for ${profile.host}:${profile.port} — connection blocked',
-              );
-              onHostKeyMismatch?.call(
-                host: profile.host,
-                port: profile.port,
-                expectedFingerprint: expected.isEmpty ? '(unknown)' : expected,
-                presentedFingerprint: fingerprint,
-              );
-              return false;
-            case HostKeyDecision.unknown:
-              final prompt = KnownHostPrompt(
-                host: profile.host,
-                port: profile.port,
-                keyType: type,
-                fingerprint: fingerprint,
-              );
-              final hook = onVerifyHostKeyPrompt;
-              final trusted = hook != null ? await hook(prompt) : true;
-              if (trusted) {
-                await verifier.trustHost(prompt);
-                addLog(
-                  'Trusted new host key for ${profile.host}:${profile.port} ($type $fingerprint)',
-                );
-                return true;
-              }
-              addLog(
-                'Rejected unknown host key for ${profile.host}:${profile.port}',
-              );
-              return false;
-          }
-        },
+        onVerifyHostKey: (type, fingerprintBytes) => _verifyHostKey(
+          host: profile.host,
+          port: profile.port,
+          type: type,
+          fingerprintBytes: fingerprintBytes,
+        ),
       );
 
       final shell = await client.shell(
@@ -421,6 +385,7 @@ class SSHProvider extends ChangeNotifier {
       );
 
       entry.client = client;
+      entry.jumpClient = jumpClient;
       entry.shellSession = shell;
 
       shell.stdout.listen((data) {
@@ -446,6 +411,7 @@ class SSHProvider extends ChangeNotifier {
           entry.disconnectedWhileBackgrounded = true;
         }
         entry.isConnected = false;
+        await entry.closeForwards();
         notifyListeners();
       }));
 
@@ -454,6 +420,7 @@ class SSHProvider extends ChangeNotifier {
       entry.shouldReconnectOnResume = true;
       entry.touch();
       addLog('Connected: ${entry.name}');
+      await _startEnabledForwards(entry);
       notifyListeners();
 
       final effectiveStartup = resolveStartupCommand(
@@ -494,19 +461,261 @@ class SSHProvider extends ChangeNotifier {
       addLog('Connection failed for ${profile.host}:${profile.port} — $e');
       entry.isConnected = false;
       entry.lastError = e.toString();
+      await entry.closeForwards();
+      entry.client?.close();
+      entry.jumpClient?.close();
+      jumpClient?.close();
       entry.client = null;
+      entry.jumpClient = null;
       entry.shellSession = null;
       notifyListeners();
       rethrow;
     }
   }
 
+  /// Opens a direct or jump-host [SSHSocket] for [profile].
+  Future<({SSHSocket socket, SSHClient? jumpClient})> _openSocketForProfile(
+    SSHProfile profile,
+  ) async {
+    final jumpId = profile.jumpProfileId;
+    if (jumpId == null || jumpId.isEmpty) {
+      final socket = await SSHSocket.connect(
+        profile.host,
+        profile.port,
+        timeout: const Duration(seconds: 20),
+      );
+      return (socket: socket, jumpClient: null);
+    }
+
+    if (createsJumpCycle(profiles, profile.id, jumpId)) {
+      throw StateError('Jump host cycle detected');
+    }
+
+    SSHProfile? jumpProfile;
+    for (final p in profiles) {
+      if (p.id == jumpId) {
+        jumpProfile = p;
+        break;
+      }
+    }
+    if (jumpProfile == null) {
+      throw StateError('Jump host profile not found');
+    }
+    if (jumpProfile.jumpProfileId != null &&
+        jumpProfile.jumpProfileId!.isNotEmpty) {
+      // Nested multi-hop is not supported in 1.4.0 — require a direct bastion.
+      throw StateError(
+        'Jump host "${jumpProfile.name}" itself uses a jump host; '
+        'nested ProxyJump is not supported',
+      );
+    }
+
+    addLog(
+      'Connecting via jump host ${jumpProfile.name} '
+      '(${jumpProfile.host}:${jumpProfile.port})...',
+    );
+    final jumpAuth = await resolveSshAuthMaterial(jumpProfile);
+    final canKeyboardInteractive = onUserInfoRequest != null;
+    if (!jumpAuth.hasKeyAuth &&
+        !jumpAuth.hasPasswordAuth &&
+        !canKeyboardInteractive) {
+      throw StateError(
+        'Jump host has no credentials: set a password or SSH key',
+      );
+    }
+
+    final jumpSocket = await SSHSocket.connect(
+      jumpProfile.host,
+      jumpProfile.port,
+      timeout: const Duration(seconds: 20),
+    );
+    final jumpClient = SSHClient(
+      jumpSocket,
+      username: jumpProfile.username,
+      identities: jumpAuth.identities,
+      onPasswordRequest:
+          jumpAuth.hasPasswordAuth ? () => jumpAuth.password! : null,
+      onUserInfoRequest: canKeyboardInteractive
+          ? (request) async {
+              final hook = onUserInfoRequest;
+              if (hook == null) {
+                return null;
+              }
+              addLog(
+                'Keyboard-interactive auth for jump '
+                '${jumpProfile!.host}:${jumpProfile.port}',
+              );
+              return hook(request);
+            }
+          : null,
+      keepAliveInterval: const Duration(seconds: 15),
+      onVerifyHostKey: (type, fingerprintBytes) => _verifyHostKey(
+        host: jumpProfile!.host,
+        port: jumpProfile.port,
+        type: type,
+        fingerprintBytes: fingerprintBytes,
+      ),
+    );
+
+    await jumpClient.authenticated;
+    final tunneled = await jumpClient.forwardLocal(profile.host, profile.port);
+    addLog(
+      'Opened jump tunnel to ${profile.host}:${profile.port} via '
+      '${jumpProfile.name}',
+    );
+    return (socket: tunneled, jumpClient: jumpClient);
+  }
+
+  Future<bool> _verifyHostKey({
+    required String host,
+    required int port,
+    required String type,
+    required List<int> fingerprintBytes,
+  }) async {
+    final fingerprint = String.fromCharCodes(fingerprintBytes);
+    final verifier = HostKeyVerificationService(_config);
+    final stored = await verifier.loadHosts();
+    final decision = verifier.evaluate(
+      stored: stored,
+      host: host,
+      port: port,
+      keyType: type,
+      fingerprint: fingerprint,
+    );
+    switch (decision) {
+      case HostKeyDecision.trusted:
+        return true;
+      case HostKeyDecision.mismatch:
+        final expected = stored
+            .where((h) => h.matches(host, port))
+            .map((h) => h.fingerprint)
+            .join(', ');
+        addLog(
+          'Host key changed for $host:$port — connection blocked',
+        );
+        onHostKeyMismatch?.call(
+          host: host,
+          port: port,
+          expectedFingerprint: expected.isEmpty ? '(unknown)' : expected,
+          presentedFingerprint: fingerprint,
+        );
+        return false;
+      case HostKeyDecision.unknown:
+        final prompt = KnownHostPrompt(
+          host: host,
+          port: port,
+          keyType: type,
+          fingerprint: fingerprint,
+        );
+        final hook = onVerifyHostKeyPrompt;
+        final trusted = hook != null ? await hook(prompt) : true;
+        if (trusted) {
+          await verifier.trustHost(prompt);
+          addLog(
+            'Trusted new host key for $host:$port ($type $fingerprint)',
+          );
+          return true;
+        }
+        addLog('Rejected unknown host key for $host:$port');
+        return false;
+    }
+  }
+
+  Future<void> _startEnabledForwards(SessionEntry entry) async {
+    final client = entry.client;
+    if (client == null) {
+      return;
+    }
+    for (final rule in entry.profile.localForwards) {
+      if (!rule.enabled || rule.localPort <= 0 || rule.remotePort <= 0) {
+        continue;
+      }
+      try {
+        await startPortForward(entry.id, rule);
+      } catch (e) {
+        addLog(
+          'Local forward ${rule.localPort}→'
+          '${rule.remoteHost}:${rule.remotePort} failed: $e',
+        );
+      }
+    }
+  }
+
+  /// Starts a named local forward on [sessionId]. Throws [SocketException]
+  /// when the local port is already bound.
+  Future<ActivePortForward> startPortForward(
+    String sessionId,
+    PortForwardRule rule,
+  ) async {
+    final entry = sessions.firstWhere((s) => s.id == sessionId);
+    final client = entry.client;
+    if (client == null || !entry.isConnected) {
+      throw StateError('Session is not connected');
+    }
+    // Stop an existing forward for the same rule id or local port.
+    await stopPortForward(sessionId, ruleId: rule.id, localPort: rule.localPort);
+
+    try {
+      final forward = await SshLocalForward.start(
+        client: client,
+        localPort: rule.localPort,
+        remoteHost: rule.remoteHost,
+        remotePort: rule.remotePort,
+      );
+      final active = ActivePortForward(rule: rule, forward: forward);
+      entry.activeForwards.add(active);
+      addLog(
+        'Local forward listening on 127.0.0.1:${forward.localPort} → '
+        '${rule.remoteHost}:${rule.remotePort}'
+        '${rule.label.isNotEmpty ? ' (${rule.label})' : ''}',
+      );
+      notifyListeners();
+      return active;
+    } on SocketException catch (e) {
+      addLog('Local port ${rule.localPort} is already in use');
+      throw SocketException(
+        'Local port ${rule.localPort} is already in use',
+        osError: e.osError,
+        address: e.address,
+        port: rule.localPort,
+      );
+    }
+  }
+
+  Future<void> stopPortForward(
+    String sessionId, {
+    String? ruleId,
+    int? localPort,
+  }) async {
+    final entry = sessions.firstWhere((s) => s.id == sessionId);
+    final toClose = entry.activeForwards
+        .where(
+          (a) =>
+              (ruleId != null && a.rule.id == ruleId) ||
+              (localPort != null && a.forward.localPort == localPort),
+        )
+        .toList();
+    for (final active in toClose) {
+      await active.forward.close();
+      entry.activeForwards.remove(active);
+      addLog(
+        'Stopped local forward 127.0.0.1:${active.forward.localPort}',
+      );
+    }
+    if (toClose.isNotEmpty) {
+      notifyListeners();
+    }
+  }
+
   Future<void> reconnectSession(String sessionId) async {
     final entry = sessions.firstWhere((s) => s.id == sessionId);
+    await entry.closeForwards();
     entry.shellSession?.close();
     entry.client?.close();
+    entry.jumpClient?.close();
     entry.shellSession = null;
     entry.client = null;
+    entry.jumpClient = null;
     // Preserve scrollback: reuse the existing Terminal buffer.
     entry.terminal.write('\r\n\x1b[90m--- reconnecting ---\x1b[0m\r\n');
     await connectSession(sessionId);
@@ -515,8 +724,11 @@ class SSHProvider extends ChangeNotifier {
   Future<void> disconnectSession(String sessionId) async {
     final entry = sessions.firstWhere((s) => s.id == sessionId,
         orElse: () => throw StateError('Session not found'));
+    await entry.closeForwards();
     entry.shellSession?.close();
     entry.client?.close();
+    entry.jumpClient?.close();
+    entry.jumpClient = null;
     entry.isConnected = false;
     entry.shouldReconnectOnResume = false;
     entry.disconnectedWhileBackgrounded = false;

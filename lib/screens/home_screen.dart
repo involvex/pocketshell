@@ -8,6 +8,7 @@ import 'package:home_widget/home_widget.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm/xterm.dart';
 import '../models/home_toolbar_action.dart';
+import '../providers/app_lock_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/ssh_provider.dart';
 import '../widgets/log_viewer.dart';
@@ -22,6 +23,7 @@ import '../widgets/ai_command_overlay.dart';
 import '../widgets/ctrl_button_panel.dart';
 import '../widgets/snippet_button_panel.dart';
 import '../widgets/sftp_browser.dart';
+import '../widgets/port_forwards_sheet.dart';
 import '../widgets/terminal_search_bar.dart';
 import '../screens/settings_screen.dart';
 import '../screens/snippet_config_screen.dart';
@@ -42,7 +44,7 @@ import '../widgets/terminal_selection_toolbar.dart';
 
 enum AppTab { client, agents, logs }
 
-enum _TerminalOptionsAction { fullscreen, accessory, sftp }
+enum _TerminalOptionsAction { fullscreen, accessory, sftp, forwards }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -310,6 +312,17 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         );
+      case _TerminalOptionsAction.forwards:
+        if (ssh.activeSession == null || !ssh.activeSession!.isConnected) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Connect to a session first')),
+          );
+          return;
+        }
+        showModalBottomSheet<void>(
+          context: context,
+          builder: (_) => const PortForwardsSheet(),
+        );
     }
   }
 
@@ -388,12 +401,33 @@ class _HomeScreenState extends State<HomeScreen> {
                         visualDensity: VisualDensity.compact,
                       ),
                     ),
+                    const PopupMenuItem<_TerminalOptionsAction>(
+                      value: _TerminalOptionsAction.forwards,
+                      child: ListTile(
+                        leading: Icon(Icons.swap_horiz),
+                        title: Text('Port forwards'),
+                        contentPadding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
                   ],
                 ),
               ],
             );
           }
           return const SizedBox.shrink();
+        },
+      ),
+      Consumer<AppLockProvider>(
+        builder: (context, lock, _) {
+          if (!lock.enabled) {
+            return const SizedBox.shrink();
+          }
+          return IconButton(
+            icon: const Icon(Icons.lock_outline),
+            tooltip: 'Lock now',
+            onPressed: lock.lockNow,
+          );
         },
       ),
     ];

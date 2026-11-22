@@ -11,7 +11,7 @@ typedef SshForwardDial = Future<SSHForwardChannel> Function(
 );
 
 /// Listens on loopback and tunnels each accepted socket through SSH
-/// `direct-tcpip` to a fixed remote host:port (agent OpenCode serve).
+/// `direct-tcpip` to a fixed remote host:port.
 class SshLocalForward {
   SshLocalForward._({
     required ServerSocket server,
@@ -32,17 +32,37 @@ class SshLocalForward {
   /// Whether [close] has already been called.
   bool get isClosed => _closed;
 
-  /// Binds `127.0.0.1:0` and forwards each connection to
-  /// [remoteHost]:[remotePort] via [dial] (or [client.forwardLocal]).
+  /// Binds loopback and forwards each connection to [remoteHost]:[remotePort].
+  ///
+  /// Pass [localPort] `0` (default) to let the OS assign an ephemeral port
+  /// (agent tunnel). A fixed [localPort] is used for named profile forwards.
+  /// Throws [SocketException] when the local port is already taken.
   static Future<SshLocalForward> start({
     required SSHClient client,
     required int remotePort,
     String remoteHost = '127.0.0.1',
+    int localPort = 0,
     SshForwardDial? dial,
   }) async {
     final SshForwardDial effectiveDial =
         dial ?? (host, port) => client.forwardLocal(host, port);
-    final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final ServerSocket server;
+    try {
+      server = await ServerSocket.bind(
+        InternetAddress.loopbackIPv4,
+        localPort,
+      );
+    } on SocketException catch (e) {
+      if (localPort != 0) {
+        throw SocketException(
+          'Local port $localPort is already in use',
+          osError: e.osError,
+          address: e.address,
+          port: localPort,
+        );
+      }
+      rethrow;
+    }
     late final SshLocalForward forward;
     // Subscription lifetime is owned by [close].
     // ignore: cancel_subscriptions
@@ -59,8 +79,11 @@ class SshLocalForward {
   }
 
   /// Test helper: bind loopback only (no SSH dial). Accepted sockets are dropped.
-  static Future<SshLocalForward> bindLoopbackForTest() async {
-    final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+  static Future<SshLocalForward> bindLoopbackForTest({int localPort = 0}) async {
+    final server = await ServerSocket.bind(
+      InternetAddress.loopbackIPv4,
+      localPort,
+    );
     late final SshLocalForward forward;
     // Subscription lifetime is owned by [close].
     // ignore: cancel_subscriptions

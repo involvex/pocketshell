@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/agent_provider.dart';
+import '../providers/app_lock_provider.dart';
 import '../providers/ssh_provider.dart';
 import 'connection_foreground_service.dart';
 
@@ -65,6 +66,7 @@ class _AppLifecycleHostState extends State<AppLifecycleHost> {
   AppLifecycleService? _lifecycle;
   SSHProvider? _ssh;
   AgentProvider? _agents;
+  AppLockProvider? _lock;
 
   @override
   void didChangeDependencies() {
@@ -76,6 +78,8 @@ class _AppLifecycleHostState extends State<AppLifecycleHost> {
 
     final ssh = Provider.of<SSHProvider>(context, listen: false);
     final agents = Provider.of<AgentProvider>(context, listen: false);
+    final lock = Provider.of<AppLockProvider>(context, listen: false);
+    _lock = lock;
     if (!identical(_ssh, ssh)) {
       _ssh?.removeListener(_syncForeground);
       _ssh = ssh..addListener(_syncForeground);
@@ -95,6 +99,8 @@ class _AppLifecycleHostState extends State<AppLifecycleHost> {
     final agents = _agents;
     if (ssh == null || agents == null) return;
 
+    _lock?.onAppResumed();
+
     if (backgroundedAt != null) {
       final seconds = DateTime.now().difference(backgroundedAt).inSeconds;
       ssh.addLog('App resumed after ${seconds}s in background');
@@ -106,7 +112,7 @@ class _AppLifecycleHostState extends State<AppLifecycleHost> {
   }
 
   void _onPaused() {
-    // Can add pause-specific logic here if needed
+    _lock?.onAppPaused();
   }
 
   Future<void> _reconnectSshSessions(SSHProvider ssh) async {

@@ -1,7 +1,9 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
+import '../models/ssh_profile.dart';
 import '../providers/ssh_provider.dart';
 import '../services/network_discovery_service.dart';
+import '../services/wake_on_lan_service.dart';
 
 class NetworkDiscoverySheet extends StatefulWidget {
   const NetworkDiscoverySheet({super.key});
@@ -12,7 +14,9 @@ class NetworkDiscoverySheet extends StatefulWidget {
 
 class _NetworkDiscoverySheetState extends State<NetworkDiscoverySheet> {
   final _hostController = TextEditingController();
+  final _macController = TextEditingController();
   String? _localIP;
+  bool _waking = false;
 
   @override
   void initState() {
@@ -37,6 +41,44 @@ class _NetworkDiscoverySheetState extends State<NetworkDiscoverySheet> {
 
     await ssh.discoverHost(host);
     _hostController.clear();
+  }
+
+  Future<void> _wakeMac(String mac, {String? profileName}) async {
+    setState(() => _waking = true);
+    try {
+      await const WakeOnLanService().sendMagicPacket(macAddress: mac);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            profileName == null
+                ? 'Wake packet sent to $mac'
+                : 'Woke $profileName ($mac)',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Wake-on-LAN failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _waking = false);
+      }
+    }
+  }
+
+  Future<void> _wakeFromField() async {
+    final mac = _macController.text.trim();
+    if (mac.isEmpty) return;
+    await _wakeMac(mac);
+  }
+
+  List<SSHProfile> _profilesWithMac(SSHProvider ssh) {
+    return ssh.profiles
+        .where((p) => p.macAddress != null && p.macAddress!.isNotEmpty)
+        .toList();
   }
 
   @override
@@ -106,6 +148,34 @@ class _NetworkDiscoverySheetState extends State<NetworkDiscoverySheet> {
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: TextField(
+                        controller: _macController,
+                        decoration: const InputDecoration(
+                          labelText: 'Wake-on-LAN MAC',
+                          hintText: 'AA:BB:CC:DD:EE:FF',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _waking ? null : _wakeFromField,
+                      child: _waking
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Wake'),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -137,7 +207,53 @@ class _NetworkDiscoverySheetState extends State<NetworkDiscoverySheet> {
                   },
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+              Consumer<SSHProvider>(
+                builder: (context, ssh, _) {
+                  final withMac = _profilesWithMac(ssh);
+                  if (withMac.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          child: Text(
+                            'Saved profiles with MAC',
+                            style: TextStyle(color: Colors.grey[400]),
+                          ),
+                        ),
+                        ...withMac.map(
+                          (p) => ListTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.power_settings_new,
+                              color: Colors.orange,
+                            ),
+                            title: Text(p.name),
+                            subtitle: Text(p.macAddress!),
+                            trailing: TextButton(
+                              onPressed: _waking
+                                  ? null
+                                  : () => _wakeMac(
+                                        p.macAddress!,
+                                        profileName: p.name,
+                                      ),
+                              child: const Text('Wake'),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
               const Divider(),
               Expanded(
                 child: Consumer<SSHProvider>(
@@ -187,6 +303,7 @@ class _NetworkDiscoverySheetState extends State<NetworkDiscoverySheet> {
   @override
   void dispose() {
     _hostController.dispose();
+    _macController.dispose();
     super.dispose();
   }
 }

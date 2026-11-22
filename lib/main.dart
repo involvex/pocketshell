@@ -3,12 +3,14 @@ import 'package:provider/provider.dart';
 
 import 'constants/app_metadata.dart';
 import 'providers/agent_provider.dart';
+import 'providers/app_lock_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/snippet_provider.dart';
 import 'providers/ssh_provider.dart';
 import 'screens/splash_screen.dart';
 import 'services/app_lifecycle_service.dart';
 import 'services/config_service.dart';
+import 'widgets/app_lock_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +28,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => SSHProvider()),
         ChangeNotifierProvider(
             create: (context) => SettingsProvider()..loadSettings()),
+        ChangeNotifierProvider(
+            create: (context) => AppLockProvider()..load()),
         ChangeNotifierProvider(
             create: (context) => SnippetProvider()..loadSnippets()),
         ChangeNotifierProxyProvider<SSHProvider, AgentProvider>(
@@ -112,7 +116,9 @@ class MyApp extends StatelessWidget {
                 // import package:flutter/material.dart (xterm, share_plus, etc.).
                 // ignore: deprecated_member_use
                 return MaterialUiCompatibilityBridge(
-                  child: child ?? const SizedBox.shrink(),
+                  child: AppLockOverlay(
+                    child: child ?? const SizedBox.shrink(),
+                  ),
                 );
               },
               home: const SplashScreen(),

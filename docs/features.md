@@ -3,10 +3,14 @@
 ## SSH client
 
 Connect to remote hosts with password, private-key, or keyboard-interactive
-(2FA/TOTP) auth. The built-in xterm terminal supports colors, scrollback, and a
-shortcut bar for Ctrl, Alt, arrows, and custom snippets. Profiles can be
-searched, pinned as favorites, duplicated, or imported from the host’s
-`~/.ssh/config` over an active SFTP session.
+(2FA/TOTP) auth. Profiles can use a jump host (ProxyJump), named local port
+forwards (including an RDP preset), and Wake-on-LAN via a saved MAC. The
+built-in xterm terminal supports colors, scrollback, and a shortcut bar for
+Ctrl, Alt, arrows, and custom snippets. Profiles can be searched, pinned as
+favorites, duplicated, or imported from the host’s `~/.ssh/config` over an
+active SFTP session (including ProxyJump and LocalForward when resolvable).
+PuTTY `.ppk` keys can be imported in Key Manager. Opt-in app lock covers the
+UI with biometrics / device PIN while sessions stay connected.
 
 ### SFTP (Client + Agents)
 
