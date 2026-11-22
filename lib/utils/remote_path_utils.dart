@@ -44,4 +44,18 @@ abstract final class RemotePath {
     }
     return p.substring(0, i);
   }
+
+  /// Rejects path-traversal segments. Windows-style `C:/...` is detected by
+  /// shape so Android clients talking to Windows OpenSSH are allowed.
+  static void assertNoTraversal(String path) {
+    if (RegExp(r'^[A-Za-z]:/').hasMatch(path)) {
+      if (path.split('/').contains('..')) {
+        throw StateError('Path traversal detected: $path');
+      }
+      return;
+    }
+    if (path.split('/').contains('..') || path.contains('..')) {
+      throw StateError('Path traversal detected: $path');
+    }
+  }
 }

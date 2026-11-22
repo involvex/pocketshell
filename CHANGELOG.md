@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Probe remote Windows drive letters (`C:`–`Z:`) over SFTP from Android (and any client OS).
+- Foreground SSH auto-reconnect with exponential backoff when the link drops; clean remote `exit` stays disconnected.
+- Atomic SFTP text saves via temp + rename, with optional `.bak` of the previous file.
+- OpenCode config sheet writes host `opencode.json` over SFTP (HTTP PATCH remains for `{"shell": ...}` only).
+- PowerShell snippet pack for Windows OpenSSH hosts (migrated into existing installs).
+
+### Changed
+
+- `wt` / `psmux` session managers no longer inject a non-PTY startup command and are hidden from new profile picks.
+- Key Manager warns and offers “Set now” after generate / PPK import when the key has no passphrase.
 
 ## [1.3.2] - 2026-11-22
 

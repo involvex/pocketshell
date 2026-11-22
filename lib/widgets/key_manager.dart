@@ -82,8 +82,27 @@ class _KeyManagerState extends State<KeyManager> {
         _keys.add(key);
       });
       await _saveKeys();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Generated ${key.name} without a passphrase. '
+            'Set one from the key list for protection.',
+          ),
+          action: SnackBarAction(
+            label: 'Set now',
+            onPressed: () {
+              // ignore: discarded_futures
+              _showSetPassphraseDialog(key);
+            },
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -129,12 +148,27 @@ class _KeyManagerState extends State<KeyManager> {
       });
       await _saveKeys();
       if (!mounted) return;
+      final missingPassphrase = !_hasPassphrase(imported.key);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Imported ${imported.key.name} (${imported.key.keyType.displayName}) '
-            '· ${imported.fingerprint}',
+            missingPassphrase
+                ? 'Imported ${imported.key.name} · ${imported.fingerprint}. '
+                    'No passphrase — set one for protection.'
+                : 'Imported ${imported.key.name} '
+                    '(${imported.key.keyType.displayName}) '
+                    '· ${imported.fingerprint}',
           ),
+          action: missingPassphrase
+              ? SnackBarAction(
+                  label: 'Set now',
+                  onPressed: () {
+                    // ignore: discarded_futures
+                    _showSetPassphraseDialog(imported.key);
+                  },
+                )
+              : null,
+          duration: Duration(seconds: missingPassphrase ? 6 : 4),
         ),
       );
     } catch (e) {

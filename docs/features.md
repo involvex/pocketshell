@@ -4,19 +4,23 @@
 
 Connect to remote hosts with password, private-key, or keyboard-interactive
 (2FA/TOTP) auth. Profiles can use a jump host (ProxyJump), named local port
-forwards (including an RDP preset), and Wake-on-LAN via a saved MAC. The
-built-in xterm terminal supports colors, scrollback, and a shortcut bar for
-Ctrl, Alt, arrows, and custom snippets. Profiles can be searched, pinned as
-favorites, duplicated, or imported from the host’s `~/.ssh/config` over an
-active SFTP session (including ProxyJump and LocalForward when resolvable).
-PuTTY `.ppk` keys can be imported in Key Manager. Opt-in app lock covers the
-UI with biometrics / device PIN while sessions stay connected.
+forwards (including an RDP preset), and Wake-on-LAN via a saved MAC. Dropped
+links auto-reconnect in the foreground with backoff; a clean remote `exit`
+stays down. The built-in xterm terminal supports colors, scrollback, and a
+shortcut bar for Ctrl, Alt, arrows, and custom snippets (Unix plus PowerShell).
+Profiles can be searched, pinned as favorites, duplicated, or imported from
+the host’s `~/.ssh/config` over an active SFTP session (including ProxyJump and
+LocalForward when resolvable). PuTTY `.ppk` keys can be imported in Key Manager.
+Opt-in app lock covers the UI with biometrics / device PIN while sessions stay
+connected.
 
 ### SFTP (Client + Agents)
 
-From an active Client session, open the SFTP browser (modal) to list drives,
-navigate folders, and upload/download single files. The Agents tab reuses SFTP
-to pick an OpenCode project directory on the same host.
+From an active Client session, open the SFTP browser (modal) to list remote
+Windows drives (`C:`–`Z:`), navigate folders, and upload/download files. Text
+edits save atomically (temp + rename, optional `.bak`). The Agents tab reuses
+SFTP to pick an OpenCode project directory on the same host and to write
+`opencode.json` when the config sheet saves.
 
 Explorer foundations include typed listings, sort/filter, mkdir/rename/delete,
 transfer progress/cancel, overwrite confirmation, and capped text/image

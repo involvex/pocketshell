@@ -493,11 +493,19 @@ class SftpController extends ChangeNotifier {
     );
   }
 
-  Future<void> writeRemoteBytes(RemoteFsEntry entry, Uint8List data) async {
+  Future<void> writeRemoteBytes(
+    RemoteFsEntry entry,
+    Uint8List data, {
+    bool backup = true,
+  }) async {
     if (entry.isDirectory || entry.isParentLink) {
       throw StateError('Only files can be edited.');
     }
-    await _helper.writeRemoteBytes(remotePathForEntry(entry), data);
+    await _helper.writeRemoteBytes(
+      remotePathForEntry(entry),
+      data,
+      backup: backup,
+    );
     await refresh();
   }
 

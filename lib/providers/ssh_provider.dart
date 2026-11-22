@@ -406,18 +406,13 @@ class SSHProvider extends ChangeNotifier {
       };
 
       unawaited(shell.done.then((_) async {
-        addLog('Session ${entry.name} closed');
-        if (AppLifecycleService.isInBackground) {
-          entry.disconnectedWhileBackgrounded = true;
-        }
-        entry.isConnected = false;
-        await entry.closeForwards();
-        notifyListeners();
+        await _onShellDone(entry);
       }));
 
       entry.isConnected = true;
       entry.lastError = null;
       entry.shouldReconnectOnResume = true;
+      entry.reconnectAttempts = 0;
       entry.touch();
       addLog('Connected: ${entry.name}');
       await _startEnabledForwards(entry);
@@ -709,31 +704,129 @@ class SSHProvider extends ChangeNotifier {
 
   Future<void> reconnectSession(String sessionId) async {
     final entry = sessions.firstWhere((s) => s.id == sessionId);
-    await entry.closeForwards();
-    entry.shellSession?.close();
-    entry.client?.close();
-    entry.jumpClient?.close();
-    entry.shellSession = null;
-    entry.client = null;
-    entry.jumpClient = null;
-    // Preserve scrollback: reuse the existing Terminal buffer.
-    entry.terminal.write('\r\n\x1b[90m--- reconnecting ---\x1b[0m\r\n');
-    await connectSession(sessionId);
+    entry.suppressAutoReconnect = true;
+    try {
+      await entry.closeForwards();
+      entry.shellSession?.close();
+      entry.client?.close();
+      entry.jumpClient?.close();
+      entry.shellSession = null;
+      entry.client = null;
+      entry.jumpClient = null;
+      // Preserve scrollback: reuse the existing Terminal buffer.
+      entry.terminal.write('\r\n\x1b[90m--- reconnecting ---\x1b[0m\r\n');
+      await connectSession(sessionId);
+    } finally {
+      entry.suppressAutoReconnect = false;
+    }
   }
 
   Future<void> disconnectSession(String sessionId) async {
     final entry = sessions.firstWhere((s) => s.id == sessionId,
         orElse: () => throw StateError('Session not found'));
-    await entry.closeForwards();
-    entry.shellSession?.close();
-    entry.client?.close();
-    entry.jumpClient?.close();
-    entry.jumpClient = null;
-    entry.isConnected = false;
     entry.shouldReconnectOnResume = false;
-    entry.disconnectedWhileBackgrounded = false;
-    entry.terminal = Terminal();
+    entry.suppressAutoReconnect = true;
+    entry.reconnectAttempts = 0;
+    try {
+      await entry.closeForwards();
+      entry.shellSession?.close();
+      entry.client?.close();
+      entry.jumpClient?.close();
+      entry.jumpClient = null;
+      entry.isConnected = false;
+      entry.disconnectedWhileBackgrounded = false;
+      entry.terminal = Terminal();
+      notifyListeners();
+    } finally {
+      entry.suppressAutoReconnect = false;
+    }
+  }
+
+  /// Handles a closed PTY: clean remote `exit` stays down; link drops
+  /// auto-reconnect while the app is foregrounded (resume still covers
+  /// background drops via [AppLifecycleService]).
+  Future<void> _onShellDone(SessionEntry entry) async {
+    addLog('Session ${entry.name} closed');
+    if (entry.suppressAutoReconnect) {
+      entry.isConnected = false;
+      await entry.closeForwards();
+      notifyListeners();
+      return;
+    }
+
+    final client = entry.client;
+    final cleanExit = client != null && !client.isClosed;
+    if (cleanExit) {
+      // Remote shell exited (e.g. user typed `exit`) while TCP is still up.
+      entry.shouldReconnectOnResume = false;
+      entry.reconnectAttempts = 0;
+      try {
+        client.close();
+      } catch (_) {}
+      entry.jumpClient?.close();
+      entry.client = null;
+      entry.jumpClient = null;
+      entry.shellSession = null;
+      entry.isConnected = false;
+      await entry.closeForwards();
+      notifyListeners();
+      return;
+    }
+
+    if (AppLifecycleService.isInBackground) {
+      entry.disconnectedWhileBackgrounded = true;
+    }
+    entry.isConnected = false;
+    entry.shellSession = null;
+    await entry.closeForwards();
     notifyListeners();
+
+    if (entry.shouldReconnectOnResume && !AppLifecycleService.isInBackground) {
+      unawaited(_foregroundReconnectWithBackoff(entry));
+    }
+  }
+
+  static const int kMaxForegroundReconnectAttempts = 5;
+
+  Future<void> _foregroundReconnectWithBackoff(SessionEntry entry) async {
+    while (entry.shouldReconnectOnResume &&
+        !entry.isConnected &&
+        entry.reconnectAttempts < kMaxForegroundReconnectAttempts) {
+      if (AppLifecycleService.isInBackground) {
+        entry.disconnectedWhileBackgrounded = true;
+        return;
+      }
+      entry.reconnectAttempts++;
+      final delaySeconds =
+          1 << (entry.reconnectAttempts - 1); // 1, 2, 4, 8, 16
+      addLog(
+        'Reconnect ${entry.name}: attempt '
+        '${entry.reconnectAttempts}/$kMaxForegroundReconnectAttempts '
+        'in ${delaySeconds}s',
+      );
+      notifyListeners();
+      await Future<void>.delayed(Duration(seconds: delaySeconds));
+      if (!entry.shouldReconnectOnResume || entry.isConnected) {
+        return;
+      }
+      if (AppLifecycleService.isInBackground) {
+        entry.disconnectedWhileBackgrounded = true;
+        return;
+      }
+      try {
+        await reconnectSession(entry.id);
+        return;
+      } catch (e) {
+        addLog('Reconnect failed for ${entry.name}: $e');
+      }
+    }
+    if (!entry.isConnected && entry.shouldReconnectOnResume) {
+      addLog(
+        'Gave up reconnecting ${entry.name} after '
+        '$kMaxForegroundReconnectAttempts attempts',
+      );
+      notifyListeners();
+    }
   }
 
   void removeSession(String sessionId) {

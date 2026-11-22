@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:ssh_app/models/ssh_profile.dart';
@@ -31,20 +32,22 @@ class OpenCodeRemoteConfigService {
     'settings.json',
   ];
 
+  /// Preferred Windows OpenCode config directories for [profile.username].
+  static List<String> probeDirsFor(SSHProfile profile) {
+    final username = profile.username;
+    return <String>[
+      'C:/Users/$username/.config/opencode',
+      'C:/Users/$username/AppData/Roaming/opencode',
+    ];
+  }
+
   Future<RemoteOpenCodeConfig?> importFromSshClient({
     required SSHClient client,
     required SSHProfile profile,
   }) async {
     final helper = SftpHelper(client);
     try {
-      final username = profile.username;
-
-      final probeDirs = <String>[
-        'C:/Users/$username/.config/opencode',
-        'C:/Users/$username/AppData/Roaming/opencode',
-      ];
-
-      for (final dir in probeDirs) {
+      for (final dir in probeDirsFor(profile)) {
         final config = await _readFirstConfigInDir(helper, dir);
         if (config != null) {
           return _parseConfig(config.path, config.contents, profile);
@@ -55,6 +58,66 @@ class OpenCodeRemoteConfigService {
     } finally {
       await helper.close();
     }
+  }
+
+  /// Writes [body] as JSON to an existing remote config file, or creates
+  /// `opencode.json` under the first probe directory that exists (or can be
+  /// created as `C:/Users/<user>/.config/opencode`).
+  Future<String> writeConfigViaSshClient({
+    required SSHClient client,
+    required SSHProfile profile,
+    required Map<String, dynamic> body,
+    bool backup = true,
+  }) async {
+    final helper = SftpHelper(client);
+    try {
+      String? targetPath;
+      for (final dir in probeDirsFor(profile)) {
+        final existing = await _readFirstConfigInDir(helper, dir);
+        if (existing != null) {
+          targetPath = existing.path;
+          break;
+        }
+      }
+
+      targetPath ??= await _ensureDefaultConfigPath(helper, profile);
+
+      const encoder = JsonEncoder.withIndent('  ');
+      final bytes = Uint8List.fromList(
+        utf8.encode('${encoder.convert(body)}\n'),
+      );
+      await helper.writeRemoteBytes(targetPath, bytes, backup: backup);
+      return targetPath;
+    } finally {
+      await helper.close();
+    }
+  }
+
+  Future<String> _ensureDefaultConfigPath(
+    SftpHelper helper,
+    SSHProfile profile,
+  ) async {
+    final preferredDir = probeDirsFor(profile).first;
+    try {
+      await helper.mkdir(preferredDir);
+    } catch (_) {
+      // Parent may already exist, or mkdir of nested path may need parents.
+      try {
+        final userHome = 'C:/Users/${profile.username}';
+        final configDir = '$userHome/.config';
+        if (!await helper.exists(configDir)) {
+          await helper.mkdir(configDir);
+        }
+        if (!await helper.exists(preferredDir)) {
+          await helper.mkdir(preferredDir);
+        }
+      } catch (e) {
+        throw StateError(
+          'Could not create OpenCode config directory $preferredDir: $e',
+        );
+      }
+    }
+    return '$preferredDir/opencode.json';
   }
 
   Future<({String path, String contents})?> _readFirstConfigInDir(

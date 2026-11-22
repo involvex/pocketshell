@@ -36,7 +36,7 @@ Proposal:
 - Keep plain JSON only behind an explicit "I understand the risk" checkbox; strip secrets by default in plain mode.
 - Validate `_maxBackupSizeBytes` on import before parsing; schema-version check already exists (`_backupVersion`) — bump to 2 for encrypted envelope.
 
-### 1.4 SSH private-key passphrase enforcement + in-memory hygiene (P0, S)
+### 1.4 SSH private-key passphrase enforcement + in-memory hygiene (P0, S) — **SHIPPED** (warn + opt-in require; zeroize still optional polish)
 Problem: keys can be stored/used without passphrases; decrypted key material lifetime is unbounded.
 Proposal:
 - Warn in `KeyManager` when importing a key without a passphrase; offer to set one.
@@ -67,7 +67,7 @@ Add `jumpProfileId` to `SSHProfile`; `SSHProvider.connectClient()` dials bastion
 Problem: no forwarding found in codebase. Users cannot reach RDP, DBs, or OpenCode behind NAT.
 Proposal: per-profile forward rules (local port → remote host:port, reverse optional); active-forwards list with stop/start; conflict detection on local port bind. Persist in profile JSON.
 
-### 2.4 Keepalive + auto-reconnect with backoff (P1, S) — **SHIPPED** (keepalive + resume reconnect; full missed-heartbeat backoff still optional polish)
+### 2.4 Keepalive + auto-reconnect with backoff (P1, S) — **SHIPPED** (keepalive + resume + foreground backoff; missed-heartbeat UI polish still optional)
 Add heartbeat (SSH keepalive every 30 s, configurable), missed-heartbeat detection, and auto-reconnect (exponential backoff, max 5 tries) that re-attaches terminal without losing scrollback. Surface state in `AgentConnectionBar` / client header.
 
 ### 2.5 Multi-session tabs (P1, L) — **SHIPPED**
@@ -113,7 +113,7 @@ Remote zip/tar create + extract (via SSH exec with fallback error message on Win
 ### 4.5 Symlink + hidden-file support (P1, S)
 Show symlink targets, toggle hidden files, resolve-then-open. Small model change in `RemoteFsEntry` + `SftpHelper` listing flags.
 
-### 4.6 Edit remote file in place (P1, M)
+### 4.6 Edit remote file in place (P1, M) — **SHIPPED** (atomic temp+rename + `.bak`)
 Open text preview → edit → save back with atomic rename + backup (`.bak`) option. Reuses `sftp_text_preview.dart` with size cap already in place.
 
 ## 5. Profiles, keys, snippets organization (P1–P2)
@@ -197,10 +197,11 @@ Profile long-scrollback rendering and large SFTP directories (1k+ entries); virt
 
 ## Suggested build order (if resourced as 3 milestones)
 
-1. **Trust release (1.1, 1.3, 1.4, 2.4):** host-key trust, encrypted backup, key hygiene, keepalive/reconnect. Ships as 1.3.0.
-2. **Daily-driver release (2.5, 3.1, 4.1–4.3, 5.1):** multi-session tabs, scrollback search, transfer queue + checksums, profile folders/search. (Core shipped across 1.2–1.3; search/favorites in 1.4.)
-3. **Host-access release (1.5 kbd-interactive, 2.1 config import, 2.3 agent tunnel):** Windows OpenSSH reachability. Ships as 1.4.0.
-4. **Agent-power / polish (8.1, 8.5, 2.2 jump, certificates):** first locale, onboarding wizard, jump host. Ships as 1.5.0.
+1. **Trust release (1.1, 1.3, 1.4, 2.4):** host-key trust, encrypted backup, key hygiene, keepalive/reconnect. Shipped across 1.3.x / Unreleased 1.4.0.
+2. **Daily-driver release (2.5, 3.1, 4.1–4.3, 5.1):** multi-session tabs, scrollback search, transfer queue + checksums, profile folders/search. (Core shipped across 1.2–1.3; search/favorites in 1.3.1.)
+3. **Host-access release (1.5 kbd-interactive, 2.1 config import, 2.2 jump, 2.3/2.7 forwards/WoL, agent tunnel):** Windows OpenSSH reachability. Shipped as 1.3.1–1.3.2.
+4. **Windows daily-driver (drives-from-Android, foreground reconnect, atomic save, SFTP opencode.json write, PowerShell snippets):** Unreleased → 1.4.0.
+5. **Next polish (IdentityFile pull, share-to-host, 8.1 i18n, 8.5 onboarding, certificates):** candidate 1.4.1 / 1.5.0.
 
 ## Out of scope (deliberately not suggested)
 

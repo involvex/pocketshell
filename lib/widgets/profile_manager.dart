@@ -496,11 +496,14 @@ class _ProfileManagerState extends State<ProfileManager> {
                         const SizedBox(height: 8),
                         DropdownButtonFormField<SessionManager>(
                           key: ValueKey(sessionManager),
-                          initialValue: sessionManager,
+                          initialValue: SessionManagerX.selectableValues
+                                  .contains(sessionManager)
+                              ? sessionManager
+                              : SessionManager.none,
                           decoration: const InputDecoration(
                             labelText: 'Session Manager',
                           ),
-                          items: SessionManager.values.map((manager) {
+                          items: SessionManagerX.selectableValues.map((manager) {
                             return DropdownMenuItem(
                               value: manager,
                               child: Text(manager.displayName),
