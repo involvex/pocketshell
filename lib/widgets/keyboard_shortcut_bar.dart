@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
@@ -11,6 +12,105 @@ import 'connection_modal.dart';
 import 'profile_manager.dart';
 import 'network_discovery.dart';
 import 'key_manager.dart';
+
+/// Delay before arrow-key hold starts auto-repeating.
+const Duration kShortcutKeyRepeatInitialDelay = Duration(milliseconds: 400);
+
+/// Interval between repeated arrow key sends while held.
+const Duration kShortcutKeyRepeatInterval = Duration(milliseconds: 45);
+
+bool shortcutActionSupportsKeyRepeat(ShortcutAction action) {
+  switch (action) {
+    case ShortcutAction.arrowLeft:
+    case ShortcutAction.arrowRight:
+    case ShortcutAction.arrowUp:
+    case ShortcutAction.arrowDown:
+      return true;
+    case ShortcutAction.newConnection:
+    case ShortcutAction.profiles:
+    case ShortcutAction.discovery:
+    case ShortcutAction.keys:
+    case ShortcutAction.tabChar:
+    case ShortcutAction.home:
+    case ShortcutAction.end:
+    case ShortcutAction.escapeKey:
+    case ShortcutAction.ctrlA:
+    case ShortcutAction.ctrlB:
+    case ShortcutAction.ctrlC:
+    case ShortcutAction.ctrlD:
+    case ShortcutAction.ctrlE:
+    case ShortcutAction.ctrlF:
+    case ShortcutAction.ctrlG:
+    case ShortcutAction.ctrlH:
+    case ShortcutAction.ctrlJ:
+    case ShortcutAction.ctrlK:
+    case ShortcutAction.ctrlL:
+    case ShortcutAction.ctrlN:
+    case ShortcutAction.ctrlO:
+    case ShortcutAction.ctrlP:
+    case ShortcutAction.ctrlQ:
+    case ShortcutAction.ctrlR:
+    case ShortcutAction.ctrlS:
+    case ShortcutAction.ctrlT:
+    case ShortcutAction.ctrlU:
+    case ShortcutAction.ctrlW:
+    case ShortcutAction.ctrlX:
+    case ShortcutAction.ctrlY:
+    case ShortcutAction.ctrlZ:
+    case ShortcutAction.ctrlV:
+      return false;
+  }
+}
+
+TerminalKey? terminalKeyForShortcutAction(ShortcutAction action) {
+  switch (action) {
+    case ShortcutAction.arrowUp:
+      return TerminalKey.arrowUp;
+    case ShortcutAction.arrowDown:
+      return TerminalKey.arrowDown;
+    case ShortcutAction.arrowLeft:
+      return TerminalKey.arrowLeft;
+    case ShortcutAction.arrowRight:
+      return TerminalKey.arrowRight;
+    case ShortcutAction.home:
+      return TerminalKey.home;
+    case ShortcutAction.end:
+      return TerminalKey.end;
+    case ShortcutAction.escapeKey:
+      return TerminalKey.escape;
+    case ShortcutAction.tabChar:
+      return TerminalKey.tab;
+    case ShortcutAction.newConnection:
+    case ShortcutAction.profiles:
+    case ShortcutAction.discovery:
+    case ShortcutAction.keys:
+    case ShortcutAction.ctrlA:
+    case ShortcutAction.ctrlB:
+    case ShortcutAction.ctrlC:
+    case ShortcutAction.ctrlD:
+    case ShortcutAction.ctrlE:
+    case ShortcutAction.ctrlF:
+    case ShortcutAction.ctrlG:
+    case ShortcutAction.ctrlH:
+    case ShortcutAction.ctrlJ:
+    case ShortcutAction.ctrlK:
+    case ShortcutAction.ctrlL:
+    case ShortcutAction.ctrlN:
+    case ShortcutAction.ctrlO:
+    case ShortcutAction.ctrlP:
+    case ShortcutAction.ctrlQ:
+    case ShortcutAction.ctrlR:
+    case ShortcutAction.ctrlS:
+    case ShortcutAction.ctrlT:
+    case ShortcutAction.ctrlU:
+    case ShortcutAction.ctrlW:
+    case ShortcutAction.ctrlX:
+    case ShortcutAction.ctrlY:
+    case ShortcutAction.ctrlZ:
+    case ShortcutAction.ctrlV:
+      return null;
+  }
+}
 
 class KeyboardShortcutBar extends StatefulWidget {
   final int? showRow;
@@ -174,7 +274,7 @@ class _ShortcutRow extends StatelessWidget {
   }
 }
 
-class _ShortcutChip extends StatelessWidget {
+class _ShortcutChip extends StatefulWidget {
   final KeyboardShortcut shortcut;
   final bool isConnected;
 
@@ -182,6 +282,68 @@ class _ShortcutChip extends StatelessWidget {
     required this.shortcut,
     required this.isConnected,
   });
+
+  @override
+  State<_ShortcutChip> createState() => _ShortcutChipState();
+}
+
+class _ShortcutChipState extends State<_ShortcutChip> {
+  Timer? _initialDelayTimer;
+  Timer? _repeatTimer;
+  bool _repeatActive = false;
+
+  KeyboardShortcut get shortcut => widget.shortcut;
+  bool get isConnected => widget.isConnected;
+
+  bool get _supportsRepeat =>
+      shortcutActionSupportsKeyRepeat(shortcut.action);
+
+  @override
+  void dispose() {
+    _stopRepeat();
+    super.dispose();
+  }
+
+  void _stopRepeat() {
+    _initialDelayTimer?.cancel();
+    _repeatTimer?.cancel();
+    _initialDelayTimer = null;
+    _repeatTimer = null;
+    _repeatActive = false;
+  }
+
+  void _startRepeat(BuildContext context) {
+    if (!isConnected || !_supportsRepeat) {
+      return;
+    }
+    _stopRepeat();
+    final ssh = context.read<SSHProvider>();
+    final key = terminalKeyForShortcutAction(shortcut.action);
+    if (key == null) {
+      return;
+    }
+    final ctrl = ssh.pendingCtrl;
+    final alt = ssh.pendingAlt;
+    ssh.clearPendingModifiers();
+
+    void fire() {
+      ssh.sendTerminalKey(key, ctrl: ctrl, alt: alt);
+    }
+
+    _repeatActive = true;
+    fire();
+    _initialDelayTimer = Timer(kShortcutKeyRepeatInitialDelay, () {
+      if (!_repeatActive) {
+        return;
+      }
+      _repeatTimer = Timer.periodic(kShortcutKeyRepeatInterval, (_) {
+        if (!_repeatActive) {
+          return;
+        }
+        fire();
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -193,7 +355,10 @@ class _ShortcutChip extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 4, left: 0),
       child: InkWell(
-        onTap: () => _handleTap(context),
+        onTap: _supportsRepeat ? null : () => _handleTap(context),
+        onTapDown: _supportsRepeat ? (_) => _startRepeat(context) : null,
+        onTapUp: _supportsRepeat ? (_) => _stopRepeat() : null,
+        onTapCancel: _supportsRepeat ? _stopRepeat : null,
         borderRadius: BorderRadius.circular(4),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
@@ -323,44 +488,10 @@ class _ShortcutChip extends StatelessWidget {
         }
         break;
       case ShortcutAction.arrowUp:
-        if (isConnected) {
-          ssh.sendTerminalKey(
-            TerminalKey.arrowUp,
-            ctrl: ssh.pendingCtrl,
-            alt: ssh.pendingAlt,
-          );
-          ssh.clearPendingModifiers();
-        }
-        break;
       case ShortcutAction.arrowDown:
-        if (isConnected) {
-          ssh.sendTerminalKey(
-            TerminalKey.arrowDown,
-            ctrl: ssh.pendingCtrl,
-            alt: ssh.pendingAlt,
-          );
-          ssh.clearPendingModifiers();
-        }
-        break;
       case ShortcutAction.arrowRight:
-        if (isConnected) {
-          ssh.sendTerminalKey(
-            TerminalKey.arrowRight,
-            ctrl: ssh.pendingCtrl,
-            alt: ssh.pendingAlt,
-          );
-          ssh.clearPendingModifiers();
-        }
-        break;
       case ShortcutAction.arrowLeft:
-        if (isConnected) {
-          ssh.sendTerminalKey(
-            TerminalKey.arrowLeft,
-            ctrl: ssh.pendingCtrl,
-            alt: ssh.pendingAlt,
-          );
-          ssh.clearPendingModifiers();
-        }
+        // Handled by hold-to-repeat via onTapDown.
         break;
       case ShortcutAction.home:
         if (isConnected) {

@@ -9,8 +9,9 @@ links auto-reconnect in the foreground with backoff; a clean remote `exit`
 stays down. The built-in xterm terminal supports colors, scrollback, and a
 shortcut bar for Ctrl, Alt, arrows, and custom snippets (Unix plus PowerShell).
 Profiles can be searched, pinned as favorites, duplicated, or imported from
-the host’s `~/.ssh/config` over an active SFTP session (including ProxyJump and
-LocalForward when resolvable). PuTTY `.ppk` keys can be imported in Key Manager.
+the host’s `~/.ssh/config` over an active SFTP session (including ProxyJump,
+LocalForward, and IdentityFile PEM pull when resolvable). PuTTY `.ppk` keys
+can be imported in Key Manager.
 Opt-in app lock covers the UI with biometrics / device PIN while sessions stay
 connected.
 

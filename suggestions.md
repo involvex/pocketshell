@@ -57,8 +57,8 @@ Proposal:
 
 ## 2. SSH connection core (P1)
 
-### 2.1 SSH config import (`~/.ssh/config`) (P1, M) — **SHIPPED** (Host/HostName/User/Port + IdentityFile + ProxyJump + LocalForward; ProxyCommand still open)
-Import host, hostname, user, port, identity file, jump host from desktop/server `~/.ssh/config` over existing SFTP channel or file picker. Map to `SSHProfile` fields; report skipped directives. Reduces manual profile setup, the top onboarding friction.
+### 2.1 SSH config import (`~/.ssh/config`) (P1, M) — **SHIPPED** (Host/HostName/User/Port + IdentityFile pull + ProxyJump + LocalForward; ProxyCommand still open)
+Import host, hostname, user, port, identity file, jump host from desktop/server `~/.ssh/config` over existing SFTP channel or file picker. Map to `SSHProfile` fields; report skipped directives. Reduces manual profile setup, the top onboarding friction. IdentityFile PEM keys are pulled over SFTP and attached when the profile has no key yet (encrypted / missing / already-keyed → hint).
 
 ### 2.2 Jump host / bastion support (P1, M) — **SHIPPED** (1.4.0; nested multi-hop still open)
 Add `jumpProfileId` to `SSHProfile`; `SSHProvider.connectClient()` dials bastion first, then tunnels (TCP forward via `dartssh2`) to target. UI: "Via jump host" picker in `ssh_client_form.dart`. Essential for Windows lab + cloud setups.
@@ -201,7 +201,7 @@ Profile long-scrollback rendering and large SFTP directories (1k+ entries); virt
 2. **Daily-driver release (2.5, 3.1, 4.1–4.3, 5.1):** multi-session tabs, scrollback search, transfer queue + checksums, profile folders/search. (Core shipped across 1.2–1.3; search/favorites in 1.3.1.)
 3. **Host-access release (1.5 kbd-interactive, 2.1 config import, 2.2 jump, 2.3/2.7 forwards/WoL, agent tunnel):** Windows OpenSSH reachability. Shipped as 1.3.1–1.3.2.
 4. **Windows daily-driver (drives-from-Android, foreground reconnect, atomic save, SFTP opencode.json write, PowerShell snippets):** Unreleased → 1.4.0.
-5. **Next polish (IdentityFile pull, share-to-host, 8.1 i18n, 8.5 onboarding, certificates):** candidate 1.4.1 / 1.5.0.
+5. **Next polish (share-to-host, 8.1 i18n, 8.5 onboarding, certificates):** candidate 1.4.1 / 1.5.0. IdentityFile pull shipped with config import.
 
 ## Out of scope (deliberately not suggested)
 

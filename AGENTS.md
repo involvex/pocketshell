@@ -152,6 +152,7 @@ lib/
 - Agent chat groups consecutive same-role messages via `groupAgentMessages` in `lib/utils/agent_message_grouping.dart`; rendering uses `AgentMessageBubble` and `AgentMessagePartTile`.
 - `OpenCodeRemoteConfigService` imports and writes Windows host config over SSH/SFTP under `%USERPROFILE%\.config\opencode\` (and Roaming fallback); Android build uses AGP 9.3.1 / Kotlin 2.4.20 with vendored `packages/home_widget`.
 - SFTP `listDrives` probes remote `C:/`–`Z:/` regardless of client OS; `writeRemoteBytes` uses temp + rename with optional `.bak`.
+- SSH config import (`SshConfigImportService`) pulls `IdentityFile` PEMs over SFTP after merge; attaches a new `SSHKey` only when the profile has no key; encrypted/missing/already-keyed paths become `identityHints` (never log PEM bytes).
 - Foreground SSH link drops auto-reconnect with backoff in `SSHProvider`; clean remote `exit` clears `shouldReconnectOnResume`.
 - CI/release Flutter SDK is pinned in `.github/flutter-version` (currently `3.47.9` / Dart 3.13). Bump that file before merging pub deps that need a newer Dart SDK; Dependabot ignores major `very_good_analysis` bumps for the same reason.
 
