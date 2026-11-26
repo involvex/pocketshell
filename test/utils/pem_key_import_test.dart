@@ -1,13 +1,13 @@
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ssh_app/models/ssh_key.dart';
 import 'package:ssh_app/utils/pem_key_import.dart';
 
+import '../helpers/openssh_test_key.dart';
+
 void main() {
   group('tryImportUnencryptedPemKey', () {
-    test('imports an unencrypted OpenSSH ed25519 PEM', () {
-      final pem = File('test/fixtures/id_ed25519_unencrypted').readAsStringSync();
+    test('imports an unencrypted OpenSSH ed25519 PEM', () async {
+      final pem = await generateUnencryptedEd25519OpenSshPem();
 
       final result = tryImportUnencryptedPemKey(pem, name: 'imported');
 

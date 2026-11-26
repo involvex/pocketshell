@@ -8,8 +8,7 @@ import 'package:ssh_app/models/ssh_profile.dart';
 import 'package:ssh_app/services/sftp_helper.dart';
 import 'package:ssh_app/services/ssh_config_import_service.dart';
 
-String _fixturePem() =>
-    File('test/fixtures/id_ed25519_unencrypted').readAsStringSync();
+import '../helpers/openssh_test_key.dart';
 
 void main() {
   group('SshConfigImportService.mergeIntoProfiles', () {
@@ -118,7 +117,7 @@ Host lab
   group('SshConfigImportService.pullIdentityFiles', () {
     test('attaches a pulled PEM key to a profile without a key', () async {
       const importer = SshConfigImportService();
-      final pem = _fixturePem();
+      final pem = await generateUnencryptedEd25519OpenSshPem();
       const raw = '''
 Host lab
   HostName 10.0.0.9
@@ -226,7 +225,7 @@ Host lab
 
     test('reuses one key when two hosts share the same IdentityFile', () async {
       const importer = SshConfigImportService();
-      final pem = _fixturePem();
+      final pem = await generateUnencryptedEd25519OpenSshPem();
       const raw = '''
 Host a
   HostName 10.0.0.1
