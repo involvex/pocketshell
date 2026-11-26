@@ -145,6 +145,7 @@ lib/
 - `AgentProvider` is a `ChangeNotifierProxyProvider` that routes `onLog` to `SSHProvider.addLog`.
 - Agent directory path persists in ConfigService as `agent_last_directory`.
 - Android widgets (`SshQuickConnectWidget`, `AgentQuickConnectWidget`) sync profiles via `WidgetProfileService` and deep-link via `sshapp://widget/ssh|agent?profileId=` through `WidgetLaunchHandler`.
+- Android share intents: text → `ShareCloneHandler` (git clone paste); files → `ShareUploadHandler` (cache copy + SFTP queue via `SftpBrowser.pendingUploads`). File streams take priority over accompanying text.
 - Terminal styling is centralized in `TerminalStyleBuilder` (font family, weight, style, size) and uses `google_fonts` for bold/italic variants.
 - `lib/utils/agent_session_utils.dart` holds session sort helpers and `agentDirectoryScopeForConnection`.
 - Agents tab uses master-detail navigation on all screen sizes with `PopScope` and Android predictive back.

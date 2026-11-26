@@ -11,6 +11,7 @@ import 'package:ssh_app/models/remote_fs_entry.dart';
 import 'package:ssh_app/providers/sftp_controller.dart';
 import 'package:ssh_app/providers/ssh_provider.dart';
 import 'package:ssh_app/services/sftp_helper.dart';
+import 'package:ssh_app/services/share_intent_service.dart';
 import 'package:ssh_app/utils/remote_fs_sort.dart';
 import 'package:ssh_app/widgets/sftp/sftp_browser_header.dart';
 import 'package:ssh_app/widgets/sftp/sftp_entry_list.dart';
@@ -21,7 +22,15 @@ import 'package:ssh_app/widgets/sftp/sftp_transfer_banner.dart';
 
 class SftpBrowser extends StatefulWidget {
   final String sessionId;
-  const SftpBrowser({required this.sessionId, super.key});
+
+  /// Cached share files to enqueue after the remote listing loads.
+  final List<SharedFile>? pendingUploads;
+
+  const SftpBrowser({
+    required this.sessionId,
+    this.pendingUploads,
+    super.key,
+  });
 
   @override
   State<SftpBrowser> createState() => _SftpBrowserState();
@@ -47,7 +56,35 @@ class _SftpBrowserState extends State<SftpBrowser> {
     }
 
     _controller = SftpController(client: client);
-    unawaited(_controller!.init());
+    unawaited(_bootstrap());
+  }
+
+  Future<void> _bootstrap() async {
+    final SftpController? controller = _controller;
+    if (controller == null) {
+      return;
+    }
+    await controller.init();
+    final List<SharedFile>? pending = widget.pendingUploads;
+    if (pending == null || pending.isEmpty || !mounted) {
+      return;
+    }
+    final int completed = await controller.uploadNamedFiles(
+      <({File file, String? remoteName})>[
+        for (final SharedFile shared in pending)
+          (file: File(shared.path), remoteName: shared.name),
+      ],
+    );
+    if (!mounted) {
+      return;
+    }
+    _showOperationSnackBar(
+      controller: controller,
+      success: completed > 0 && controller.error == null,
+      successMessage:
+          completed == 1 ? 'Uploaded' : 'Uploaded $completed file(s)',
+    );
+    _maybeShowVerifyMessage(controller);
   }
 
   Future<void> _showCopiedSnackbar() async {

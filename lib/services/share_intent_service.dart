@@ -4,7 +4,61 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-/// Receives Android `ACTION_SEND` text shares via a MethodChannel.
+/// A file copied from an Android share intent into app cache.
+class SharedFile {
+  const SharedFile({
+    required this.path,
+    required this.name,
+  });
+
+  /// Absolute local path of the cached copy.
+  final String path;
+
+  /// Original display name for the remote upload filename.
+  final String name;
+
+  Map<String, String> toJson() => <String, String>{
+        'path': path,
+        'name': name,
+      };
+
+  static SharedFile? fromJson(Object? raw) {
+    if (raw is! Map) {
+      return null;
+    }
+    final Object? path = raw['path'];
+    final Object? name = raw['name'];
+    if (path is! String || path.trim().isEmpty) {
+      return null;
+    }
+    final String displayName =
+        name is String && name.trim().isNotEmpty ? name.trim() : 'shared_file';
+    return SharedFile(path: path, name: displayName);
+  }
+}
+
+/// How an incoming Android share should be handled.
+enum SharePayloadKind {
+  none,
+  text,
+  files,
+}
+
+/// Classifies text vs file shares. File streams win over accompanying text.
+SharePayloadKind classifySharePayload({
+  String? text,
+  List<SharedFile>? files,
+}) {
+  if (files != null && files.isNotEmpty) {
+    return SharePayloadKind.files;
+  }
+  if (text != null && text.trim().isNotEmpty) {
+    return SharePayloadKind.text;
+  }
+  return SharePayloadKind.none;
+}
+
+/// Receives Android `ACTION_SEND` / `SEND_MULTIPLE` shares via a MethodChannel.
 class ShareIntentService {
   ShareIntentService._();
 
@@ -14,10 +68,16 @@ class ShareIntentService {
   static final StreamController<String> _incoming =
       StreamController<String>.broadcast();
 
+  static final StreamController<List<SharedFile>> _incomingFiles =
+      StreamController<List<SharedFile>>.broadcast();
+
   static bool _listening = false;
 
   /// Shared text events while the app is already running.
   static Stream<String> get incoming => _incoming.stream;
+
+  /// Shared file events while the app is already running.
+  static Stream<List<SharedFile>> get incomingFiles => _incomingFiles.stream;
 
   /// Starts listening for warm-start share events. Safe to call repeatedly.
   static void ensureListening() {
@@ -30,6 +90,11 @@ class ShareIntentService {
         final Object? args = call.arguments;
         if (args is String && args.trim().isNotEmpty) {
           _incoming.add(args);
+        }
+      } else if (call.method == 'onSharedFiles') {
+        final List<SharedFile> files = _parseSharedFiles(call.arguments);
+        if (files.isNotEmpty) {
+          _incomingFiles.add(files);
         }
       }
       return null;
@@ -56,6 +121,28 @@ class ShareIntentService {
     }
   }
 
+  /// Reads shared files that launched the app (cold start), then clears them.
+  static Future<List<SharedFile>> getInitialSharedFiles() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return const <SharedFile>[];
+    }
+    ensureListening();
+    try {
+      final Object? result =
+          await _channel.invokeMethod<Object?>('getSharedFiles');
+      final List<SharedFile> files = _parseSharedFiles(result);
+      if (files.isEmpty) {
+        return const <SharedFile>[];
+      }
+      await clearSharedFiles();
+      return files;
+    } on PlatformException {
+      return const <SharedFile>[];
+    } on MissingPluginException {
+      return const <SharedFile>[];
+    }
+  }
+
   static Future<void> clearSharedText() async {
     if (kIsWeb || !Platform.isAndroid) {
       return;
@@ -67,6 +154,33 @@ class ShareIntentService {
     } on MissingPluginException {
       // Ignore on non-Android builds.
     }
+  }
+
+  static Future<void> clearSharedFiles() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return;
+    }
+    try {
+      await _channel.invokeMethod<void>('clearSharedFiles');
+    } on PlatformException {
+      // Ignore — share may already be cleared.
+    } on MissingPluginException {
+      // Ignore on non-Android builds.
+    }
+  }
+
+  static List<SharedFile> _parseSharedFiles(Object? raw) {
+    if (raw is! List) {
+      return const <SharedFile>[];
+    }
+    final List<SharedFile> out = <SharedFile>[];
+    for (final Object? item in raw) {
+      final SharedFile? file = SharedFile.fromJson(item);
+      if (file != null) {
+        out.add(file);
+      }
+    }
+    return out;
   }
 
   /// Extracts the first cloneable URL from shared text.

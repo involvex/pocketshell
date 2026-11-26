@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Android share-to-host: shared files/images upload through the SFTP transfer queue (session picker when multiple connections; Connect & upload when none).
+
 
 ## [1.4.1] - 2026-11-26
 

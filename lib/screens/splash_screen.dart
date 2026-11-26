@@ -28,8 +28,13 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _initializeApp() async {
     await ConfigService.init();
     final pendingLaunch = await _readPendingWidgetLaunch();
-    final pendingShare = await _readPendingShareText();
-    if (pendingLaunch == null && pendingShare == null) {
+    final pendingShareFiles = await _readPendingShareFiles();
+    final pendingShare = pendingShareFiles.isEmpty
+        ? await _readPendingShareText()
+        : null;
+    if (pendingLaunch == null &&
+        pendingShare == null &&
+        pendingShareFiles.isEmpty) {
       await Future<void>.delayed(const Duration(seconds: 2));
     }
     if (mounted) {
@@ -38,6 +43,7 @@ class _SplashScreenState extends State<SplashScreen> {
           builder: (_) => HomeScreen(
             pendingLaunch: pendingLaunch,
             pendingShareText: pendingShare,
+            pendingShareFiles: pendingShareFiles,
           ),
         ),
       );
@@ -61,6 +67,13 @@ class _SplashScreenState extends State<SplashScreen> {
       return null;
     }
     return ShareIntentService.getInitialSharedText();
+  }
+
+  Future<List<SharedFile>> _readPendingShareFiles() async {
+    if (kIsWeb || !Platform.isAndroid) {
+      return const <SharedFile>[];
+    }
+    return ShareIntentService.getInitialSharedFiles();
   }
 
   @override

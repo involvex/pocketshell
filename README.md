@@ -33,6 +33,7 @@ files over SFTP, and chat with OpenCode agents on the same machine.
 - Home-screen widgets for SSH quick-connect and latest agent session.
 - Deep links: `sshapp://widget/ssh|agent?profileId=...`
 - Share-to-clone: share a GitHub URL into the app to clone on a chosen profile.
+- Share-to-host: share files/images into a connected session’s SFTP current directory.
 
 ### Customization & backup
 
