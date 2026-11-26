@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SSH config import pulls unencrypted `IdentityFile` PEMs over SFTP and attaches them to profiles that do not already have a key (encrypted/missing/already-keyed paths stay as hints).
+- Hold ← → ↑ ↓ on the shortcut bar to auto-repeat cursor movement (400ms delay, then ~45ms interval).
+
 
 ## [1.4.0] - 2026-11-22
 

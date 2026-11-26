@@ -25,7 +25,7 @@ class SshConfigHostEntry {
   /// `Port` directive, defaults to 22.
   final int port;
 
-  /// Optional `IdentityFile` path (hint only — never downloaded).
+  /// Optional `IdentityFile` path (pulled over SFTP during config import).
   final String? identityFile;
 
   /// First hop from `ProxyJump` when present (unresolved alias/token).
@@ -53,11 +53,12 @@ class SshConfigParseResult {
 
 /// Parses OpenSSH `~/.ssh/config` text into host entries.
 ///
-/// Supports `Host`, `HostName`, `User`, `Port`, `IdentityFile` (hint),
+/// Supports `Host`, `HostName`, `User`, `Port`, `IdentityFile`,
 /// `ProxyJump` (single hop token), and `LocalForward`. `ProxyCommand` and
 /// other unsupported directives are collected in
 /// [SshConfigHostEntry.skippedDirectives] / [SshConfigParseResult.skippedDirectives].
-/// Wildcards (`*`, `?`) in Host patterns are skipped. No secrets are returned.
+/// Wildcards (`*`, `?`) in Host patterns are skipped. No secrets are returned;
+/// IdentityFile values are paths only until SFTP pull.
 SshConfigParseResult parseSshConfig(String contents) {
   final hosts = <SshConfigHostEntry>[];
   final globalSkipped = <String>{};

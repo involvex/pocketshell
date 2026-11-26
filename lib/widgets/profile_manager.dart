@@ -5,6 +5,8 @@ import '../models/port_forward_rule.dart';
 import '../models/ssh_key.dart';
 import '../models/ssh_profile.dart';
 import '../services/config_service.dart';
+import '../services/secure_storage_service.dart';
+import '../services/sftp_helper.dart';
 import '../services/ssh_config_import_service.dart';
 import '../services/wake_on_lan_service.dart';
 import '../utils/jump_host_utils.dart';
@@ -245,14 +247,41 @@ class _ProfileManagerState extends State<ProfileManager> {
         fallbackUsername: session.profile.username,
       );
 
-      for (final profile in merged.profiles) {
+      final helper = SftpHelper(session.client!);
+      late final IdentityFilePullOutcome pulled;
+      try {
+        pulled = await importer.pullIdentityFiles(
+          profiles: merged.profiles,
+          pendingIdentityFiles: merged.pendingIdentityFiles,
+          configPath: remote.path,
+          username: session.profile.username,
+          helper: helper,
+          baseResult: merged.result,
+        );
+      } finally {
+        await helper.close();
+      }
+
+      if (pulled.keys.isNotEmpty) {
+        final existingKeys = await ConfigService.getSSHKeys();
+        for (final key in pulled.keys) {
+          await SecureStorageService.writePrivateKey(key.id, key.privateKey);
+          existingKeys.add(key.toJson(includePrivateKey: false));
+        }
+        await ConfigService.saveSSHKeys(existingKeys);
+      }
+
+      for (final profile in pulled.profiles) {
         await ssh.saveProfile(profile);
       }
 
       if (!context.mounted) {
         return;
       }
-      final r = merged.result;
+      final r = pulled.result;
+      final pulledKeys = r.identityPulled.isEmpty
+          ? ''
+          : '\nKeys: ${r.identityPulled.take(3).join('; ')}';
       final hint = r.identityHints.isEmpty
           ? ''
           : '\nIdentityFile hints: ${r.identityHints.take(3).join('; ')}';
@@ -263,7 +292,8 @@ class _ProfileManagerState extends State<ProfileManager> {
         SnackBar(
           content: Text(
             'Imported from ${r.sourcePath}: '
-            '${r.created} created, ${r.updated} updated.$hint$skipped',
+            '${r.created} created, ${r.updated} updated.'
+            '$pulledKeys$hint$skipped',
           ),
         ),
       );
