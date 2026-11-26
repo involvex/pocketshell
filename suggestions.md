@@ -167,7 +167,7 @@ Register `ssh://` scheme (Android intent + Windows/macOS/Linux handlers) alongsi
 ### 7.4 NFC / QR quick-connect for labs (P2, S)
 Write a connection tag (non-secret fields) to NFC; tap to open connect sheet. Niche but cheap given 5.2.
 
-### 7.5 Share sheet "Send to host" (P2, M)
+### 7.5 Share sheet "Send to host" (P2, M) — **SHIPPED**
 Receive shared files/images from other apps → upload via active SFTP session. Uses existing transfer pipeline.
 
 ## 8. Reliability, a11y, and maintainability (P1)
@@ -201,7 +201,7 @@ Profile long-scrollback rendering and large SFTP directories (1k+ entries); virt
 2. **Daily-driver release (2.5, 3.1, 4.1–4.3, 5.1):** multi-session tabs, scrollback search, transfer queue + checksums, profile folders/search. (Core shipped across 1.2–1.3; search/favorites in 1.3.1.)
 3. **Host-access release (1.5 kbd-interactive, 2.1 config import, 2.2 jump, 2.3/2.7 forwards/WoL, agent tunnel):** Windows OpenSSH reachability. Shipped as 1.3.1–1.3.2.
 4. **Windows daily-driver (drives-from-Android, foreground reconnect, atomic save, SFTP opencode.json write, PowerShell snippets):** Unreleased → 1.4.0.
-5. **Next polish (share-to-host, 8.1 i18n, 8.5 onboarding, certificates):** candidate 1.4.1 / 1.5.0. IdentityFile pull shipped with config import.
+5. **Next polish (share-to-host, 8.1 i18n, 8.5 onboarding, certificates):** share-to-host shipped; i18n / onboarding / certificates remain for 1.5.0+. IdentityFile pull shipped with config import.
 
 ## Out of scope (deliberately not suggested)
 

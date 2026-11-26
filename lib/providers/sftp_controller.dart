@@ -401,6 +401,22 @@ class SftpController extends ChangeNotifier {
   /// Sequentially uploads [files], stopping on cancel/error.
   Future<int> uploadMany(List<File> files) async {
     final List<SftpTransferJob> jobs = enqueueUploadMany(files);
+    return _awaitUploadJobs(jobs);
+  }
+
+  /// Enqueues uploads with optional remote display names, then pumps the queue.
+  Future<int> uploadNamedFiles(
+    List<({File file, String? remoteName})> items,
+  ) async {
+    final List<SftpTransferJob> jobs = <SftpTransferJob>[
+      for (final ({File file, String? remoteName}) item in items)
+        enqueueUpload(item.file, remoteName: item.remoteName),
+    ];
+    unawaited(_pumpQueue());
+    return _awaitUploadJobs(jobs);
+  }
+
+  Future<int> _awaitUploadJobs(List<SftpTransferJob> jobs) async {
     var completed = 0;
     for (final SftpTransferJob job in jobs) {
       if (await job.completer.future) {

@@ -30,6 +30,7 @@ import '../screens/snippet_config_screen.dart';
 import '../screens/agents_tab.dart';
 import '../services/share_clone_handler.dart';
 import '../services/share_intent_service.dart';
+import '../services/share_upload_handler.dart';
 import '../services/widget_launch_handler.dart';
 import '../utils/terminal_clipboard.dart';
 import '../utils/terminal_style_builder.dart';
@@ -51,10 +52,12 @@ class HomeScreen extends StatefulWidget {
     super.key,
     this.pendingLaunch,
     this.pendingShareText,
+    this.pendingShareFiles = const <SharedFile>[],
   });
 
   final WidgetLaunchAction? pendingLaunch;
   final String? pendingShareText;
+  final List<SharedFile> pendingShareFiles;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -67,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _accessoryVisible = true;
   StreamSubscription<Uri?>? _widgetClickSub;
   StreamSubscription<String>? _shareSub;
+  StreamSubscription<List<SharedFile>>? _shareFilesSub;
   final FocusNode _keyboardFocusNode = FocusNode();
   final GlobalKey<AgentsTabState> _agentsTabKey = GlobalKey<AgentsTabState>();
 
@@ -82,6 +86,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _widgetClickSub = HomeWidget.widgetClicked.listen(_onWidgetClicked);
       ShareIntentService.ensureListening();
       _shareSub = ShareIntentService.incoming.listen(_onSharedText);
+      _shareFilesSub =
+          ShareIntentService.incomingFiles.listen(_onSharedFiles);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _keyboardFocusNode.requestFocus();
@@ -120,6 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     unawaited(_widgetClickSub?.cancel());
     unawaited(_shareSub?.cancel());
+    unawaited(_shareFilesSub?.cancel());
     _keyboardFocusNode.dispose();
     super.dispose();
   }
@@ -139,6 +146,15 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     if (!mounted) {
+      return;
+    }
+    final List<SharedFile> shareFiles = widget.pendingShareFiles;
+    if (shareFiles.isNotEmpty) {
+      await ShareUploadHandler.execute(
+        context,
+        shareFiles,
+        onTabSelected: _selectTab,
+      );
       return;
     }
     final shareText = widget.pendingShareText;
@@ -181,6 +197,20 @@ class _HomeScreenState extends State<HomeScreen> {
     ShareCloneHandler.execute(
       context,
       text,
+      onTabSelected: _selectTab,
+    );
+  }
+
+  void _onSharedFiles(List<SharedFile> files) {
+    if (!mounted || files.isEmpty) {
+      return;
+    }
+    // ignore: unawaited_futures
+    ShareIntentService.clearSharedFiles();
+    // ignore: unawaited_futures
+    ShareUploadHandler.execute(
+      context,
+      files,
       onTabSelected: _selectTab,
     );
   }

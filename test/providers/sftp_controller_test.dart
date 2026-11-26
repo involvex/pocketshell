@@ -190,6 +190,37 @@ void main() {
       expect(fake.uploadedPaths, <String>['C:/a.txt', 'C:/b.txt']);
     });
 
+    test('uploadNamedFiles uses display names for shared cache paths', () async {
+      await loadPrefs();
+      final fake = FakeSftpFileSystem(
+        directories: <String, List<RemoteFsEntry>>{
+          'C:/': const <RemoteFsEntry>[],
+        },
+      );
+      final controller = SftpController(helper: fake);
+      await controller.navigateTo('C:/');
+
+      final Directory temp =
+          await Directory.systemTemp.createTemp('sftp_share_');
+      addTearDown(() async {
+        if (await temp.exists()) {
+          await temp.delete(recursive: true);
+        }
+      });
+      final File cached =
+          File('${temp.path}${Platform.pathSeparator}1730000_cache.bin');
+      await cached.writeAsBytes(<int>[9, 9]);
+
+      final int completed = await controller.uploadNamedFiles(
+        <({File file, String? remoteName})>[
+          (file: cached, remoteName: 'photo.jpg'),
+        ],
+      );
+
+      expect(completed, 1);
+      expect(fake.uploadedPaths, <String>['C:/photo.jpg']);
+    });
+
     test('cancel active transfer leaves queued jobs', () async {
       await loadPrefs();
       final fake = FakeSftpFileSystem(

@@ -7,6 +7,7 @@ import 'package:ssh_app/providers/ssh_provider.dart';
 import 'package:ssh_app/services/config_repository.dart';
 import 'package:ssh_app/services/share_clone_handler.dart';
 import 'package:ssh_app/services/share_intent_service.dart';
+import 'package:ssh_app/services/share_upload_handler.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -176,6 +177,76 @@ void main() {
           ShareCloneHandler.clientProfiles(ssh).map((p) => p.id).toList();
       expect(ids, containsAll(<String>[a.id, b.id]));
       expect(ids, hasLength(2));
+    });
+  });
+
+  group('classifySharePayload', () {
+    test('text stays text when no files are present', () {
+      expect(
+        classifySharePayload(text: 'https://github.com/owner/repo'),
+        SharePayloadKind.text,
+      );
+    });
+
+    test('file streams win over accompanying text', () {
+      expect(
+        classifySharePayload(
+          text: 'https://github.com/owner/repo',
+          files: const <SharedFile>[
+            SharedFile(path: '/tmp/a.png', name: 'a.png'),
+          ],
+        ),
+        SharePayloadKind.files,
+      );
+    });
+
+    test('empty payload is none', () {
+      expect(classifySharePayload(), SharePayloadKind.none);
+      expect(
+        classifySharePayload(text: '  ', files: const <SharedFile>[]),
+        SharePayloadKind.none,
+      );
+    });
+  });
+
+  group('SharedFile.fromJson', () {
+    test('parses path and display name', () {
+      final SharedFile? file = SharedFile.fromJson(<String, Object?>{
+        'path': '/cache/shared_uploads/1_notes.txt',
+        'name': 'notes.txt',
+      });
+      expect(file?.path, '/cache/shared_uploads/1_notes.txt');
+      expect(file?.name, 'notes.txt');
+    });
+
+    test('rejects missing path', () {
+      expect(SharedFile.fromJson(<String, Object?>{'name': 'x'}), isNull);
+      expect(SharedFile.fromJson(null), isNull);
+    });
+  });
+
+  group('ShareUploadHandler.canUploadWithoutConnect', () {
+    test('no session does not upload', () async {
+      final FakeConfigRepository repo = FakeConfigRepository();
+      final SSHProvider ssh = SSHProvider(config: repo);
+      await ssh.saveProfile(
+        SSHProfile(name: 'A', host: 'a.example', username: 'u'),
+      );
+
+      expect(ShareUploadHandler.canUploadWithoutConnect(ssh), isFalse);
+      expect(ShareUploadHandler.resolveUploadSession(ssh), isNull);
+      expect(ShareUploadHandler.connectedSessions(ssh), isEmpty);
+    });
+  });
+
+  group('ShareUploadHandler.uploadItems', () {
+    test('maps shared files to local File + remote name', () {
+      final items = ShareUploadHandler.uploadItems(const <SharedFile>[
+        SharedFile(path: '/tmp/cache_abc', name: 'photo.jpg'),
+      ]);
+      expect(items, hasLength(1));
+      expect(items.first.file.path, '/tmp/cache_abc');
+      expect(items.first.remoteName, 'photo.jpg');
     });
   });
 
