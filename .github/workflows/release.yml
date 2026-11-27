@@ -35,11 +35,7 @@ jobs:
             echo "No changelog entry for version ${{ steps.version.outputs.version }}" >&2
             exit 1
           fi
-          {
-            echo "body<<EOF"
-            cat "$BODY_FILE"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          echo "path=$BODY_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Read Flutter version
         id: flutter-ver
@@ -60,8 +56,20 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Disable Flutter analytics
+        run: flutter config --no-analytics
+
+      - name: Configure Android release signing
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bash .github/scripts/configure-android-signing.sh
+
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Analyze
         run: flutter analyze
@@ -72,18 +80,28 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release
 
+      - name: Build F-Droid arm64 split APK
+        run: flutter build apk --release --split-per-abi --target-platform=android-arm64
+
+      - name: Verify F-Droid ABI versionCode
+        run: bash .github/scripts/verify-split-apk-versioncode.sh build/app/outputs/flutter-apk/app-arm64-v8a-release.apk 2
+
       - name: Prepare APK artifact
         run: |
           APK_SRC="build/app/outputs/flutter-apk/app-release.apk"
           APK_DST="PocketShell-v${{ steps.version.outputs.version }}.apk"
           cp "$APK_SRC" "$APK_DST"
           echo "apk_path=$APK_DST" >> "$GITHUB_ENV"
+          if [[ "${{ steps.signing.outputs.signed }}" != "true" ]]; then
+            echo "::warning::GitHub Release APK is debug-signed. Add ANDROID_KEYSTORE_* secrets for sideload-ready APKs. F-Droid is unaffected."
+            printf '\n\n_This GitHub APK is debug-signed. F-Droid rebuilds and signs with its own key._\n' >> "${{ steps.changelog.outputs.path }}"
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           name: PocketShell v${{ steps.version.outputs.version }}
-          body: ${{ steps.changelog.outputs.body }}
+          body_path: ${{ steps.changelog.outputs.path }}
           files: ${{ env.apk_path }}
           draft: false
           prerelease: false

@@ -39,6 +39,13 @@ files over SFTP, and chat with OpenCode agents on the same machine.
 
 - Themes (system / light / dark / hacker), accent colors, terminal fonts.
 - Encrypted backup (password) or plain JSON export/import in Settings.
+- Bundled OFL terminal fonts (no Google Fonts download).
+
+## Privacy
+
+See [PRIVACY.md](PRIVACY.md). There is no analytics. Optional terminal command
+generation uses `opencode.ai` / `api.kilo.ai` only when you provide an API key
+(F-Droid **NonFreeNet**). Store listing notes: [docs/fdroid-rfp.md](docs/fdroid-rfp.md).
 
 ## Main Technologies
 
@@ -91,6 +98,26 @@ files over SFTP, and chat with OpenCode agents on the same machine.
 - `lib/services/` — Config, OpenCode, SFTP, backup, widgets, lifecycle
 - `lib/screens/` — Home, Agents, Settings, Splash
 - `lib/widgets/` — Terminal, SFTP, agent chat, profiles/keys
+
+## F-Droid
+
+Build from a git tag with the Flutter SDK in `.github/flutter-version`:
+
+```bash
+flutter config --no-analytics
+flutter pub get --enforce-lockfile
+flutter build apk --release --split-per-abi --target-platform=android-arm64
+```
+
+F-Droid ships three APKs (`android-arm`, `android-arm64`, `android-x64`) with
+`versionCode * 10 + ABI`. See [docs/fdroid.yml](docs/fdroid.yml).
+
+Preflight: `./scripts/fdroid-preflight.ps1`. Draft recipe: [docs/fdroid.yml](docs/fdroid.yml). Fastlane metadata lives in
+`fastlane/metadata/android/en-US/`. Phone screenshots are in
+`fastlane/metadata/android/en-US/images/phoneScreenshots/` (re-render with
+`./scripts/render-fdroid-screenshots.ps1`). File the RFP only after a tag
+**newer than v1.4.1** ([docs/fdroid-rfp.md](docs/fdroid-rfp.md)).
+Third-party licenses: [THIRD_PARTY.md](THIRD_PARTY.md).
 
 ## License
 

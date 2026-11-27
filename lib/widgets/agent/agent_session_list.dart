@@ -62,9 +62,34 @@ class AgentSessionList extends StatelessWidget {
                       ),
                     )
                   : active.sessions.isEmpty
-                      ? const Center(
-                          child: Text(
-                              'No sessions yet. Create one to get started.'),
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.chat_bubble_outline,
+                                  size: 48,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'No sessions yet',
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 12),
+                                FilledButton.icon(
+                                  onPressed: () =>
+                                      _createSession(context, agents, active),
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('New session'),
+                                ),
+                              ],
+                            ),
+                          ),
                         )
                       : ListView.builder(
                           itemCount: active.sessions.length,

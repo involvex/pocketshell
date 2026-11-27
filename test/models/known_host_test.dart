@@ -20,6 +20,26 @@ void main() {
     expect(restored.matches('win-server', 2222), isFalse);
   });
 
+  test('unknown host is denied when the UI hook is missing', () async {
+    const prompt = KnownHostPrompt(
+      host: 'h',
+      port: 22,
+      keyType: 'ssh-ed25519',
+      fingerprint: 'SHA256:x',
+    );
+    expect(
+      await confirmUnknownHostKey(hook: null, prompt: prompt),
+      isFalse,
+    );
+    expect(
+      await confirmUnknownHostKey(
+        hook: (_) async => true,
+        prompt: prompt,
+      ),
+      isTrue,
+    );
+  });
+
   test('evaluate returns trusted/unknown/mismatch', () async {
     final repo = FakeConfigRepository();
     final service = HostKeyVerificationService(repo);

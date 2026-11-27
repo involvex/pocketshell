@@ -62,3 +62,14 @@ class HostKeyVerificationService {
     await _saveHosts(hosts);
   }
 }
+
+/// First-seen keys require an explicit UI decision. Missing hook = deny.
+Future<bool> confirmUnknownHostKey({
+  required Future<bool> Function(KnownHostPrompt prompt)? hook,
+  required KnownHostPrompt prompt,
+}) async {
+  if (hook == null) {
+    return false;
+  }
+  return hook(prompt);
+}

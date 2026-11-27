@@ -68,6 +68,25 @@ class SSHProfile {
   String get agentBaseUrl =>
       '${useHttps ? 'https' : 'http'}://$host:$agentPort';
 
+  /// Loopback hosts keep HTTP Basic on-device (or via SSH tunnel).
+  bool get isLoopbackAgentHost {
+    final h = host.trim().toLowerCase();
+    return h == 'localhost' || h == '127.0.0.1' || h == '::1';
+  }
+
+  /// Agent HTTP Basic would leave this device without TLS or an SSH tunnel.
+  bool get agentAuthUsesCleartextNetwork =>
+      !useHttps && !tunnelAgent && !isLoopbackAgentHost;
+
+  bool get agentAuthFallsBackToSshPassword {
+    final agent = agentPassword;
+    if (agent != null && agent.isNotEmpty) {
+      return false;
+    }
+    final ssh = password;
+    return ssh != null && ssh.isNotEmpty;
+  }
+
   /// HTTP Basic username for OpenCode serve (never empty).
   String get effectiveAgentUsername =>
       agentUsername.isNotEmpty ? agentUsername : 'opencode';
@@ -139,7 +158,7 @@ class SSHProfile {
       'port': port,
       'username': username,
       if (includePassword) 'password': password,
-      'privateKey': privateKey,
+      'privateKey': _privateKeyLooksLikePem ? null : privateKey,
       'isServer': isServer,
       'startupCommand': startupCommand,
       'agentPort': agentPort,
@@ -193,5 +212,13 @@ class SSHProfile {
       macAddress: json['macAddress'] as String?,
       localForwards: forwards,
     );
+  }
+
+  bool get _privateKeyLooksLikePem {
+    final value = privateKey;
+    if (value == null) {
+      return false;
+    }
+    return value.trimLeft().startsWith('-----BEGIN');
   }
 }

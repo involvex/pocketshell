@@ -10,10 +10,12 @@ import 'providers/ssh_provider.dart';
 import 'screens/splash_screen.dart';
 import 'services/app_lifecycle_service.dart';
 import 'services/config_service.dart';
+import 'utils/font_licenses.dart';
 import 'widgets/app_lock_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerBundledFontLicenses();
   await ConfigService.init();
   runApp(const MyApp());
 }
@@ -28,8 +30,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => SSHProvider()),
         ChangeNotifierProvider(
             create: (context) => SettingsProvider()..loadSettings()),
-        ChangeNotifierProvider(
-            create: (context) => AppLockProvider()..load()),
+        ChangeNotifierProvider(create: (context) => AppLockProvider()..load()),
         ChangeNotifierProvider(
             create: (context) => SnippetProvider()..loadSnippets()),
         ChangeNotifierProxyProvider<SSHProvider, AgentProvider>(

@@ -208,6 +208,15 @@ void main() {
     });
 
     group('PlatformException handling (simulated)', () {
+      test('writeProfilePassword throws when the backend fails', () async {
+        final failingStorage = FailingSecureStorageBackend();
+        final storage = SecureStorageImpl(storage: failingStorage);
+        expect(
+          () => storage.writeProfilePassword('p1', 'secret'),
+          throwsA(isA<SecureStorageWriteException>()),
+        );
+      });
+
       test('migrateProfilePasswords continues on write failure', () async {
         final failingStorage = FailingSecureStorageBackend();
         final storage = SecureStorageImpl(storage: failingStorage);

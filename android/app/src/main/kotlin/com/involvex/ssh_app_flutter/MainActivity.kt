@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.WindowManager
 import android.os.PersistableBundle
 import android.provider.OpenableColumns
 import android.text.Selection
@@ -66,6 +67,27 @@ class MainActivity : FlutterActivity() {
                 }
                 "stopForegroundService" -> {
                     ConnectionForegroundService.stop(this)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            WINDOW_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setSecureFlag" -> {
+                    val enabled = call.arguments as? Boolean ?: false
+                    if (enabled) {
+                        window.setFlags(
+                            WindowManager.LayoutParams.FLAG_SECURE,
+                            WindowManager.LayoutParams.FLAG_SECURE,
+                        )
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    }
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -297,5 +319,7 @@ class MainActivity : FlutterActivity() {
             "com.involvex.ssh_app/share_intent"
         private const val CLIPBOARD_CHANNEL =
             "com.involvex.ssh_app/clipboard"
+        private const val WINDOW_CHANNEL =
+            "com.involvex.ssh_app/window"
     }
 }

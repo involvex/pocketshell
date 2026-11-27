@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Android share-to-host: shared files/images upload through the SFTP transfer queue (session picker when multiple connections; Connect & upload when none).
+- Bundled OFL terminal fonts (no Google Fonts CDN; full OFL text on the licenses page). Privacy policy, Fastlane metadata (including feature graphic and phone screenshots of a connected Windows session), and F-Droid NonFreeNet notes for store listing. The draft F-Droid recipe splits per ABI (`versionCode * 10 + ABI`), uses `--enforce-lockfile`, and lowers Gradle heap on the buildserver. `scripts/release.ps1` writes Fastlane changelog files for those ABI versionCodes. Vendored `home_widget` no longer ships unused pub.dev screenshot binaries.
+- Optional GitHub Release APK signing via `ANDROID_KEYSTORE_*` secrets; F-Droid still signs its own build.
+
+### Security
+
+- Android cloud backup of SharedPreferences is disabled; backup import writes profile passwords to secure storage.
+- Unknown SSH host keys fail closed until the trust dialog is shown.
+- App lock hides the UI and sets FLAG_SECURE; private keys stay masked until revealed.
+- Cleartext OpenCode HTTP no longer sends the SSH password as agent Basic auth.
+
+### Changed
+
+- Connection logs no longer rebuild the whole shell; agent SSE message reloads are debounced.
+- Splash no longer waits two extra seconds.
 
 
 ## [1.4.1] - 2026-11-26

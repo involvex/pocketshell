@@ -18,10 +18,13 @@ import '../services/widget_profile_service.dart';
 import '../services/host_key_verification_service.dart';
 import '../models/session_entry.dart';
 import '../utils/jump_host_utils.dart';
+import '../utils/prefs_secret_audit.dart';
 import '../utils/session_manager.dart';
 import '../utils/ssh_auth_utils.dart';
+import '../utils/startup_command_log.dart';
 import '../utils/terminal_context.dart';
 import '../utils/terminal_enter_mapping.dart';
+import 'connection_log_notifier.dart';
 
 class SSHProvider extends ChangeNotifier {
   SSHProvider({ConfigRepository? config})
@@ -46,7 +49,9 @@ class SSHProvider extends ChangeNotifier {
   /// Synced from [SettingsProvider] for startup / paste newline mapping.
   TerminalEnterSends terminalEnterSends = TerminalEnterSends.cr;
 
-  List<String> connectionLog = [];
+  final ConnectionLogNotifier connectionLogNotifier = ConnectionLogNotifier();
+
+  List<String> get connectionLog => connectionLogNotifier.lines;
 
   /// One-shot sticky modifiers for mobile (Ctrl/Alt buttons in the accessory
   /// panel). Armed by tapping the toggle, consumed by the next keypress —
@@ -126,9 +131,9 @@ class SSHProvider extends ChangeNotifier {
   bool isScanning = false;
 
   /// UI hook for first-trust decisions. Set by screens that have a
-  /// [BuildContext] (e.g. HomeScreen). When null, unknown keys are still
-  /// trusted once (TOFU) so background reconnects keep working, but mismatches
-  /// always fail closed.
+  /// [BuildContext] (e.g. HomeScreen). When null, unknown keys are **denied**
+  /// (fail closed). Already-trusted hosts still reconnect without a prompt;
+  /// mismatches always fail closed.
   Future<bool> Function(KnownHostPrompt prompt)? onVerifyHostKeyPrompt;
 
   /// UI hook invoked when a changed host key blocks a connection, so the
@@ -155,6 +160,12 @@ class SSHProvider extends ChangeNotifier {
       await _config.saveProfiles(migratedAgentProfiles);
       profileData = migratedAgentProfiles;
     }
+    if (mapListContainsLegacySecrets(profileData)) {
+      addLog(
+        'Warning: profile secrets are still in local prefs — '
+        'secure storage may be locked; reconnect after unlocking the device',
+      );
+    }
 
     profiles = <SSHProfile>[];
     for (final raw in profileData) {
@@ -168,6 +179,12 @@ class SSHProvider extends ChangeNotifier {
         await SecureStorageService.migratePrivateKeys(migratedKeys);
     if (!identical(migratedPrivKeys, keyData)) {
       await _config.saveSSHKeys(migratedPrivKeys);
+    }
+    if (mapListContainsLegacySecrets(migratedPrivKeys)) {
+      addLog(
+        'Warning: SSH key material is still in local prefs — '
+        'secure storage may be locked',
+      );
     }
 
     final sessionData = await _config.getLastSession();
@@ -434,14 +451,20 @@ class SSHProvider extends ChangeNotifier {
             shell.stdin.add(
               utf8.encode(withEnterSuffix(psCmd, terminalEnterSends)),
             );
-            addLog('Executed startup command via PowerShell wrapper: $psCmd');
+            addLog(
+              'Executed startup command via PowerShell wrapper: '
+              '${redactStartupCommandLog(psCmd)}',
+            );
           } catch (_) {
             shell.stdin.add(
               utf8.encode(
                 withEnterSuffix(effectiveStartup, terminalEnterSends),
               ),
             );
-            addLog('Fallback: Executed startup command raw: $effectiveStartup');
+            addLog(
+              'Fallback: Executed startup command raw: '
+              '${redactStartupCommandLog(effectiveStartup)}',
+            );
           }
         } else {
           shell.stdin.add(
@@ -449,7 +472,10 @@ class SSHProvider extends ChangeNotifier {
               withEnterSuffix(effectiveStartup, terminalEnterSends),
             ),
           );
-          addLog('Executed startup command: $effectiveStartup');
+          addLog(
+            'Executed startup command: '
+            '${redactStartupCommandLog(effectiveStartup)}',
+          );
         }
       }
     } catch (e) {
@@ -602,8 +628,10 @@ class SSHProvider extends ChangeNotifier {
           keyType: type,
           fingerprint: fingerprint,
         );
-        final hook = onVerifyHostKeyPrompt;
-        final trusted = hook != null ? await hook(prompt) : true;
+        final trusted = await confirmUnknownHostKey(
+          hook: onVerifyHostKeyPrompt,
+          prompt: prompt,
+        );
         if (trusted) {
           await verifier.trustHost(prompt);
           addLog(
@@ -1060,12 +1088,11 @@ class SSHProvider extends ChangeNotifier {
   }
 
   void addLog(String message) {
-    final timestamp = DateTime.now().toString().substring(11, 19);
-    connectionLog.add('[$timestamp] $message');
-    if (connectionLog.length > 100) {
-      connectionLog.removeAt(0);
-    }
-    notifyListeners();
+    connectionLogNotifier.add(message);
+  }
+
+  void clearConnectionLog() {
+    connectionLogNotifier.clear();
   }
 
   /// Reads the idle-timeout setting directly so background checks work
@@ -1109,6 +1136,7 @@ class SSHProvider extends ChangeNotifier {
   @override
   void dispose() {
     _idleTimer?.cancel();
+    connectionLogNotifier.dispose();
     for (final s in sessions) {
       s.disposeRuntime();
     }

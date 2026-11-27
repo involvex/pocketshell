@@ -1,10 +1,22 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:xterm/xterm.dart';
 
 import '../providers/settings_provider.dart';
 
 class TerminalStyleBuilder {
+  static String? fontFamilyName(TerminalFontFamily family) {
+    return switch (family) {
+      TerminalFontFamily.jetBrainsMono => 'JetBrainsMono',
+      TerminalFontFamily.firaCode => 'FiraCode',
+      TerminalFontFamily.spaceMono => 'SpaceMono',
+      TerminalFontFamily.sourceCodePro => 'SourceCodePro',
+      TerminalFontFamily.monospace => 'monospace',
+      TerminalFontFamily.courierNew => 'Courier New',
+      TerminalFontFamily.consolas => 'Consolas',
+      TerminalFontFamily.menlo => 'Menlo',
+    };
+  }
+
   static TextStyle buildTextStyle(SettingsProvider settings) {
     final fontWeight = switch (settings.terminalFontWeight) {
       TerminalFontWeight.normal => FontWeight.normal,
@@ -16,52 +28,12 @@ class TerminalStyleBuilder {
         ? FontStyle.italic
         : FontStyle.normal;
 
-    return switch (settings.terminalFontFamily) {
-      TerminalFontFamily.jetBrainsMono => GoogleFonts.jetBrainsMono(
-          fontSize: settings.terminalFontSize,
-          fontWeight: fontWeight,
-          fontStyle: fontStyle,
-        ),
-      TerminalFontFamily.firaCode => GoogleFonts.firaCode(
-          fontSize: settings.terminalFontSize,
-          fontWeight: fontWeight,
-          fontStyle: fontStyle,
-        ),
-      TerminalFontFamily.spaceMono => GoogleFonts.spaceMono(
-          fontSize: settings.terminalFontSize,
-          fontWeight: fontWeight,
-          fontStyle: fontStyle,
-        ),
-      TerminalFontFamily.sourceCodePro => GoogleFonts.sourceCodePro(
-          fontSize: settings.terminalFontSize,
-          fontWeight: fontWeight,
-          fontStyle: fontStyle,
-        ),
-      TerminalFontFamily.monospace => TextStyle(
-          fontSize: settings.terminalFontSize,
-          fontFamily: 'monospace',
-          fontWeight: fontWeight,
-          fontStyle: fontStyle,
-        ),
-      TerminalFontFamily.courierNew => TextStyle(
-          fontSize: settings.terminalFontSize,
-          fontFamily: 'Courier New',
-          fontWeight: fontWeight,
-          fontStyle: fontStyle,
-        ),
-      TerminalFontFamily.consolas => TextStyle(
-          fontSize: settings.terminalFontSize,
-          fontFamily: 'Consolas',
-          fontWeight: fontWeight,
-          fontStyle: fontStyle,
-        ),
-      TerminalFontFamily.menlo => TextStyle(
-          fontSize: settings.terminalFontSize,
-          fontFamily: 'Menlo',
-          fontWeight: fontWeight,
-          fontStyle: fontStyle,
-        ),
-    };
+    return TextStyle(
+      fontSize: settings.terminalFontSize,
+      fontFamily: fontFamilyName(settings.terminalFontFamily),
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+    );
   }
 
   static TerminalStyle buildTerminalStyle(SettingsProvider settings) {

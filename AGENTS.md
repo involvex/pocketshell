@@ -9,6 +9,10 @@ Guidelines for agents operating on this Flutter SSH application codebase.
 - **Persistence**: shared_preferences (via ConfigService)
 - **Architecture**: Separated models, services, providers, screens, and widgets.
 
+## Current work
+
+F-Droid listing (skip IzzyOnDroid while the cloud AI wand remains). Fastlane metadata, privacy policy, and phone screenshots are in-repo. Remaining: a tagged release newer than v1.4.1, then the GitLab RFP in `docs/fdroid-rfp.md`.
+
 ## Build Commands
 
 ```bash
@@ -102,7 +106,7 @@ lib/
 ### SSHProvider
 - `connectClient({required SSHProfile profile})` - Connect to a remote SSH server using a profile.
 - `terminal` - The current active `Terminal` instance (xterm).
-- `connectionLog` - List of strings for displaying logs in UI.
+- `connectionLog` / `connectionLogNotifier` - In-app log lines (does not notify `SSHProvider`).
 
 ### SettingsProvider
 - `themeMode` - Current application theme (Light/Dark/System).
@@ -146,16 +150,18 @@ lib/
 - Agent directory path persists in ConfigService as `agent_last_directory`.
 - Android widgets (`SshQuickConnectWidget`, `AgentQuickConnectWidget`) sync profiles via `WidgetProfileService` and deep-link via `sshapp://widget/ssh|agent?profileId=` through `WidgetLaunchHandler`.
 - Android share intents: text → `ShareCloneHandler` (git clone paste); files → `ShareUploadHandler` (cache copy + SFTP queue via `SftpBrowser.pendingUploads`). File streams take priority over accompanying text.
-- Terminal styling is centralized in `TerminalStyleBuilder` (font family, weight, style, size) and uses `google_fonts` for bold/italic variants.
+- Terminal styling is centralized in `TerminalStyleBuilder` (font family, weight, style, size) using bundled OFL fonts under `assets/fonts/` (no `google_fonts` CDN).
 - `lib/utils/agent_session_utils.dart` holds session sort helpers and `agentDirectoryScopeForConnection`.
 - Agents tab uses master-detail navigation on all screen sizes with `PopScope` and Android predictive back.
 - `AppLifecycleService` and `ConnectionForegroundService` keep SSH/agent sessions alive when Android is backgrounded.
 - Agent chat groups consecutive same-role messages via `groupAgentMessages` in `lib/utils/agent_message_grouping.dart`; rendering uses `AgentMessageBubble` and `AgentMessagePartTile`.
-- `OpenCodeRemoteConfigService` imports and writes Windows host config over SSH/SFTP under `%USERPROFILE%\.config\opencode\` (and Roaming fallback); Android build uses AGP 9.3.1 / Kotlin 2.4.20 with vendored `packages/home_widget`.
+- `OpenCodeRemoteConfigService` imports and writes Windows host config over SSH/SFTP under `%USERPROFILE%\.config\opencode\` (and Roaming fallback).
 - SFTP `listDrives` probes remote `C:/`–`Z:/` regardless of client OS; `writeRemoteBytes` uses temp + rename with optional `.bak`.
 - SSH config import (`SshConfigImportService`) pulls `IdentityFile` PEMs over SFTP after merge; attaches a new `SSHKey` only when the profile has no key; encrypted/missing/already-keyed paths become `identityHints` (never log PEM bytes).
 - Foreground SSH link drops auto-reconnect with backoff in `SSHProvider`; clean remote `exit` clears `shouldReconnectOnResume`.
 - CI/release Flutter SDK is pinned in `.github/flutter-version` (currently `3.47.9` / Dart 3.13). Bump that file before merging pub deps that need a newer Dart SDK; Dependabot ignores major `very_good_analysis` bumps for the same reason.
+- Android `allowBackup` is false; profile/key secrets go through `flutter_secure_storage` (`AndroidOptions.defaultOptions`). Unknown SSH host keys fail closed until HomeScreen registers the trust dialog.
+- F-Droid listing target: Fastlane in `fastlane/metadata/android/en-US/` (icon + 1024x500 featureGraphic), privacy in `PRIVACY.md`, optional AI wand is **NonFreeNet** (`docs/fdroid-rfp.md`). Phone screenshots are in-tree; RFP must use a tag newer than v1.4.1. IzzyOnDroid is skipped while cloud LLM gateways remain. GitHub Release APKs are debug-signed unless `ANDROID_KEYSTORE_*` secrets are set. Android build uses AGP 9.5.1 / Kotlin 2.4.21 / Gradle 9.8.2 (hashed in F-Droid gradle-transparency-log) with vendored `packages/home_widget`. The F-Droid recipe sed's Flutter's `-Xmx8G` down to 2G, pins NDK `28.2.13676358` (Flutter 3.47.9 `ndkVersion`), and builds per-ABI APKs (`versionCode * 10 + ABI`).
 
 ## Cursor Cloud specific instructions
 
@@ -165,5 +171,5 @@ The standard commands (`flutter pub get` / `flutter analyze` / `flutter test`) a
 - **Running the app:** Android is the primary product target, but this VM has no Android device. The runnable dev target here is the Linux desktop against the virtual display: `export DISPLAY=:1 && flutter run -d linux`. `flutter run -d web-server` is not viable because `flutter_pty` has no web support.
 - **Linux desktop build deps** (already in the snapshot): `ninja-build`, `libgtk-3-dev`, `build-essential`, and crucially `libstdc++-14-dev`. Clang 18 selects GCC 14, so without `libstdc++-14-dev` the build fails with `/usr/bin/ld: cannot find -lstdc++`.
 - **`flutter_secure_storage` throws `PlatformException(KeyringLocked)` on startup** here because the headless VM has no unlocked libsecret/GNOME keyring. This is non-fatal: the app runs normally and SSH profiles (stored via `shared_preferences`) work. Only secure-storage-backed values (e.g. the OpenCode Zen API key) are affected.
-- **Pre-existing `assets/` warning:** `flutter analyze`/`test` print `asset directory 'assets/' doesn't exist` because `pubspec.yaml` lists `assets/` but the dir is absent. It is a harmless warning, not a failure.
+- Bundled fonts live in `assets/fonts/` (OFL). `PRIVACY.md` is also a Flutter asset.
 - **Testing the SSH client E2E locally:** start a local `sshd` (`sudo /usr/sbin/sshd`), set a password for the `ubuntu` user, and connect the app's Client tab to `localhost:22`. This exercises the real SSH connect + terminal path without an external host.

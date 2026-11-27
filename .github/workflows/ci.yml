@@ -44,8 +44,11 @@ jobs:
           fi
           dart --version
 
+      - name: Disable Flutter analytics
+        run: flutter config --no-analytics
+
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Analyze
         run: flutter analyze
@@ -86,8 +89,11 @@ jobs:
           cache: true
           cache-key: flutter-${{ runner.os }}-${{ hashFiles('**/pubspec.lock', '.github/flutter-version') }}
 
+      - name: Disable Flutter analytics
+        run: flutter config --no-analytics
+
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Build release APK
         run: flutter build apk --release

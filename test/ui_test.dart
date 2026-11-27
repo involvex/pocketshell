@@ -252,7 +252,7 @@ void main() {
 
         await tester.pumpAndSettle(const Duration(seconds: 3));
 
-        expect(find.text('No session. Click + to connect'), findsOneWidget);
+        expect(find.text('No session'), findsOneWidget);
       } finally {
         FlutterError.onError = originalHandler;
       }

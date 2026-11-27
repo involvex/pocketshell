@@ -32,7 +32,8 @@ Future<bool> showUnknownHostKeyDialog(
               const Text('Fingerprint:'),
               SelectableText(
                 prompt.fingerprint,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                style:
+                    const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12),
               ),
             ],
           ),
@@ -89,13 +90,15 @@ Future<void> showHostKeyChangedWarning(
               const Text('Trusted:'),
               SelectableText(
                 expectedFingerprint,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                style:
+                    const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12),
               ),
               const SizedBox(height: 8),
               const Text('Presented:'),
               SelectableText(
                 presentedFingerprint,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                style:
+                    const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12),
               ),
             ],
           ),

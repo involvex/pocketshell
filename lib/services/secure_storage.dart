@@ -1,6 +1,14 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// Thrown when Keystore / EncryptedSharedPreferences refuses a write.
+class SecureStorageWriteException implements Exception {
+  SecureStorageWriteException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 /// Low-level storage backend interface for testability.
 abstract interface class SecureStorageBackend {
   Future<String?> read({required String key});
@@ -13,7 +21,10 @@ class FlutterSecureStorageAdapter implements SecureStorageBackend {
   final FlutterSecureStorage _storage;
 
   const FlutterSecureStorageAdapter([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+      : _storage = storage ??
+            const FlutterSecureStorage(
+              aOptions: AndroidOptions.defaultOptions,
+            );
 
   @override
   Future<String?> read({required String key}) => _storage.read(key: key);
@@ -102,6 +113,15 @@ class SecureStorageImpl implements SecureStorage {
     }
   }
 
+  Future<void> _requireWrite(Future<void> Function() write) async {
+    final success = await _safeWrite(write);
+    if (!success) {
+      throw SecureStorageWriteException(
+        'Could not save credentials to secure storage',
+      );
+    }
+  }
+
   Future<void> _safeDelete(Future<void> Function() delete) async {
     try {
       await delete();
@@ -127,7 +147,7 @@ class SecureStorageImpl implements SecureStorage {
       await _safeDelete(() => _storage.delete(key: _opencodeZenApiKeyKey));
       return;
     }
-    await _safeWrite(
+    await _requireWrite(
         () => _storage.write(key: _opencodeZenApiKeyKey, value: value));
   }
 
@@ -137,7 +157,7 @@ class SecureStorageImpl implements SecureStorage {
       await _safeDelete(() => _storage.delete(key: _kiloApiKeyKey));
       return;
     }
-    await _safeWrite(() => _storage.write(key: _kiloApiKeyKey, value: value));
+    await _requireWrite(() => _storage.write(key: _kiloApiKeyKey, value: value));
   }
 
   @override
@@ -155,7 +175,7 @@ class SecureStorageImpl implements SecureStorage {
       await _safeDelete(() => _storage.delete(key: key));
       return;
     }
-    await _safeWrite(() => _storage.write(key: key, value: password));
+    await _requireWrite(() => _storage.write(key: key, value: password));
   }
 
   @override
@@ -179,7 +199,7 @@ class SecureStorageImpl implements SecureStorage {
       await _safeDelete(() => _storage.delete(key: key));
       return;
     }
-    await _safeWrite(() => _storage.write(key: key, value: password));
+    await _requireWrite(() => _storage.write(key: key, value: password));
   }
 
   @override
@@ -202,7 +222,7 @@ class SecureStorageImpl implements SecureStorage {
       await _safeDelete(() => _storage.delete(key: key));
       return;
     }
-    await _safeWrite(() => _storage.write(key: key, value: passphrase));
+    await _requireWrite(() => _storage.write(key: key, value: passphrase));
   }
 
   @override
@@ -225,7 +245,7 @@ class SecureStorageImpl implements SecureStorage {
       await _safeDelete(() => _storage.delete(key: key));
       return;
     }
-    await _safeWrite(() => _storage.write(key: key, value: pem));
+    await _requireWrite(() => _storage.write(key: key, value: pem));
   }
 
   @override

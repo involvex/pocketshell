@@ -1,10 +1,11 @@
 name: ssh_app
-description: Flutter SSH Server & Client Application
+description: PocketShell — SSH, SFTP, and OpenCode agents on Android.
 publish_to: none
 version: 1.4.1+15
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
+  flutter: '>=3.47.9'
 
 dependencies:
   flutter:
@@ -23,7 +24,6 @@ dependencies:
   uuid: ^4.3.3
   share_plus: ^13.3.1
   file_picker: ^13.3.2
-  google_fonts: ^9.0.0
   opencode_api: ^1.0.0
   dio: ^5.8.0
   flutter_secure_storage: ^11.2.0
@@ -48,3 +48,43 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - PRIVACY.md
+    - assets/fonts/OFL.txt
+    - assets/fonts/LICENSE
+  fonts:
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/JetBrainsMono-Italic.ttf
+          style: italic
+        - asset: assets/fonts/JetBrainsMono-BoldItalic.ttf
+          weight: 700
+          style: italic
+    - family: FiraCode
+      fonts:
+        - asset: assets/fonts/FiraCode-Regular.ttf
+        - asset: assets/fonts/FiraCode-Bold.ttf
+          weight: 700
+    - family: SpaceMono
+      fonts:
+        - asset: assets/fonts/SpaceMono-Regular.ttf
+        - asset: assets/fonts/SpaceMono-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/SpaceMono-Italic.ttf
+          style: italic
+        - asset: assets/fonts/SpaceMono-BoldItalic.ttf
+          weight: 700
+          style: italic
+    - family: SourceCodePro
+      fonts:
+        - asset: assets/fonts/SourceCodePro-Regular.ttf
+        - asset: assets/fonts/SourceCodePro-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/SourceCodePro-Italic.ttf
+          style: italic
+        - asset: assets/fonts/SourceCodePro-BoldItalic.ttf
+          weight: 700
+          style: italic

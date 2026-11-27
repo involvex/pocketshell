@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:xterm/xterm.dart';
@@ -130,7 +130,8 @@ class _KeyboardShortcutBarState extends State<KeyboardShortcutBar> {
   void initState() {
     super.initState();
     final settings = context.read<SettingsProvider>();
-    final isMobile = Platform.isAndroid || Platform.isIOS;
+    final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
     if (widget.forceShowOnMobile) {
       _isCollapsed = false;
     } else if (isMobile) {
@@ -180,7 +181,8 @@ class _KeyboardShortcutBarState extends State<KeyboardShortcutBar> {
         }
 
         final maxRow = settings.maxRow;
-        final isMobile = Platform.isAndroid || Platform.isIOS;
+        final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS;
 
         Widget buildRows() {
           if (widget.showRow != null) {
@@ -295,8 +297,7 @@ class _ShortcutChipState extends State<_ShortcutChip> {
   KeyboardShortcut get shortcut => widget.shortcut;
   bool get isConnected => widget.isConnected;
 
-  bool get _supportsRepeat =>
-      shortcutActionSupportsKeyRepeat(shortcut.action);
+  bool get _supportsRepeat => shortcutActionSupportsKeyRepeat(shortcut.action);
 
   @override
   void dispose() {

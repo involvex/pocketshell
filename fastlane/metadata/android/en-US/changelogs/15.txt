@@ -1,0 +1,1 @@
+Store-readiness: disable Android cloud backup of prefs, fail closed on unknown SSH host keys, bundle OFL terminal fonts (no Google CDN), privacy policy, and Fastlane metadata.

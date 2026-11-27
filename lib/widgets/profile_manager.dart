@@ -646,6 +646,12 @@ class _ProfileManagerState extends State<ProfileManager> {
                         ),
                         SwitchListTile(
                           title: const Text('Use HTTPS for Agent'),
+                          subtitle: (!useHttps && !tunnelAgent)
+                              ? const Text(
+                                  'HTTP sends the agent password in cleartext '
+                                  'on the LAN. Prefer HTTPS or an SSH tunnel.',
+                                )
+                              : null,
                           value: useHttps,
                           onChanged: (value) => setDialogState(() {
                             useHttps = value;

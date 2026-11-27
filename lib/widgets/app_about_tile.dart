@@ -1,9 +1,11 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:ssh_app/constants/app_metadata.dart';
+import 'package:ssh_app/screens/privacy_screen.dart';
 
-/// Settings About section: app name and semver from [PackageInfo].
+/// Settings About section: app name, licenses, privacy, source.
 class AppAboutTile extends StatefulWidget {
   const AppAboutTile({super.key});
 
@@ -35,10 +37,50 @@ class _AppAboutTileState extends State<AppAboutTile> {
               );
             },
           ),
-          const ListTile(
-            leading: Icon(Icons.code),
-            title: Text('Built with Flutter'),
-            subtitle: Text('Dartssh2, xterm, Provider'),
+          ListTile(
+            leading: const Icon(Icons.policy_outlined),
+            title: const Text('Privacy'),
+            subtitle: const Text(
+              'No analytics. Optional AI uses your API key only when you tap the wand.',
+            ),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const PrivacyScreen(),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Open-source licenses'),
+            onTap: () async {
+              final info = await _packageInfoFuture;
+              if (!context.mounted) {
+                return;
+              }
+              showLicensePage(
+                context: context,
+                applicationName: kAppDisplayName,
+                applicationVersion: info.version,
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.code),
+            title: const Text('Source code'),
+            subtitle: const Text(kGitHubRepoUrl),
+            onTap: () async {
+              final uri = Uri.parse(kGitHubRepoUrl);
+              if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+                  context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Could not open GitHub repository'),
+                  ),
+                );
+              }
+            },
           ),
         ],
       ),

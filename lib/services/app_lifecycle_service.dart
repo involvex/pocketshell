@@ -67,6 +67,7 @@ class _AppLifecycleHostState extends State<AppLifecycleHost> {
   SSHProvider? _ssh;
   AgentProvider? _agents;
   AppLockProvider? _lock;
+  int? _lastForegroundCount;
 
   @override
   void didChangeDependencies() {
@@ -148,6 +149,13 @@ class _AppLifecycleHostState extends State<AppLifecycleHost> {
     final ssh = _ssh;
     final agents = _agents;
     if (ssh == null || agents == null) return;
+    final sshCount = ssh.sessions.where((s) => s.isConnected).length;
+    final agentCount = agents.connections.where((c) => c.isConnected).length;
+    final count = sshCount + agentCount;
+    if (_lastForegroundCount == count) {
+      return;
+    }
+    _lastForegroundCount = count;
     // ignore: unawaited_futures
     syncForegroundService(ssh, agents);
   }

@@ -5,3 +5,6 @@ const String kAppTagline = 'SSH & agent in your pocket';
 
 /// Public source repository.
 const String kGitHubRepoUrl = 'https://github.com/involvex/pocketshell';
+
+/// Bundled privacy policy (repo-root [PRIVACY.md]).
+const String kPrivacyAssetPath = 'PRIVACY.md';

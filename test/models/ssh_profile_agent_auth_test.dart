@@ -36,6 +36,45 @@ void main() {
       expect(profile.effectiveAgentPassword, '<<agent-override>>');
     });
 
+    test('cleartext agent auth is detected for LAN HTTP without tunnel', () {
+      final profile = SSHProfile(
+        name: 'win',
+        host: '192.168.1.10',
+        username: 'lukas',
+        password: 'ssh',
+      );
+      expect(profile.agentAuthUsesCleartextNetwork, isTrue);
+      expect(profile.agentAuthFallsBackToSshPassword, isTrue);
+      expect(
+        SSHProfile(
+          name: 'local',
+          host: '127.0.0.1',
+          username: 'u',
+        ).agentAuthUsesCleartextNetwork,
+        isFalse,
+      );
+      expect(
+        SSHProfile(
+          name: 'tun',
+          host: '192.168.1.10',
+          username: 'u',
+          tunnelAgent: true,
+        ).agentAuthUsesCleartextNetwork,
+        isFalse,
+      );
+    });
+
+    test('toJson omits inline PEM privateKey', () {
+      final profile = SSHProfile(
+        name: 'win',
+        host: 'h',
+        username: 'u',
+        privateKey:
+            '-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n-----END OPENSSH PRIVATE KEY-----',
+      );
+      expect(profile.toJson()['privateKey'], isNull);
+    });
+
     test('effectiveAgentPassword falls back to SSH password', () {
       final profile = SSHProfile(
         name: 'win',

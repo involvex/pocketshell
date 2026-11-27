@@ -1,6 +1,4 @@
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 
@@ -36,7 +34,10 @@ class AgentsTabState extends State<AgentsTab> {
   bool _permissionDialogVisible = false;
 
   bool get _isDesktopPlatform =>
-      !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.linux);
 
   void handleBack() {
     final agents = Provider.of<AgentProvider>(context, listen: false);

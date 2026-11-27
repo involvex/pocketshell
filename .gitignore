@@ -38,6 +38,7 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+*.apk
 
 # Symbolication related
 app.*.symbols
@@ -49,6 +50,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Upload keystore (F-Droid signs its own APK; GitHub Releases use CI secrets)
+*.jks
+*.keystore
+keystore.properties
+android/keystore.properties
 flutter_*.png
 screenshot.png
 *.log

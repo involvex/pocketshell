@@ -1,0 +1,161 @@
+# Draft F-Droid metadata for gitlab.com/fdroid/fdroiddata (RFP).
+# Not consumed by this repo's CI.
+#
+# v1.4.1 does **not** include Fastlane/screenshots. File the RFP against the
+# next annotated tag after this store-readiness work (see CHANGELOG
+# Unreleased). Replace versionName, versionCode, and commit below with that
+# tag. Flutter pin: .github/flutter-version and pubspec environment.flutter.
+#
+# ABI split: android/app/build.gradle.kts sets
+# versionCode * 10 + {armeabi-v7a=1, arm64-v8a=2, x86_64=3}. pubspec
+# 1.4.2+16 therefore ships as 161 / 162 / 163.
+
+Categories:
+  - Remote Access
+  - Connectivity
+  - Internet
+  - Security
+License: MIT
+AuthorName: involvex
+Name: PocketShell
+WebSite: https://github.com/involvex/pocketshell
+SourceCode: https://github.com/involvex/pocketshell
+IssueTracker: https://github.com/involvex/pocketshell/issues
+Changelog: https://github.com/involvex/pocketshell/blob/HEAD/CHANGELOG.md
+
+AutoName: PocketShell
+
+RepoType: git
+Repo: https://github.com/involvex/pocketshell.git
+
+Builds:
+  - versionName: 1.4.2
+    versionCode: 161
+    commit: v1.4.2
+    output: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+    srclibs:
+      - flutter@3.47.9
+    rm:
+      - ios
+      - macos
+      - windows
+      - linux
+      - web
+      - packages/home_widget/ios
+      - packages/home_widget/pub
+      - packages/home_widget/android/gradle
+    prebuild:
+      - flutterVersion=$(tr -d '[:space:]' < .github/flutter-version)
+      - '[[ $flutterVersion ]]'
+      - git -C $$flutter$$ checkout -f $flutterVersion
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - sed -i 's/-Xmx8G/-Xmx2G/;s/-XX:MaxMetaspaceSize=4G/-XX:MaxMetaspaceSize=512m/;s/org.gradle.daemon=true/org.gradle.daemon=false/;s/org.gradle.parallel=true/org.gradle.parallel=false/' android/gradle.properties
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter --version
+      - $$flutter$$/bin/flutter pub get --enforce-lockfile
+    scandelete:
+      - .pub-cache
+    build:
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - export ANDROID_NDK_HOME=$$NDK$$
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform="android-arm"
+    ndk: 28.2.13676358
+
+  - versionName: 1.4.2
+    versionCode: 162
+    commit: v1.4.2
+    output: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+    srclibs:
+      - flutter@3.47.9
+    rm:
+      - ios
+      - macos
+      - windows
+      - linux
+      - web
+      - packages/home_widget/ios
+      - packages/home_widget/pub
+      - packages/home_widget/android/gradle
+    prebuild:
+      - flutterVersion=$(tr -d '[:space:]' < .github/flutter-version)
+      - '[[ $flutterVersion ]]'
+      - git -C $$flutter$$ checkout -f $flutterVersion
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - sed -i 's/-Xmx8G/-Xmx2G/;s/-XX:MaxMetaspaceSize=4G/-XX:MaxMetaspaceSize=512m/;s/org.gradle.daemon=true/org.gradle.daemon=false/;s/org.gradle.parallel=true/org.gradle.parallel=false/' android/gradle.properties
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter --version
+      - $$flutter$$/bin/flutter pub get --enforce-lockfile
+    scandelete:
+      - .pub-cache
+    build:
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - export ANDROID_NDK_HOME=$$NDK$$
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform="android-arm64"
+    ndk: 28.2.13676358
+
+  - versionName: 1.4.2
+    versionCode: 163
+    commit: v1.4.2
+    output: build/app/outputs/flutter-apk/app-x86_64-release.apk
+    srclibs:
+      - flutter@3.47.9
+    rm:
+      - ios
+      - macos
+      - windows
+      - linux
+      - web
+      - packages/home_widget/ios
+      - packages/home_widget/pub
+      - packages/home_widget/android/gradle
+    prebuild:
+      - flutterVersion=$(tr -d '[:space:]' < .github/flutter-version)
+      - '[[ $flutterVersion ]]'
+      - git -C $$flutter$$ checkout -f $flutterVersion
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - sed -i 's/-Xmx8G/-Xmx2G/;s/-XX:MaxMetaspaceSize=4G/-XX:MaxMetaspaceSize=512m/;s/org.gradle.daemon=true/org.gradle.daemon=false/;s/org.gradle.parallel=true/org.gradle.parallel=false/' android/gradle.properties
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter --version
+      - $$flutter$$/bin/flutter pub get --enforce-lockfile
+    scandelete:
+      - .pub-cache
+    build:
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - export ANDROID_NDK_HOME=$$NDK$$
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform="android-x64"
+    ndk: 28.2.13676358
+
+AntiFeatures:
+  NonFreeNet:
+    en-US: Optional terminal AI wand calls opencode.ai and api.kilo.ai only when the user pastes an API key and taps generate. Self-hosted OpenCode on the SSH profile is not NonFreeNet.
+
+MaintainerNotes: |
+  Wait for a tag newer than v1.4.1 so Fastlane metadata and phone
+  screenshots are in tree. Flutter SDK pin is `.github/flutter-version`
+  (3.47.9, tag on flutter/flutter) and pubspec `environment.flutter`.
+  Gradle 9.8.2-all.zip is in gradle-transparency-log
+  (sha256 a1bb7e9651ef09e4cd9a62d471564e0ee23b5757e5f21fd7358d7cfc21018fdf).
+  Prebuild lowers the Flutter template heap and turns off the Gradle
+  daemon/parallel flags so the buildserver does not OOM. ABI split uses
+  versionCode*10+ABI (see android/app/build.gradle.kts). Vendored
+  `packages/home_widget` is BSD-3 (AGP 9 Kotlin plugin patch; see
+  packages/home_widget/PATCH.md). Nested plugin Gradle wrapper is
+  removed from the tree. Bundled fonts are OFL (`assets/fonts/OFL.txt`).
+  Optional AI wand is NonFreeNet. Privacy policy is PRIVACY.md
+  (https://github.com/involvex/pocketshell/blob/HEAD/PRIVACY.md).
+  ndk 28.2.13676358 is Flutter 3.47.9's flutter.ndkVersion; bump it
+  when .github/flutter-version moves. Local split APKs pass
+  `zipalign -c -P 16` and 64-bit .so LOAD p_align is 16KiB or 64KiB.
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+VercodeOperation:
+  - '%c * 10 + 1'
+  - '%c * 10 + 2'
+  - '%c * 10 + 3'
+UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
+CurrentVersion: 1.4.2
+CurrentVersionCode: 163

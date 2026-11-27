@@ -34,8 +34,11 @@ nav:
 
 # Agent planning docs live under docs/ for repo convenience, but are not
 # part of the public GitHub Pages site (and link into lib/ which fails --strict).
+# F-Droid RFP drafts are for maintainers, not GitHub Pages.
 exclude_docs: |
   superpowers/**
+  fdroid-rfp.md
+  fdroid-rfp-issue.md
 
 markdown_extensions:
   - admonition

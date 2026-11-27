@@ -126,6 +126,19 @@ function Test-CleanWorkingTree {
     throw "Working tree is not clean. Commit or stash changes before releasing.`n$status"
 }
 
+function Test-FastlaneTracked {
+    $tracked = git ls-files -- 'fastlane/metadata/android/en-US/title.txt'
+    if (-not [string]::IsNullOrWhiteSpace($tracked)) {
+        return
+    }
+    $msg = 'fastlane/metadata/android/en-US/title.txt is not tracked. Commit the store-readiness tree before tagging (F-Droid issuebot).'
+    if ($DryRun) {
+        Write-Host "[dry-run] $msg" -ForegroundColor Yellow
+        return
+    }
+    throw $msg
+}
+
 function Test-TagAvailable {
     param([string] $Tag)
     $local = git tag -l $Tag
@@ -147,6 +160,7 @@ function Test-TagAvailable {
 Write-Step "Release bump: $Bump"
 
 Test-CleanWorkingTree
+Test-FastlaneTracked
 
 $current = Get-PubspecVersion
 $major = $current.Major
@@ -184,8 +198,35 @@ Write-Host "Tag:     $tag"
 
 Test-TagAvailable -Tag $tag
 
+function Add-FastlaneChangelog {
+    param(
+        [int] $VersionCode,
+        [string] $Bullet
+    )
+    $dir = Join-Path $RepoRoot 'fastlane/metadata/android/en-US/changelogs'
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    }
+    $path = Join-Path $dir "$VersionCode.txt"
+    $text = $Bullet
+    if ($text.Length -gt 500) {
+        $text = $text.Substring(0, 500)
+    }
+    if ($DryRun) {
+        Write-Host "[dry-run] Fastlane changelog $path -> $text" -ForegroundColor Yellow
+        return
+    }
+    Set-Content -Path $path -Value $text -NoNewline
+}
+
 Set-PubspecVersion -NewFull $newFull
 Add-ChangelogEntry -Version $newVersion -Date $date -Bullet $Message
+# Universal GitHub APK uses pubspec build number; F-Droid ABI splits use
+# versionCode * 10 + {1,2,3} (see android/app/build.gradle.kts).
+Add-FastlaneChangelog -VersionCode $build -Bullet $Message
+Add-FastlaneChangelog -VersionCode (10 * $build + 1) -Bullet $Message
+Add-FastlaneChangelog -VersionCode (10 * $build + 2) -Bullet $Message
+Add-FastlaneChangelog -VersionCode (10 * $build + 3) -Bullet $Message
 
 Invoke-OrPrint -Command @('flutter', 'pub', 'get') -Description 'flutter pub get'
 Invoke-OrPrint -Command @('flutter', 'analyze') -Description 'flutter analyze'
@@ -197,7 +238,7 @@ if (-not $SkipTests) {
 }
 
 $commitMsg = "chore(release): v$newVersion"
-Invoke-OrPrint -Command @('git', 'add', 'pubspec.yaml', 'CHANGELOG.md') -Description 'git add'
+Invoke-OrPrint -Command @('git', 'add', 'pubspec.yaml', 'CHANGELOG.md', 'fastlane/metadata/android/en-US/changelogs') -Description 'git add'
 Invoke-OrPrint -Command @('git', 'commit', '-m', $commitMsg) -Description 'git commit'
 Invoke-OrPrint -Command @('git', 'tag', '-a', $tag, '-m', $tag) -Description 'git tag'
 
@@ -215,3 +256,9 @@ if ($NoPush) {
 }
 
 Write-Host "Release $tag complete." -ForegroundColor Green
+
+$shotDir = Join-Path $RepoRoot 'fastlane/metadata/android/en-US/images/phoneScreenshots'
+$pngs = @(Get-ChildItem -Path $shotDir -Filter '*.png' -ErrorAction SilentlyContinue)
+if ($pngs.Count -lt 4) {
+    Write-Host "Fastlane phone screenshots: $($pngs.Count) PNG(s). Capture 4-6 with ./scripts/capture-fdroid-screenshots.ps1 before filing the F-Droid RFP." -ForegroundColor Yellow
+}

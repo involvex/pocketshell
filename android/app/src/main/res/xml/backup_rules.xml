@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <!-- Include all shared preferences so profiles, keys, snippets and settings survive
-         cloud/local backup and restore. -->
-    <include domain="sharedpref" path="." />
+    <!-- Secrets live in EncryptedSharedPreferences / Keystore. Do not send
+         Flutter SharedPreferences (profiles, known_hosts, caches) to cloud
+         backup. Use in-app encrypted export instead. -->
+    <exclude domain="sharedpref" path="." />
 </full-backup-content>

@@ -32,11 +32,6 @@ class _SplashScreenState extends State<SplashScreen> {
     final pendingShare = pendingShareFiles.isEmpty
         ? await _readPendingShareText()
         : null;
-    if (pendingLaunch == null &&
-        pendingShare == null &&
-        pendingShareFiles.isEmpty) {
-      await Future<void>.delayed(const Duration(seconds: 2));
-    }
     if (mounted) {
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
@@ -115,7 +110,7 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Secure Shell Client',
+              kAppTagline,
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey[400],

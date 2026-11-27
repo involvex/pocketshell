@@ -53,18 +53,20 @@ class HomeScreen extends StatefulWidget {
     this.pendingLaunch,
     this.pendingShareText,
     this.pendingShareFiles = const <SharedFile>[],
+    this.initialTab = AppTab.client,
   });
 
   final WidgetLaunchAction? pendingLaunch;
   final String? pendingShareText;
   final List<SharedFile> pendingShareFiles;
+  final AppTab initialTab;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  AppTab _selectedTab = AppTab.client;
+  late AppTab _selectedTab = widget.initialTab;
   bool _isFullScreen = false;
   bool _agentsChatOpen = false;
   bool _accessoryVisible = true;
@@ -73,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<List<SharedFile>>? _shareFilesSub;
   final FocusNode _keyboardFocusNode = FocusNode();
   final GlobalKey<AgentsTabState> _agentsTabKey = GlobalKey<AgentsTabState>();
+  SSHProvider? _ssh;
 
   void _toggleAccessory() {
     setState(() => _accessoryVisible = !_accessoryVisible);
@@ -81,45 +84,46 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _bindSshUiHooks();
     _loadConfig();
     if (!kIsWeb && Platform.isAndroid) {
       _widgetClickSub = HomeWidget.widgetClicked.listen(_onWidgetClicked);
       ShareIntentService.ensureListening();
       _shareSub = ShareIntentService.incoming.listen(_onSharedText);
-      _shareFilesSub =
-          ShareIntentService.incomingFiles.listen(_onSharedFiles);
+      _shareFilesSub = ShareIntentService.incomingFiles.listen(_onSharedFiles);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _keyboardFocusNode.requestFocus();
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+  }
+
+  void _bindSshUiHooks() {
+    final ssh = Provider.of<SSHProvider>(context, listen: false);
+    _ssh = ssh;
+    ssh.onVerifyHostKeyPrompt =
+        (prompt) => showUnknownHostKeyDialog(context, prompt);
+    ssh.onHostKeyMismatch = ({
+      required String host,
+      required int port,
+      required String expectedFingerprint,
+      required String presentedFingerprint,
+    }) {
       if (!mounted) return;
-      final ssh = Provider.of<SSHProvider>(context, listen: false);
-      ssh.onVerifyHostKeyPrompt =
-          (prompt) => showUnknownHostKeyDialog(context, prompt);
-      ssh.onHostKeyMismatch = ({
-        required String host,
-        required int port,
-        required String expectedFingerprint,
-        required String presentedFingerprint,
-      }) {
-        if (!mounted) return;
-        // ignore: unawaited_futures
-        showHostKeyChangedWarning(
-          context,
-          host: host,
-          port: port,
-          expectedFingerprint: expectedFingerprint,
-          presentedFingerprint: presentedFingerprint,
-        );
-      };
-      ssh.onUserInfoRequest = (request) {
-        if (!mounted) {
-          return Future<List<String>?>.value(null);
-        }
-        return showKeyboardInteractiveDialog(context, request);
-      };
-    });
+      // ignore: unawaited_futures
+      showHostKeyChangedWarning(
+        context,
+        host: host,
+        port: port,
+        expectedFingerprint: expectedFingerprint,
+        presentedFingerprint: presentedFingerprint,
+      );
+    };
+    ssh.onUserInfoRequest = (request) {
+      if (!mounted) {
+        return Future<List<String>?>.value(null);
+      }
+      return showKeyboardInteractiveDialog(context, request);
+    };
   }
 
   @override
@@ -128,6 +132,12 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_shareSub?.cancel());
     unawaited(_shareFilesSub?.cancel());
     _keyboardFocusNode.dispose();
+    final ssh = _ssh;
+    if (ssh != null) {
+      ssh.onVerifyHostKeyPrompt = null;
+      ssh.onHostKeyMismatch = null;
+      ssh.onUserInfoRequest = null;
+    }
     super.dispose();
   }
 
@@ -520,7 +530,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isMobilePlatform() {
     if (kIsWeb) return false;
-    return Platform.isAndroid || Platform.isIOS;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
   }
 
   /// Top shortcut chips duplicate the bottom accessory keyboard while a
@@ -536,89 +547,97 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<SSHProvider, SettingsProvider>(
-      builder: (context, ssh, settings, child) {
-        final navIndex = _tabs.indexOf(_selectedTab).clamp(0, _tabs.length - 1);
+    return Consumer<SettingsProvider>(
+      builder: (context, settings, child) {
+        return Selector<SSHProvider, bool>(
+          selector: (_, ssh) => ssh.sessions.any((s) => s.isConnected),
+          builder: (context, anyConnected, child) {
+            final ssh = context.read<SSHProvider>();
+            final navIndex =
+                _tabs.indexOf(_selectedTab).clamp(0, _tabs.length - 1);
 
-        // Automatically exit full screen if no sessions are connected
-        if (_isFullScreen && !ssh.sessions.any((s) => s.isConnected)) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) setState(() => _isFullScreen = false);
-          });
-        }
-
-        final shouldDelegateAgentsBack =
-            _selectedTab == AppTab.agents && _agentsChatOpen;
-
-        return PopScope(
-          canPop: !shouldDelegateAgentsBack,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && shouldDelegateAgentsBack) {
-              _agentsTabKey.currentState?.handleBack();
+            // Automatically exit full screen if no sessions are connected
+            if (_isFullScreen && !anyConnected) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _isFullScreen = false);
+              });
             }
-          },
-          child: KeyboardListener(
-            focusNode: _keyboardFocusNode,
-            onKeyEvent: _handleKeyEvent,
-            child: Scaffold(
-              appBar: AppBar(
-                actions: _buildAppBarActions(settings),
-              ),
-              bottomNavigationBar: _isFullScreen
-                  ? null
-                  : NavigationBar(
-                      selectedIndex: navIndex,
-                      onDestinationSelected: (index) {
-                        setState(() {
-                          _selectedTab = _tabs[index];
-                        });
-                      },
-                      destinations: _tabs.map((tab) {
-                        return switch (tab) {
-                          AppTab.client => const NavigationDestination(
-                              icon: Icon(Icons.computer),
-                              label: 'Client',
-                            ),
-                          AppTab.agents => const NavigationDestination(
-                              icon: Icon(Icons.smart_toy),
-                              label: 'Agents',
-                            ),
-                          AppTab.logs => const NavigationDestination(
-                              icon: Icon(Icons.article),
-                              label: 'Logs',
-                            ),
-                        };
-                      }).toList(),
-                    ),
-              body: Column(
-                children: [
-                  // On mobile Client, the bottom CtrlButtonPanel already has
-                  // Tab/arrows/Ctrl keys — hide the top bar to avoid duplicates.
-                  if (_shouldShowShortcutBar(ssh)) const KeyboardShortcutBar(),
-                  Expanded(
-                    child: IndexedStack(
-                      index: _selectedTab.index,
-                      children: <Widget>[
-                        ClientTab(
-                          isFullScreen: _isFullScreen,
-                          accessoryVisible: _accessoryVisible,
-                        ),
-                        AgentsTab(
-                          key: _agentsTabKey,
-                          onChatOpenChanged: (open) {
-                            if (_agentsChatOpen != open) {
-                              setState(() => _agentsChatOpen = open);
-                            }
-                          },
-                        ),
-                        const LogViewer(),
-                      ],
-                    ),
+
+            final shouldDelegateAgentsBack =
+                _selectedTab == AppTab.agents && _agentsChatOpen;
+
+            return PopScope(
+              canPop: !shouldDelegateAgentsBack,
+              onPopInvokedWithResult: (didPop, _) {
+                if (!didPop && shouldDelegateAgentsBack) {
+                  _agentsTabKey.currentState?.handleBack();
+                }
+              },
+              child: KeyboardListener(
+                focusNode: _keyboardFocusNode,
+                onKeyEvent: _handleKeyEvent,
+                child: Scaffold(
+                  appBar: AppBar(
+                    actions: _buildAppBarActions(settings),
                   ),
-                ],
+                  bottomNavigationBar: _isFullScreen
+                      ? null
+                      : NavigationBar(
+                          selectedIndex: navIndex,
+                          onDestinationSelected: (index) {
+                            setState(() {
+                              _selectedTab = _tabs[index];
+                            });
+                          },
+                          destinations: _tabs.map((tab) {
+                            return switch (tab) {
+                              AppTab.client => const NavigationDestination(
+                                  icon: Icon(Icons.computer),
+                                  label: 'Client',
+                                ),
+                              AppTab.agents => const NavigationDestination(
+                                  icon: Icon(Icons.smart_toy),
+                                  label: 'Agents',
+                                ),
+                              AppTab.logs => const NavigationDestination(
+                                  icon: Icon(Icons.article),
+                                  label: 'Logs',
+                                ),
+                            };
+                          }).toList(),
+                        ),
+                  body: Column(
+                    children: [
+                      // On mobile Client, the bottom CtrlButtonPanel already has
+                      // Tab/arrows/Ctrl keys — hide the top bar to avoid duplicates.
+                      if (_shouldShowShortcutBar(ssh))
+                        const KeyboardShortcutBar(),
+                      Expanded(
+                        child: IndexedStack(
+                          index: _selectedTab.index,
+                          children: <Widget>[
+                            ClientTab(
+                              isFullScreen: _isFullScreen,
+                              accessoryVisible: _accessoryVisible,
+                            ),
+                            AgentsTab(
+                              key: _agentsTabKey,
+                              onChatOpenChanged: (open) {
+                                if (_agentsChatOpen != open) {
+                                  setState(() => _agentsChatOpen = open);
+                                }
+                              },
+                            ),
+                            const LogViewer(),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -856,8 +875,43 @@ class _ClientTabState extends State<ClientTab> {
                 child: Consumer<SSHProvider>(builder: (context, ssh, child) {
                   final active = ssh.activeSession;
                   if (active == null) {
-                    return const Center(
-                        child: Text('No session. Click + to connect'));
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            Icon(
+                              Icons.terminal,
+                              size: 56,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No session',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Connect to a saved profile to open a terminal.',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                            const SizedBox(height: 16),
+                            FilledButton.icon(
+                              onPressed: () => showDialog<void>(
+                                context: context,
+                                builder: (c) => const ConnectionModal(),
+                              ),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Connect'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
                   }
                   if (!active.isConnected) {
                     return Center(

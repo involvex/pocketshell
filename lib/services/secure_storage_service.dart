@@ -1,9 +1,21 @@
 // Backwards-compatible static API delegating to [SecureStorageImpl].
 // New code should depend on the [SecureStorage] interface instead.
+import 'package:flutter/foundation.dart';
+
 import 'secure_storage.dart';
 
 class SecureStorageService {
-  static final SecureStorage _impl = SecureStorageImpl();
+  static SecureStorage _impl = SecureStorageImpl();
+
+  @visibleForTesting
+  static set debugImpl(SecureStorage impl) {
+    _impl = impl;
+  }
+
+  @visibleForTesting
+  static void debugResetImpl() {
+    _impl = SecureStorageImpl();
+  }
 
   static Future<String> readOpencodeZenApiKey() async {
     return _impl.readOpencodeZenApiKey();

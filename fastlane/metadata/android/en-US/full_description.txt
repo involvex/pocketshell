@@ -1,0 +1,18 @@
+<p><b>PocketShell</b> is a free and open-source SSH client for Android. Connect to remote hosts, browse files over SFTP, and talk to an OpenCode agent on the same machine — without a WebView.</p>
+
+<p><b>SSH &amp; SFTP</b></p>
+<ul>
+<li>Password, public-key, and keyboard-interactive (2FA) authentication</li>
+<li>Host-key trust on first connect; changed keys are blocked</li>
+<li>Multi-session terminals, snippets, jump hosts, and local port forwards</li>
+<li>SFTP browse, upload/download, and share-to-host</li>
+<li>Optional biometric app lock; credentials stay in Android Keystore</li>
+</ul>
+
+<p><b>Agents</b></p>
+<p>The Agents tab talks to <i>your</i> OpenCode server (typically on a Windows host you reach over SSH). You choose the URL, directory, and model with slash commands.</p>
+
+<p><b>Optional cloud AI</b></p>
+<p>The terminal wand can generate a shell command via OpenCode Zen (<code>opencode.ai</code>) or Kilo (<code>api.kilo.ai</code>) <b>only if you paste your own API key and tap generate</b>. Nothing is sent there otherwise. This is disclosed as the F-Droid NonFreeNet anti-feature.</p>
+
+<p>No ads, no analytics, no crash reporters. Source: https://github.com/involvex/pocketshell</p>

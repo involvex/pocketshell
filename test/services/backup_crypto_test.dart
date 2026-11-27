@@ -2,10 +2,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ssh_app/services/backup_crypto.dart';
 
 void main() {
+  const int testIterations = 1000;
+
+  test('encrypt stores the production iteration count by default', () {
+    expect(BackupCrypto.iterations, 600000);
+  });
+
   test('encrypt/decrypt round-trips', () async {
     const plaintext = '{"version":1,"profiles":[]}';
-    final envelope = await BackupCrypto.encrypt(plaintext, 'correct-horse-123');
+    final envelope = await BackupCrypto.encrypt(
+      plaintext,
+      'correct-horse-123',
+      iterationCount: testIterations,
+    );
     expect(envelope['version'], 2);
+    expect(envelope['iterations'], testIterations);
     final restored = await BackupCrypto.decrypt(
       envelope,
       'correct-horse-123',
@@ -14,9 +25,13 @@ void main() {
   });
 
   test('wrong password throws without leaking plaintext', () async {
-    final envelope = await BackupCrypto.encrypt('secret', 'right-password');
-    expect(
-      () => BackupCrypto.decrypt(envelope, 'wrong-password'),
+    final envelope = await BackupCrypto.encrypt(
+      'secret',
+      'right-password',
+      iterationCount: testIterations,
+    );
+    await expectLater(
+      BackupCrypto.decrypt(envelope, 'wrong-password'),
       throwsA(isA<BackupCryptoException>()),
     );
     expect(envelope.toString(), isNot(contains('secret')));

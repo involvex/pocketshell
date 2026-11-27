@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Rect;
 
+import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -186,14 +187,43 @@ class BackupService {
 
     // Validate all data before applying (transactional)
     _validateBackupData(data);
+    await applyImportedData(data);
+    return 'Import successful';
+  }
 
-    // Apply all changes atomically
+  /// Applies a validated backup payload. Secrets are written to secure
+  /// storage and stripped from SharedPreferences JSON.
+  @visibleForTesting
+  static Future<void> applyImportedData(Map<String, dynamic> data) async {
     if (data['profiles'] is List) {
-      await ConfigService.saveProfiles(
-        (data['profiles'] as List<dynamic>)
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList(),
-      );
+      final profileMaps = <Map<String, dynamic>>[];
+      for (final raw in data['profiles'] as List<dynamic>) {
+        final map = Map<String, dynamic>.from(raw as Map);
+        final id = map['id'] as String?;
+        if (id != null) {
+          final password = map['password'] as String?;
+          final agentPassword = map['agentPassword'] as String?;
+          if (password != null && password.isNotEmpty) {
+            await SecureStorageService.writeProfilePassword(id, password);
+          }
+          if (agentPassword != null && agentPassword.isNotEmpty) {
+            await SecureStorageService.writeAgentPassword(id, agentPassword);
+          }
+        }
+        map.remove('password');
+        map.remove('agentPassword');
+        final inlinePem = map['privateKey'] as String?;
+        if (inlinePem != null &&
+            inlinePem.trimLeft().startsWith('-----BEGIN')) {
+          map.remove('privateKey');
+        }
+        profileMaps.add(map);
+      }
+      final migrated =
+          await SecureStorageService.migrateProfilePasswords(profileMaps);
+      final migratedAgent =
+          await SecureStorageService.migrateAgentPasswords(migrated);
+      await ConfigService.saveProfiles(migratedAgent);
     }
     if (data['sshKeys'] is List) {
       final keyMaps = <Map<String, dynamic>>[];
@@ -230,9 +260,10 @@ class BackupService {
       await ConfigService.saveSettings(settings);
     }
     if (data['lastSession'] is Map) {
-      await ConfigService.saveLastSession(
-        Map<String, dynamic>.from(data['lastSession'] as Map),
-      );
+      final last = Map<String, dynamic>.from(data['lastSession'] as Map);
+      last.remove('password');
+      last.remove('agentPassword');
+      await ConfigService.saveLastSession(last);
     } else if (data.containsKey('lastSession') && data['lastSession'] == null) {
       // Skip — no last session to restore
     }
@@ -245,8 +276,6 @@ class BackupService {
     }
 
     await WidgetProfileService.syncFromConfig();
-
-    return 'Import successful';
   }
 
   static void _validateBackupData(Map<String, dynamic> data) {

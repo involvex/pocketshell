@@ -31,16 +31,20 @@ class BackupCrypto {
 
   static Future<Map<String, dynamic>> encrypt(
     String plaintext,
-    String password,
-  ) async {
+    String password, {
+    int iterationCount = iterations,
+  }) async {
     if (password.isEmpty) {
       throw const BackupCryptoException('Password must not be empty');
+    }
+    if (iterationCount <= 0 || iterationCount > 2000000) {
+      throw const BackupCryptoException('Invalid iteration count');
     }
     final salt = _randomBytes(_saltBytes);
     final nonce = _randomBytes(_nonceBytes);
     final pbkdf2 = Pbkdf2(
       macAlgorithm: Hmac.sha256(),
-      iterations: iterations,
+      iterations: iterationCount,
       bits: 256,
     );
     final secretKey = await pbkdf2.deriveKeyFromPassword(
@@ -57,7 +61,7 @@ class BackupCrypto {
     return <String, dynamic>{
       'version': 2,
       'kdf': kdfName,
-      'iterations': iterations,
+      'iterations': iterationCount,
       'salt': base64.encode(salt),
       'nonce': base64.encode(box.nonce),
       'ciphertext': base64.encode(combined),

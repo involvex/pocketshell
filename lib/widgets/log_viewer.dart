@@ -10,10 +10,14 @@ class LogViewer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<SSHProvider, SettingsProvider>(
-      builder: (context, ssh, settings, child) {
-        final textStyle = TerminalStyleBuilder.buildTextStyle(settings);
+    final ssh = context.read<SSHProvider>();
+    final settings = context.watch<SettingsProvider>();
+    final textStyle = TerminalStyleBuilder.buildTextStyle(settings);
 
+    return ListenableBuilder(
+      listenable: ssh.connectionLogNotifier,
+      builder: (context, _) {
+        final lines = ssh.connectionLog;
         return Column(
           children: [
             Padding(
@@ -26,7 +30,8 @@ class LogViewer extends StatelessWidget {
                           TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   IconButton(
                     icon: const Icon(Icons.delete),
-                    onPressed: () => ssh.connectionLog.clear(),
+                    tooltip: 'Clear logs',
+                    onPressed: ssh.clearConnectionLog,
                   ),
                 ],
               ),
@@ -35,12 +40,12 @@ class LogViewer extends StatelessWidget {
               child: ListView.builder(
                 reverse: true,
                 padding: const EdgeInsets.all(8.0),
-                itemCount: ssh.connectionLog.length,
+                itemCount: lines.length,
                 itemBuilder: (context, index) {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 2.0),
                     child: Text(
-                      ssh.connectionLog.reversed.toList()[index],
+                      lines[lines.length - 1 - index],
                       style: textStyle,
                     ),
                   );

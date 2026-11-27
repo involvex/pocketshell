@@ -13,6 +13,7 @@ import '../services/config_repository.dart';
 import '../services/opencode_connection_service.dart';
 import '../services/opencode_v2_mappers.dart';
 import '../services/ssh_local_forward.dart';
+import '../utils/agent_event_policy.dart';
 import '../utils/agent_prompt_utils.dart';
 import '../utils/agent_session_utils.dart';
 
@@ -46,6 +47,10 @@ class AgentProvider extends ChangeNotifier {
 
   void Function(String message)? onLog;
 
+  final Map<String, Timer> _reloadDebounce = <String, Timer>{};
+  final Set<String> _reloadInFlight = <String>{};
+  final Set<String> _reloadQueued = <String>{};
+
   Future<void> connectFromProfileAndOpenRecent(SSHProfile profile) async {
     final connection = await connectFromProfile(profile);
     final recent = connection.sessions.where((s) => s.id != null).firstOrNull;
@@ -55,6 +60,20 @@ class AgentProvider extends ChangeNotifier {
   }
 
   Future<AgentConnection> connectFromProfile(SSHProfile profile) async {
+    if (profile.agentAuthUsesCleartextNetwork &&
+        profile.agentAuthFallsBackToSshPassword) {
+      throw StateError(
+        'Set an Agent password, enable HTTPS, or tunnel over SSH. '
+        'The SSH password is not sent over cleartext HTTP.',
+      );
+    }
+    if (profile.agentAuthUsesCleartextNetwork) {
+      onLog?.call(
+        'Warning: OpenCode HTTP to ${profile.host}:${profile.agentPort} '
+        'sends credentials in cleartext. Prefer HTTPS or an SSH tunnel.',
+      );
+    }
+
     SshLocalForward? tunnel;
     var baseUrl = profile.agentBaseUrl;
 
@@ -644,7 +663,7 @@ class AgentProvider extends ChangeNotifier {
             ? Map<String, dynamic>.from(properties)
             : <String, dynamic>{};
 
-    if (type == 'server.heartbeat' || type == 'server.connected') {
+    if (shouldIgnoreAgentEvent(type)) {
       return;
     }
 
@@ -686,25 +705,48 @@ class AgentProvider extends ChangeNotifier {
       notifyListeners();
     }
 
-    if (type.startsWith('session.') ||
-        type.startsWith('message.') ||
-        type.contains('message')) {
+    if (shouldReloadMessagesForEvent(type)) {
+      _scheduleReloadMessages(connectionId);
+    }
+    if (shouldRefreshSessionsForEvent(type)) {
       // ignore: unawaited_futures
-      _reloadMessages(connectionId);
-      if (type.startsWith('session.') &&
-          (type.contains('create') ||
-              type.contains('update') ||
-              type.contains('remove') ||
-              type.contains('idle') ||
-              type.endsWith('.updated'))) {
+      refreshSessions(connectionId);
+    }
+  }
+
+  void _scheduleReloadMessages(String connectionId) {
+    _reloadDebounce[connectionId]?.cancel();
+    _reloadDebounce[connectionId] = Timer(
+      const Duration(milliseconds: 200),
+      () {
         // ignore: unawaited_futures
-        refreshSessions(connectionId);
+        _coalescedReloadMessages(connectionId);
+      },
+    );
+  }
+
+  Future<void> _coalescedReloadMessages(String connectionId) async {
+    if (_reloadInFlight.contains(connectionId)) {
+      _reloadQueued.add(connectionId);
+      return;
+    }
+    _reloadInFlight.add(connectionId);
+    try {
+      await _reloadMessages(connectionId);
+    } finally {
+      _reloadInFlight.remove(connectionId);
+      if (_reloadQueued.remove(connectionId)) {
+        _scheduleReloadMessages(connectionId);
       }
     }
   }
 
   @override
   void dispose() {
+    for (final timer in _reloadDebounce.values) {
+      timer.cancel();
+    }
+    _reloadDebounce.clear();
     for (final connection in _connections) {
       connection.disposeSubscriptions();
       connection.service.dispose();

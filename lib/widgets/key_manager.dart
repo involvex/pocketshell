@@ -8,6 +8,7 @@ import '../services/config_service.dart';
 import '../services/ppk_import_service.dart';
 import '../services/secure_storage_service.dart';
 import '../utils/ssh_key_fingerprint.dart';
+import '../services/window_secure_flag.dart';
 
 class KeyManager extends StatefulWidget {
   const KeyManager({super.key});
@@ -337,82 +338,107 @@ class _KeyManagerState extends State<KeyManager> {
     final privateKey =
         await SecureStorageService.readPrivateKey(key.id) ?? key.privateKey;
     if (!mounted) return;
-    // ignore: unawaited_futures
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF16213E),
-          title: Text(key.name),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text('Type: ${key.keyType.displayName}'),
-                const SizedBox(height: 8),
-                Text(
-                  'Fingerprint: ${sshPublicKeyFingerprint(key.publicKey)}',
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                ),
-                const SizedBox(height: 8),
-                Text('Created: ${key.createdAt.toLocal()}'),
-                const SizedBox(height: 8),
-                if (!_hasPassphrase(key))
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Row(
-                      children: <Widget>[
-                        Icon(Icons.warning_amber,
-                            color: Colors.amber, size: 20),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'No passphrase set. Anyone with access to this device can use this key.',
-                            style: TextStyle(color: Colors.amber, fontSize: 12),
+    await WindowSecureFlag.acquire();
+    if (!mounted) {
+      await WindowSecureFlag.release();
+      return;
+    }
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          var revealPrivate = false;
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                backgroundColor: const Color(0xFF16213E),
+                title: Text(key.name),
+                content: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text('Type: ${key.keyType.displayName}'),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Fingerprint: ${sshPublicKeyFingerprint(key.publicKey)}',
+                        style: const TextStyle(
+                            fontFamily: 'monospace', fontSize: 12),
+                      ),
+                      const SizedBox(height: 8),
+                      Text('Created: ${key.createdAt.toLocal()}'),
+                      const SizedBox(height: 8),
+                      if (!_hasPassphrase(key))
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            children: <Widget>[
+                              Icon(Icons.warning_amber,
+                                  color: Colors.amber, size: 20),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'No passphrase set. Anyone with access to this device can use this key.',
+                                  style: TextStyle(
+                                      color: Colors.amber, fontSize: 12),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
+                      const SizedBox(height: 16),
+                      const Text('Public Key:',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      SelectableText(
+                        key.publicKey,
+                        style: const TextStyle(
+                            fontSize: 10, fontFamily: 'monospace'),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('Private Key:',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      if (revealPrivate)
+                        SelectableText(
+                          privateKey,
+                          style: const TextStyle(
+                              fontSize: 10, fontFamily: 'monospace'),
+                        )
+                      else
+                        TextButton.icon(
+                          onPressed: () =>
+                              setDialogState(() => revealPrivate = true),
+                          icon: const Icon(Icons.visibility),
+                          label: const Text('Reveal private key'),
+                        ),
+                    ],
                   ),
-                const SizedBox(height: 16),
-                const Text('Public Key:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                SelectableText(
-                  key.publicKey,
-                  style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
                 ),
-                const SizedBox(height: 16),
-                const Text('Private Key:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                SelectableText(
-                  privateKey,
-                  style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
-                ),
-              ],
-            ),
-          ),
-          actions: <Widget>[
-            if (!_hasPassphrase(key))
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  _showSetPassphraseDialog(key);
-                },
-                child: const Text('Set passphrase'),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
+                actions: <Widget>[
+                  if (!_hasPassphrase(key))
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        _showSetPassphraseDialog(key);
+                      },
+                      child: const Text('Set passphrase'),
+                    ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Close'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      await WindowSecureFlag.release();
+    }
   }
 
   void _deleteKey(String id) {
