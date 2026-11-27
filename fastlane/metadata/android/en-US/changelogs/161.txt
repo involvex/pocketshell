@@ -1,0 +1,1 @@
+F-Droid store readiness: Fastlane metadata, privacy policy, OFL fonts, host-key fail-closed, Android backup disabled.

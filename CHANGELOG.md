@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [1.4.2] - 2026-11-27
+
+### Changed
+
+- F-Droid store readiness: Fastlane metadata, privacy policy, OFL fonts, host-key fail-closed, Android backup disabled.
 ### Added
 
 - Android share-to-host: shared files/images upload through the SFTP transfer queue (session picker when multiple connections; Connect & upload when none).

@@ -1,7 +1,7 @@
 name: ssh_app
 description: PocketShell — SSH, SFTP, and OpenCode agents on Android.
 publish_to: none
-version: 1.4.1+15
+version: 1.4.2+16
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
