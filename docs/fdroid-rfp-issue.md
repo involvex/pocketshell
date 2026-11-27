@@ -29,8 +29,8 @@ AntiFeatures:
 Full draft recipe (ABI split, Flutter 3.47.9 srclib, NDK 28.2.13676358, heap/daemon patch):
 https://github.com/involvex/pocketshell/blob/HEAD/docs/fdroid.yml
 
-Please build a tag **newer than v1.4.1** (that tag has no Fastlane). Expected
-`v1.4.2` (`1.4.2+16` → versionCodes 161 / 162 / 163).
+Please build tag **v1.4.2** (`1.4.2+16` → versionCodes 161 / 162 / 163).
+Do not use **v1.4.1** (that tag has no Fastlane).
 
 Why do you want this app added to F-Droid:
 

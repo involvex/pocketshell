@@ -1,10 +1,9 @@
 # Draft F-Droid metadata for gitlab.com/fdroid/fdroiddata (RFP).
 # Not consumed by this repo's CI.
 #
-# v1.4.1 does **not** include Fastlane/screenshots. File the RFP against the
-# next annotated tag after this store-readiness work (see CHANGELOG
-# Unreleased). Replace versionName, versionCode, and commit below with that
-# tag. Flutter pin: .github/flutter-version and pubspec environment.flutter.
+# v1.4.1 does **not** include Fastlane/screenshots. File the RFP against
+# v1.4.2 (or newer than v1.4.1). Flutter pin: .github/flutter-version
+# and pubspec environment.flutter.
 #
 # ABI split: android/app/build.gradle.kts sets
 # versionCode * 10 + {armeabi-v7a=1, arm64-v8a=2, x86_64=3}. pubspec
@@ -133,8 +132,8 @@ AntiFeatures:
     en-US: Optional terminal AI wand calls opencode.ai and api.kilo.ai only when the user pastes an API key and taps generate. Self-hosted OpenCode on the SSH profile is not NonFreeNet.
 
 MaintainerNotes: |
-  Wait for a tag newer than v1.4.1 so Fastlane metadata and phone
-  screenshots are in tree. Flutter SDK pin is `.github/flutter-version`
+  First listing tag is v1.4.2 (newer than v1.4.1, which has no Fastlane).
+  Flutter SDK pin is `.github/flutter-version`
   (3.47.9, tag on flutter/flutter) and pubspec `environment.flutter`.
   Gradle 9.8.2-all.zip is in gradle-transparency-log
   (sha256 a1bb7e9651ef09e4cd9a62d471564e0ee23b5757e5f21fd7358d7cfc21018fdf).

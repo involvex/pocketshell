@@ -1,25 +1,12 @@
 # F-Droid RFP checklist
 
-Open an issue at https://gitlab.com/fdroid/rfp/-/issues after a tagged
-release **newer than v1.4.1** that includes Fastlane metadata and phone
-screenshots (`./scripts/release.ps1` will make v1.4.2+16 from current
-pubspec). Do not point the recipe at v1.4.1 — that tag has no Fastlane.
+Open an issue at https://gitlab.com/fdroid/rfp/-/issues against tag
+**v1.4.2** (newer than v1.4.1; that older tag has no Fastlane).
 
-## Commit this working tree first
+## File the RFP
 
-`release.ps1` refuses a dirty tree and refuses to tag until Fastlane
-`title.txt` is tracked. APKs (`*.apk`, `/build/`) and keystores (`*.jks`,
-`keystore.properties`) are gitignored. Fonts under `assets/fonts/` are not.
-
-```powershell
-git add -A
-git status   # confirm no .apk / .jks / keystore.properties
-git commit -m "feat: prepare PocketShell for F-Droid listing"
-./scripts/fdroid-preflight.ps1
-./scripts/release.ps1
-```
-
-Then paste [docs/fdroid-rfp-issue.md](fdroid-rfp-issue.md) into a new
+GitHub already has Fastlane on **v1.4.2**. Paste
+[docs/fdroid-rfp-issue.md](fdroid-rfp-issue.md) into a new
 https://gitlab.com/fdroid/rfp/-/issues issue.
 
 Local listing check:

@@ -88,14 +88,12 @@ if ($dirty) {
 
 $tags = git tag --list 'v*'
 if ($version -eq '1.4.1') {
-    Write-Host 'Do not tag v1.4.1 again (no Fastlane on that release). Commit this tree, then ./scripts/release.ps1 for v1.4.2.' -ForegroundColor Yellow
+    Write-Host 'Do not tag v1.4.1 again (no Fastlane on that release). Use v1.4.2 or newer.' -ForegroundColor Yellow
 } elseif ($tags -match "^v$version$") {
-    Write-Host "Tag v$version already exists. Bump with ./scripts/release.ps1 before the RFP." -ForegroundColor Yellow
+    Write-Host "Tag v$version is the listing target. Paste docs/fdroid-rfp-issue.md into https://gitlab.com/fdroid/rfp/-/issues"
 } else {
     Write-Host "Next listing tag should be v$version after this tree is committed and pushed."
 }
 
 Write-Host ''
-Write-Host 'GitHub still has no Fastlane until this tree is pushed.'
-Write-Host 'After the tag exists: paste docs/fdroid-rfp-issue.md into https://gitlab.com/fdroid/rfp/-/issues'
 Write-Host 'Preflight OK.' -ForegroundColor Green

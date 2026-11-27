@@ -115,8 +115,8 @@ F-Droid ships three APKs (`android-arm`, `android-arm64`, `android-x64`) with
 Preflight: `./scripts/fdroid-preflight.ps1`. Draft recipe: [docs/fdroid.yml](docs/fdroid.yml). Fastlane metadata lives in
 `fastlane/metadata/android/en-US/`. Phone screenshots are in
 `fastlane/metadata/android/en-US/images/phoneScreenshots/` (re-render with
-`./scripts/render-fdroid-screenshots.ps1`). File the RFP only after a tag
-**newer than v1.4.1** ([docs/fdroid-rfp.md](docs/fdroid-rfp.md)).
+`./scripts/render-fdroid-screenshots.ps1`). RFP recipe: tag **v1.4.2** (do not use v1.4.1 — that tag has no Fastlane)
+([docs/fdroid-rfp.md](docs/fdroid-rfp.md)).
 Third-party licenses: [THIRD_PARTY.md](THIRD_PARTY.md).
 
 ## License

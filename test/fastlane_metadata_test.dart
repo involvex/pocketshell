@@ -180,6 +180,29 @@ void main() {
       File('.github/scripts/verify-split-apk-versioncode.sh').existsSync(),
       isTrue,
     );
+    expect(
+      File('.github/scripts/verify-split-apk-versioncode.sh').readAsStringSync(),
+      contains("s/^package: name='"),
+    );
+  });
+
+  test('aapt package: name is not compileSdkVersionCodename', () {
+    const String dump =
+        "package: name='com.involvex.ssh_app_flutter' versionCode='162' "
+        "versionName='1.4.2' compileSdkVersionCodename='16' "
+        "platformBuildVersionName='16'";
+    expect(
+      RegExp(r".*name='([^']+)'").firstMatch(dump)?.group(1),
+      '16',
+    );
+    expect(
+      RegExp("^package: name='([^']+)'").firstMatch(dump)?.group(1),
+      'com.involvex.ssh_app_flutter',
+    );
+    expect(
+      RegExp("^package:.*versionCode='([0-9]+)'").firstMatch(dump)?.group(1),
+      '162',
+    );
   });
 
   test('GitHub hook scripts are LF-only for Actions bash', () {

@@ -48,9 +48,11 @@ if [[ -z "$aapt" ]]; then
 fi
 
 badging="$("$aapt" dump badging "$apk")"
-code="$(printf '%s\n' "$badging" | sed -nE "s/.*versionCode='([0-9]+)'.*/\1/p" | head -1)"
-name="$(printf '%s\n' "$badging" | sed -nE "s/.*versionName='([^']+)'.*/\1/p" | head -1)"
-pkg="$(printf '%s\n' "$badging" | sed -nE "s/.*name='([^']+)'.*/\1/p" | head -1)"
+# Anchor to the package: line. Greedy .*name= matches compileSdkVersionCodename
+# (API 16+ is '16') and fails CI with unexpected applicationId: 16.
+pkg="$(printf '%s\n' "$badging" | sed -nE "s/^package: name='([^']+)'.*/\1/p" | head -1)"
+code="$(printf '%s\n' "$badging" | sed -nE "s/^package:.*versionCode='([0-9]+)'.*/\1/p" | head -1)"
+name="$(printf '%s\n' "$badging" | sed -nE "s/^package:.*versionName='([^']+)'.*/\1/p" | head -1)"
 
 echo "package=$pkg versionName=$name versionCode=$code expected=$expected aapt=$aapt"
 if [[ "$pkg" != "com.involvex.ssh_app_flutter" ]]; then

@@ -11,7 +11,7 @@ Guidelines for agents operating on this Flutter SSH application codebase.
 
 ## Current work
 
-F-Droid listing (skip IzzyOnDroid while the cloud AI wand remains). Fastlane metadata, privacy policy, and phone screenshots are in-repo. Remaining: a tagged release newer than v1.4.1, then the GitLab RFP in `docs/fdroid-rfp.md`.
+F-Droid listing (skip IzzyOnDroid while the cloud AI wand remains). Fastlane metadata, privacy policy, and phone screenshots are on tag **v1.4.2**. Remaining: paste `docs/fdroid-rfp-issue.md` into a GitLab RFP (`docs/fdroid-rfp.md`).
 
 ## Build Commands
 
