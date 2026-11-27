@@ -11,7 +11,7 @@ Guidelines for agents operating on this Flutter SSH application codebase.
 
 ## Current work
 
-F-Droid listing (tag **v1.4.2**): RFP https://gitlab.com/fdroid/rfp/-/work_items/4880, MR https://gitlab.com/fdroid/fdroiddata/-/merge_requests/59275 (`76c94682`, CI green, mergeable) — wait packager. GitHub Release v1.4.2 has **no APKs** (aapt parse fail; fixed on main). Izzy: local build uses `CLOUD_AI=false` + `AGENTS=false`; needs keystore (`scripts/setup-android-keystore.ps1`), `commit_push`, new tag — `docs/android-signing.md`. Uncommitted: R8/SHA, CLOUD_AI/AGENTS gates, redaction, backup excludes, preflight, signing/Izzy docs, CHANGELOG Unreleased.
+F-Droid: RFP #4880; MR !59275 **reopened** with App Inclusion template + uniqueness (`docs/fdroid-mr-inclusion.md`). Waiting on linsui again; branch may need rebase. Listing code on `main` (`898e595`). Izzy: keystore + next tag with `CLOUD_AI=false`/`AGENTS=false` — `docs/android-signing.md`.
 
 ## Build Commands
 

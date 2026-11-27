@@ -4,10 +4,10 @@ RFP filed: https://gitlab.com/fdroid/rfp/-/work_items/4880
 (`com.involvex.ssh_app_flutter — PocketShell`, tag **v1.4.2**).
 
 fdroiddata MR: https://gitlab.com/fdroid/fdroiddata/-/merge_requests/59275
-(fork CI green: `fdroid build`, `check apk`, `rewritemeta`, lint — do not
-open a duplicate RFP). Waiting on maintainer review. Recipe draft:
-[docs/fdroid.yml](fdroid.yml) (matches the MR; prebuild enables R8 minify,
-strips foojay-resolver, excludes `com.google.android.play`).
+**Reopened** after linsui close (template + uniqueness). Description now uses
+the App Inclusion template from [docs/fdroid-mr-inclusion.md](fdroid-mr-inclusion.md)
+(26/26 checklist). May still need a rebase (`126 commits behind` at reopen).
+Recipe draft: [docs/fdroid.yml](fdroid.yml).
 
 Local listing check:
 
