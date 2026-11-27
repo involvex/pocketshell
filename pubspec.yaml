@@ -35,7 +35,7 @@ dependencies:
   intl: ^0.20.3
   # 1.4+ needs Dart ^3.13 / Flutter >=3.47 (this machine). 0.0.1 was a
   # re-export stub without MaterialUiCompatibilityBridge.
-  material_ui: ^1.10.0
+  material_ui: ^1.11.1
   local_auth: ^2.3.0
 
 dev_dependencies:
