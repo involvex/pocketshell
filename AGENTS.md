@@ -11,7 +11,7 @@ Guidelines for agents operating on this Flutter SSH application codebase.
 
 ## Current work
 
-F-Droid listing (skip IzzyOnDroid while the cloud AI wand remains). Fastlane metadata, privacy policy, and phone screenshots are on tag **v1.4.2**. Remaining: paste `docs/fdroid-rfp-issue.md` into a GitLab RFP (`docs/fdroid-rfp.md`).
+F-Droid listing (tag **v1.4.2**): RFP https://gitlab.com/fdroid/rfp/-/work_items/4880, MR https://gitlab.com/fdroid/fdroiddata/-/merge_requests/59275 (`76c94682`, CI green, mergeable) — wait packager. GitHub Release v1.4.2 has **no APKs** (aapt parse fail; fixed on main). Izzy: local build uses `CLOUD_AI=false` + `AGENTS=false`; needs keystore (`scripts/setup-android-keystore.ps1`), `commit_push`, new tag — `docs/android-signing.md`. Uncommitted: R8/SHA, CLOUD_AI/AGENTS gates, redaction, backup excludes, preflight, signing/Izzy docs, CHANGELOG Unreleased.
 
 ## Build Commands
 
@@ -161,7 +161,7 @@ lib/
 - Foreground SSH link drops auto-reconnect with backoff in `SSHProvider`; clean remote `exit` clears `shouldReconnectOnResume`.
 - CI/release Flutter SDK is pinned in `.github/flutter-version` (currently `3.47.9` / Dart 3.13). Bump that file before merging pub deps that need a newer Dart SDK; Dependabot ignores major `very_good_analysis` bumps for the same reason.
 - Android `allowBackup` is false; profile/key secrets go through `flutter_secure_storage` (`AndroidOptions.defaultOptions`). Unknown SSH host keys fail closed until HomeScreen registers the trust dialog.
-- F-Droid listing target: Fastlane in `fastlane/metadata/android/en-US/` (icon + 1024x500 featureGraphic), privacy in `PRIVACY.md`, optional AI wand is **NonFreeNet** (`docs/fdroid-rfp.md`). Phone screenshots are in-tree; RFP must use a tag newer than v1.4.1. IzzyOnDroid is skipped while cloud LLM gateways remain. GitHub Release APKs are debug-signed unless `ANDROID_KEYSTORE_*` secrets are set. Android build uses AGP 9.5.1 / Kotlin 2.4.21 / Gradle 9.8.2 (hashed in F-Droid gradle-transparency-log) with vendored `packages/home_widget`. The F-Droid recipe sed's Flutter's `-Xmx8G` down to 2G, pins NDK `28.2.13676358` (Flutter 3.47.9 `ndkVersion`), and builds per-ABI APKs (`versionCode * 10 + ABI`).
+- F-Droid listing: Fastlane in `fastlane/metadata/android/en-US/`, privacy in `PRIVACY.md`, NonFreeNet AI wand (`docs/fdroid-rfp.md`). RFP #4880 / fdroiddata MR !59275 target tag **v1.4.2** (recipe AGP 9.5.1 / Gradle 9.8.2). `main` may be on AGP 9.5.2 / Gradle 9.9.2. Izzy needs `--dart-define=CLOUD_AI=false` (`kCloudAiEnabled` / `scripts/build-izzy-apk.ps1`) plus release signing (`docs/android-signing.md`); Agents/self-hosted OpenCode may still draw reviewer questions. Vendored `packages/home_widget`; recipe strips foojay-resolver, enables R8 minify, excludes `com.google.android.play`, sed's Flutter `-Xmx8G` to 2G, pins NDK `28.2.13676358`, per-ABI APKs (`versionCode * 10 + ABI`).
 
 ## Cursor Cloud specific instructions
 

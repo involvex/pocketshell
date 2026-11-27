@@ -8,6 +8,7 @@ import 'package:ssh_app/models/ai_provider.dart';
 import 'package:ssh_app/providers/settings_provider.dart';
 import 'package:ssh_app/providers/ssh_provider.dart';
 import 'package:ssh_app/services/ai_gateway_service.dart';
+import 'package:ssh_app/utils/error_redaction.dart';
 import 'package:ssh_app/utils/terminal_clipboard.dart';
 import 'package:ssh_app/utils/terminal_context.dart';
 import 'package:ssh_app/utils/terminal_enter_mapping.dart';
@@ -28,7 +29,7 @@ class AiCommandOverlay extends StatefulWidget {
 class _AiCommandOverlayState extends State<AiCommandOverlay> {
   final TextEditingController _promptController = TextEditingController();
   final TextEditingController _resultController = TextEditingController();
-  final CancelToken _cancelToken = CancelToken();
+  CancelToken? _cancelToken;
   StreamSubscription<String>? _streamSubscription;
   bool _isGenerating = false;
   bool _includeTerminalContext = true;
@@ -50,12 +51,21 @@ class _AiCommandOverlayState extends State<AiCommandOverlay> {
   @override
   void dispose() {
     _streamSubscription?.cancel();
-    _cancelToken.cancel();
+    _cancelToken?.cancel('overlay closed');
     _resultController
       ..removeListener(_onResultChanged)
       ..dispose();
     _promptController.dispose();
     super.dispose();
+  }
+
+  void _abortInFlightGenerate() {
+    _streamSubscription?.cancel();
+    _streamSubscription = null;
+    final CancelToken? token = _cancelToken;
+    if (token != null && !token.isCancelled) {
+      token.cancel('superseded');
+    }
   }
 
   Future<void> _generate() async {
@@ -79,8 +89,10 @@ class _AiCommandOverlayState extends State<AiCommandOverlay> {
       return;
     }
 
-    await _streamSubscription?.cancel();
+    _abortInFlightGenerate();
     _resultController.clear();
+    final CancelToken cancelToken = CancelToken();
+    _cancelToken = cancelToken;
 
     final terminalContext = _includeTerminalContext
         ? ssh.getActiveTerminalContext(
@@ -96,7 +108,7 @@ class _AiCommandOverlayState extends State<AiCommandOverlay> {
         model: settings.activeAiModel,
         userPrompt: prompt,
         terminalContext: terminalContext,
-        cancelToken: _cancelToken,
+        cancelToken: cancelToken,
       );
 
       _streamSubscription = stream.listen(
@@ -113,7 +125,7 @@ class _AiCommandOverlayState extends State<AiCommandOverlay> {
           setState(() => _isGenerating = false);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(error.toString()),
+              content: Text(redactErrorForDisplay(error)),
               backgroundColor: Colors.red,
             ),
           );
@@ -141,7 +153,7 @@ class _AiCommandOverlayState extends State<AiCommandOverlay> {
       setState(() => _isGenerating = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString()),
+          content: Text(redactErrorForDisplay(e)),
           backgroundColor: Colors.red,
         ),
       );

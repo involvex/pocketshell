@@ -96,6 +96,21 @@ void main() {
     );
   });
 
+  test('Android backup rules exclude SharedPreferences and FlutterSecureStorage',
+      () {
+    final String backup =
+        File('android/app/src/main/res/xml/backup_rules.xml').readAsStringSync();
+    final String extraction = File(
+      'android/app/src/main/res/xml/data_extraction_rules.xml',
+    ).readAsStringSync();
+    final String manifest =
+        File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    expect(manifest, contains('android:allowBackup="false"'));
+    expect(backup, contains('path="."'));
+    expect(backup, contains('FlutterSecureStorage'));
+    expect(extraction, contains('FlutterSecureStorage'));
+  });
+
   test('FOSS listing files exist and google_fonts is not a dependency', () {
     expect(File('LICENSE').existsSync(), isTrue);
     expect(File('PRIVACY.md').existsSync(), isTrue);
@@ -162,9 +177,24 @@ void main() {
     expect(yml, contains('ndk: 28.2.13676358'));
     expect(yml, contains(r'ANDROID_NDK_HOME=$$NDK$$'));
     expect(yml, contains('newer than v1.4.1'));
+    expect(yml, contains('foojay-resolver'));
+    expect(yml, contains('isMinifyEnabled = true'));
+    expect(yml, contains('com.google.android.play'));
+    expect(yml, contains('proguard-rules.pro'));
+    expect(yml, contains('distributionSha256Sum='));
     expect(
-      File('android/app/build.gradle.kts').readAsStringSync(),
-      contains('armeabi-v7a'),
+      File('android/gradle/wrapper/gradle-wrapper.properties')
+          .readAsStringSync(),
+      contains('distributionSha256Sum='),
+    );
+    final String appGradle =
+        File('android/app/build.gradle.kts').readAsStringSync();
+    expect(appGradle, contains('armeabi-v7a'));
+    expect(appGradle, contains('isMinifyEnabled = true'));
+    expect(appGradle, contains('exclude(group = "com.google.android.play")'));
+    expect(
+      File('android/app/proguard-rules.pro').readAsStringSync(),
+      contains('com.google.android.play'),
     );
     final String releasePs = File('scripts/release.ps1').readAsStringSync();
     expect(releasePs, contains(r'10 * $build + 1'));

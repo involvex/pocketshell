@@ -77,32 +77,61 @@ jobs:
       - name: Run tests
         run: flutter test
 
-      - name: Build release APK
+      - name: Build IzzyOnDroid APK (cloud AI + Agents UI off)
+        run: |
+          flutter build apk --release \
+            --dart-define=CLOUD_AI=false \
+            --dart-define=AGENTS=false
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            "PocketShell-v${{ steps.version.outputs.version }}-izzy.apk"
+
+      - name: Build release APK (cloud AI on — F-Droid / sideload)
         run: flutter build apk --release
 
       - name: Build F-Droid arm64 split APK
         run: flutter build apk --release --split-per-abi --target-platform=android-arm64
 
-      - name: Verify F-Droid ABI versionCode
-        run: bash .github/scripts/verify-split-apk-versioncode.sh build/app/outputs/flutter-apk/app-arm64-v8a-release.apk 2
-
-      - name: Prepare APK artifact
+      # Prepare named APKs before ABI verify so a verify failure still leaves
+      # downloadable workflow artifacts (v1.4.2 lost APKs when aapt parse failed).
+      - name: Prepare APK artifacts
+        id: apks
         run: |
           APK_SRC="build/app/outputs/flutter-apk/app-release.apk"
           APK_DST="PocketShell-v${{ steps.version.outputs.version }}.apk"
+          IZZY_DST="PocketShell-v${{ steps.version.outputs.version }}-izzy.apk"
           cp "$APK_SRC" "$APK_DST"
-          echo "apk_path=$APK_DST" >> "$GITHUB_ENV"
-          if [[ "${{ steps.signing.outputs.signed }}" != "true" ]]; then
-            echo "::warning::GitHub Release APK is debug-signed. Add ANDROID_KEYSTORE_* secrets for sideload-ready APKs. F-Droid is unaffected."
-            printf '\n\n_This GitHub APK is debug-signed. F-Droid rebuilds and signs with its own key._\n' >> "${{ steps.changelog.outputs.path }}"
+          if [[ ! -f "$IZZY_DST" ]]; then
+            echo "Missing Izzy APK at $IZZY_DST" >&2
+            exit 1
           fi
+          if [[ "${{ steps.signing.outputs.signed }}" != "true" ]]; then
+            echo "::warning::GitHub Release APKs are debug-signed. Add ANDROID_KEYSTORE_* secrets for IzzyOnDroid / sideload. F-Droid is unaffected."
+            printf '\n\n_GitHub APKs are debug-signed until ANDROID_KEYSTORE_* secrets are set. F-Droid rebuilds and signs with its own key. The `-izzy` APK uses `CLOUD_AI=false` + `AGENTS=false` (no cloud wand / Agents tab)._\n' >> "${{ steps.changelog.outputs.path }}"
+          else
+            printf '\n\n_Artifacts: default APK includes optional cloud AI wand (NonFreeNet) and Agents. `*-izzy.apk` uses `CLOUD_AI=false` + `AGENTS=false` for IzzyOnDroid._\n' >> "${{ steps.changelog.outputs.path }}"
+          fi
+
+      - name: Retain APKs as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocketShell-v${{ steps.version.outputs.version }}-apks
+          path: |
+            PocketShell-v${{ steps.version.outputs.version }}.apk
+            PocketShell-v${{ steps.version.outputs.version }}-izzy.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Verify F-Droid ABI versionCode
+        run: bash .github/scripts/verify-split-apk-versioncode.sh build/app/outputs/flutter-apk/app-arm64-v8a-release.apk 2
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           name: PocketShell v${{ steps.version.outputs.version }}
           body_path: ${{ steps.changelog.outputs.path }}
-          files: ${{ env.apk_path }}
+          files: |
+            PocketShell-v${{ steps.version.outputs.version }}.apk
+            PocketShell-v${{ steps.version.outputs.version }}-izzy.apk
           draft: false
           prerelease: false
           generate_release_notes: false

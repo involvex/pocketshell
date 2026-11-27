@@ -9,6 +9,7 @@ import '../services/secure_storage_service.dart';
 import '../services/sftp_helper.dart';
 import '../services/ssh_config_import_service.dart';
 import '../services/wake_on_lan_service.dart';
+import '../utils/error_redaction.dart';
 import '../utils/jump_host_utils.dart';
 import '../utils/session_manager.dart';
 import '../utils/ssh_auth_utils.dart';
@@ -885,7 +886,7 @@ class _ProfileManagerState extends State<ProfileManager> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Connection failed: $e'),
+            content: Text('Connection failed: ${redactErrorForDisplay(e)}'),
             backgroundColor: Colors.red,
           ),
         );

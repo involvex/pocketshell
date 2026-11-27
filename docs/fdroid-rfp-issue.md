@@ -26,11 +26,11 @@ AntiFeatures:
     en-US: Optional terminal AI wand calls opencode.ai and api.kilo.ai only when the user pastes an API key and taps generate.
 ```
 
-Full draft recipe (ABI split, Flutter 3.47.9 srclib, NDK 28.2.13676358, heap/daemon patch):
-https://github.com/involvex/pocketshell/blob/HEAD/docs/fdroid.yml
+**Packaging:** fdroiddata MR (prefer this over the older tag blob alone):
+https://gitlab.com/fdroid/fdroiddata/-/merge_requests/59275
 
 Please build tag **v1.4.2** (`1.4.2+16` → versionCodes 161 / 162 / 163).
-Do not use **v1.4.1** (that tag has no Fastlane).
+Do not use **v1.4.1** (that tag has no Fastlane). Upstream developed since 2026-04.
 
 Why do you want this app added to F-Droid:
 

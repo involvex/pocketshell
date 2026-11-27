@@ -9,6 +9,7 @@ import 'package:ssh_app/models/sftp_transfer_job.dart';
 import 'package:ssh_app/services/config_repository.dart';
 import 'package:ssh_app/services/sftp_checksum_service.dart';
 import 'package:ssh_app/services/sftp_helper.dart';
+import 'package:ssh_app/utils/error_redaction.dart';
 import 'package:ssh_app/utils/remote_fs_sort.dart';
 import 'package:ssh_app/utils/remote_path_utils.dart';
 
@@ -134,7 +135,7 @@ class SftpController extends ChangeNotifier {
         await refresh(recoverInvalidPath: restoredPath);
       }
     } catch (e) {
-      _error = e.toString();
+      _error = redactErrorForDisplay(e);
       _drives.clear();
       _currentPath = '/';
       _raw.clear();
@@ -158,7 +159,7 @@ class SftpController extends ChangeNotifier {
         if (recoverInvalidPath) {
           await _config.clearSftpLastPath();
         }
-        _error = e.toString();
+        _error = redactErrorForDisplay(e);
         _raw.clear();
       }
     } finally {
@@ -575,7 +576,7 @@ class SftpController extends ChangeNotifier {
       await _loadAndPersistCurrentPath();
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = redactErrorForDisplay(e);
       return false;
     } finally {
       _loading = false;
@@ -661,14 +662,15 @@ class SftpController extends ChangeNotifier {
           next.completeSuccess();
         }
       } catch (e) {
+        final String safeError = redactErrorForDisplay(e);
         if (_isCancelledError(e) || _cancel?.isCancelled == true) {
           next.status = SftpTransferStatus.cancelled;
-          next.error = e.toString();
+          next.error = safeError;
           next.completeFailure(false);
         } else {
           next.status = SftpTransferStatus.failed;
-          next.error = e.toString();
-          _error = e.toString();
+          next.error = safeError;
+          _error = safeError;
           next.completeFailure(false);
         }
         if (next.direction == SftpTransferDirection.download &&
@@ -811,7 +813,7 @@ class SftpController extends ChangeNotifier {
       return true;
     } catch (e) {
       if (!_isCancelledError(e)) {
-        _error = e.toString();
+        _error = redactErrorForDisplay(e);
       }
       return false;
     } finally {

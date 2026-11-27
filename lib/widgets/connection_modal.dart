@@ -7,6 +7,7 @@ import 'package:ssh_app/models/ssh_key.dart';
 import 'package:ssh_app/models/ssh_profile.dart';
 import 'package:ssh_app/providers/ssh_provider.dart';
 import 'package:ssh_app/services/config_service.dart';
+import 'package:ssh_app/utils/error_redaction.dart';
 import 'package:ssh_app/utils/session_manager.dart';
 import 'package:ssh_app/utils/ssh_auth_utils.dart';
 
@@ -92,7 +93,10 @@ class _ConnectionModalState extends State<ConnectionModal> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(redactErrorForDisplay(e)),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -241,7 +245,7 @@ class _ConnectionModalState extends State<ConnectionModal> {
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Connect'),
+              : const Text('Connect to SSH host'),
         ),
       ],
     );

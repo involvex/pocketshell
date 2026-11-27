@@ -16,6 +16,7 @@ import '../services/ssh_local_forward.dart';
 import '../utils/agent_event_policy.dart';
 import '../utils/agent_prompt_utils.dart';
 import '../utils/agent_session_utils.dart';
+import '../utils/error_redaction.dart';
 
 class AgentProvider extends ChangeNotifier {
   AgentProvider({ConfigRepository? config})
@@ -431,7 +432,7 @@ class AgentProvider extends ChangeNotifier {
       }
       await _reloadMessages(connectionId);
     } catch (e) {
-      onLog?.call('Agent revert failed: $e');
+      onLog?.call('Agent revert failed: ${redactErrorForDisplay(e)}');
       rethrow;
     } finally {
       connection.isSending = false;
@@ -453,7 +454,9 @@ class AgentProvider extends ChangeNotifier {
       );
       onLog?.call('Agent providers refreshed');
     } catch (e) {
-      onLog?.call('Agent provider refresh failed: $e');
+      onLog?.call(
+        'Agent provider refresh failed: ${redactErrorForDisplay(e)}',
+      );
     }
     notifyListeners();
   }
@@ -583,7 +586,8 @@ class AgentProvider extends ChangeNotifier {
         onLog?.call('Agent reconnected: ${connection.profile.name}');
       } catch (e) {
         onLog?.call(
-          'Agent reconnect failed for ${connection.profile.name}: $e',
+          'Agent reconnect failed for ${connection.profile.name}: '
+          '${redactErrorForDisplay(e)}',
         );
       }
     }
@@ -611,7 +615,9 @@ class AgentProvider extends ChangeNotifier {
         configProviders: connection.configProviders,
       );
     } catch (e) {
-      onLog?.call('Agent metadata load failed: $e');
+      onLog?.call(
+        'Agent metadata load failed: ${redactErrorForDisplay(e)}',
+      );
     } finally {
       connection.isLoadingMetadata = false;
       notifyListeners();

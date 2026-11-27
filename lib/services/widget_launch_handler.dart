@@ -5,6 +5,8 @@ import '../models/ssh_profile.dart';
 import '../providers/agent_provider.dart';
 import '../providers/ssh_provider.dart';
 import '../screens/home_screen.dart';
+import '../constants/agents.dart';
+import '../utils/error_redaction.dart';
 
 enum WidgetLaunchKind { ssh, agent }
 
@@ -84,6 +86,16 @@ class WidgetLaunchHandler {
           await ssh.connectSession(entry.id);
           onTabSelected?.call(AppTab.client);
         case WidgetLaunchKind.agent:
+          if (!kAgentsEnabled) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Agents are disabled in this build'),
+                ),
+              );
+            }
+            return;
+          }
           await agent.connectFromProfileAndOpenRecent(profile);
           onTabSelected?.call(AppTab.agents);
       }
@@ -91,7 +103,7 @@ class WidgetLaunchHandler {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Connection failed: $e'),
+            content: Text('Connection failed: ${redactErrorForDisplay(e)}'),
             backgroundColor: Colors.red,
           ),
         );

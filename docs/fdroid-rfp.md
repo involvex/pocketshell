@@ -1,19 +1,22 @@
 # F-Droid RFP checklist
 
-Open an issue at https://gitlab.com/fdroid/rfp/-/issues against tag
-**v1.4.2** (newer than v1.4.1; that older tag has no Fastlane).
+RFP filed: https://gitlab.com/fdroid/rfp/-/work_items/4880
+(`com.involvex.ssh_app_flutter — PocketShell`, tag **v1.4.2**).
 
-## File the RFP
-
-GitHub already has Fastlane on **v1.4.2**. Paste
-[docs/fdroid-rfp-issue.md](fdroid-rfp-issue.md) into a new
-https://gitlab.com/fdroid/rfp/-/issues issue.
+fdroiddata MR: https://gitlab.com/fdroid/fdroiddata/-/merge_requests/59275
+(fork CI green: `fdroid build`, `check apk`, `rewritemeta`, lint — do not
+open a duplicate RFP). Waiting on maintainer review. Recipe draft:
+[docs/fdroid.yml](fdroid.yml) (matches the MR; prebuild enables R8 minify,
+strips foojay-resolver, excludes `com.google.android.play`).
 
 Local listing check:
 
 ```powershell
 ./scripts/fdroid-preflight.ps1
 ```
+
+Packager reproduce notes: [docs/fdroid-building.md](fdroid-building.md).
+IzzyOnDroid path (separate APK with cloud AI compiled out): [docs/izzyondroid.md](izzyondroid.md).
 
 Phone screenshots are already in
 `fastlane/metadata/android/en-US/images/phoneScreenshots/`. Re-render with:
@@ -42,13 +45,17 @@ Or capture live sessions from a phone:
 
 - **NonFreeNet**: optional terminal AI wand calls `https://opencode.ai/zen/v1`
   and `https://api.kilo.ai/api/gateway` with a user-supplied API key.
+  Cold start and splash do not open those hosts; empty API key fails before Dio.
+  Covered by `test/services/ai_gateway_service_test.dart`.
   Self-hosted OpenCode (Agents tab) talks only to the host in the SSH profile.
 
 ## Metadata in this repo
 
 - `fastlane/metadata/android/en-US/` (title, descriptions, changelog, icon, feature graphic). `scripts/release.ps1` writes changelog files for the universal build number and for F-Droid ABI codes (`*10+1/2/3`).
 - `PRIVACY.md` (also bundled in the APK)
-- Draft recipe: `docs/fdroid.yml` (srclib Flutter 3.47.9, NDK 28.2.13676358, ABI split, `pub get --enforce-lockfile`, Gradle heap patched for the buildserver)
+- Draft recipe: `docs/fdroid.yml` (srclib Flutter 3.47.9, NDK 28.2.13676358, ABI split, `pub get --enforce-lockfile`, Gradle heap patched for the buildserver, R8 minify + Play Core exclude for the F-Droid APK scanner, `distributionSha256Sum` for the v1.4.2 Gradle wrapper)
+- Upstream `main` also enables R8 + `android/app/proguard-rules.pro` and sets `distributionSha256Sum` on the Gradle wrapper (issuebot `insecure-gradlew`) for the next tag
+- issuebot on RFP #4880: Fastlane OK, Flutter/Gradle/license labels OK; only actionable flag was `insecure-gradlew` (addressed above)
 
 ## Screenshots
 
@@ -65,20 +72,11 @@ if you want a live session):
 
 ## GitHub APK signing
 
-F-Droid rebuilds and signs with its own key. GitHub Releases stay
-debug-signed until these repository secrets exist:
+F-Droid rebuilds and signs with its own key. IzzyOnDroid / sideload need a
+developer-signed APK — full steps: [android-signing.md](android-signing.md).
 
-- `ANDROID_KEYSTORE_BASE64` — `base64 -w0 upload-keystore.jks`
-- `ANDROID_KEYSTORE_PASSWORD`
-- `ANDROID_KEY_ALIAS`
-- `ANDROID_KEY_PASSWORD`
-
-Locally: copy `android/keystore.properties.example` to
-`android/keystore.properties` (gitignored) and put `upload-keystore.jks`
-next to `android/app/build.gradle.kts`. Keep the upload keystore off the repo.
-
-IzzyOnDroid is out of scope while the optional cloud LLM wand remains
-(their AI policy rejects commercial-gateway frontends).
+IzzyOnDroid: ship `*-izzy.apk` with `--dart-define=CLOUD_AI=false` (see
+[izzyondroid.md](izzyondroid.md)). F-Droid keeps NonFreeNet + cloud AI on.
 
 ---
 

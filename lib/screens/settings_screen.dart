@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:ssh_app/constants/app_metadata.dart';
+import 'package:ssh_app/constants/cloud_ai.dart';
 import '../providers/app_lock_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/backup_crypto.dart';
@@ -504,11 +505,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const TerminalFontSettings(),
               const SizedBox(height: 16),
               const TerminalInputSettings(),
-              const Divider(height: 32),
-              const Text('AI Provider',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              const AiProviderSettings(),
+              if (kCloudAiEnabled) ...[
+                const Divider(height: 32),
+                const Text(
+                  'AI Provider',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                const AiProviderSettings(),
+              ],
               const Divider(height: 32),
               const Text('OpenCode config',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

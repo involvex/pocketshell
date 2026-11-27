@@ -112,12 +112,22 @@ flutter build apk --release --split-per-abi --target-platform=android-arm64
 F-Droid ships three APKs (`android-arm`, `android-arm64`, `android-x64`) with
 `versionCode * 10 + ABI`. See [docs/fdroid.yml](docs/fdroid.yml).
 
-Preflight: `./scripts/fdroid-preflight.ps1`. Draft recipe: [docs/fdroid.yml](docs/fdroid.yml). Fastlane metadata lives in
-`fastlane/metadata/android/en-US/`. Phone screenshots are in
-`fastlane/metadata/android/en-US/images/phoneScreenshots/` (re-render with
-`./scripts/render-fdroid-screenshots.ps1`). RFP recipe: tag **v1.4.2** (do not use v1.4.1 — that tag has no Fastlane)
-([docs/fdroid-rfp.md](docs/fdroid-rfp.md)).
+Preflight: `./scripts/fdroid-preflight.ps1`. Draft recipe: [docs/fdroid.yml](docs/fdroid.yml)
+(R8 minify, Play Core exclude, foojay strip, Gradle `distributionSha256Sum`).
+Fastlane metadata lives in `fastlane/metadata/android/en-US/`. Phone screenshots
+are in `fastlane/metadata/android/en-US/images/phoneScreenshots/` (re-render with
+`./scripts/render-fdroid-screenshots.ps1`).
+
+Listing in progress (tag **v1.4.2**; do not use v1.4.1 — no Fastlane):
+
+- RFP: https://gitlab.com/fdroid/rfp/-/work_items/4880
+- fdroiddata MR: https://gitlab.com/fdroid/fdroiddata/-/merge_requests/59275
+- Notes: [docs/fdroid-rfp.md](docs/fdroid-rfp.md) · [docs/fdroid-building.md](docs/fdroid-building.md)
+
 Third-party licenses: [THIRD_PARTY.md](THIRD_PARTY.md).
+IzzyOnDroid: `./scripts/build-izzy-apk.ps1` (`CLOUD_AI=false` + dex scan) and
+release-signed `*-izzy.apk` — [docs/izzyondroid.md](docs/izzyondroid.md) ·
+[docs/android-signing.md](docs/android-signing.md).
 
 ## License
 

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--dart-define=CLOUD_AI=false` (`kCloudAiEnabled`) and
+  `--dart-define=AGENTS=false` (`kAgentsEnabled`) hide the terminal wand and
+  Agents tab for IzzyOnDroid; release workflow attaches `*-izzy.apk`.
+- `scripts/build-izzy-apk.ps1` builds that variant and fails if dex still contains
+  `opencode.ai` / `api.kilo.ai`.
+- F-Droid packager notes (`docs/fdroid-building.md`) and Izzy request draft
+  (`docs/izzyondroid.md`, `docs/izzyondroid-request.md`).
+- `scripts/setup-android-keystore.ps1` (+ `docs/android-signing.md`) for local
+  upload keystore and optional `gh secret set` via stdin.
+- Release workflow retains named APKs as Actions artifacts before ABI verify so
+  a verify failure no longer drops the build (v1.4.2).
+- Connection / agent / SFTP / snackbar error redaction for Basic/Bearer tokens,
+  password fields, and PEM blobs.
+
+### Security
+
+- Release R8 minify + `com.google.android.play` exclude (Play Core stubs) and
+  Gradle wrapper `distributionSha256Sum` (issuebot `insecure-gradlew`).
+- Backup / data-extraction rules explicitly exclude `FlutterSecureStorage`.
+
+### Changed
+
+- Fastlane full description clarifies cloud AI is optional / build-dependent.
+- F-Droid preflight scans release APKs for Play Core/GMS and optional Izzy APKs
+  for LLM gateway strings.
 
 ## [1.4.2] - 2026-11-27
 

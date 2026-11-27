@@ -12,7 +12,7 @@
 <p><b>Agents</b></p>
 <p>The Agents tab talks to <i>your</i> OpenCode server (typically on a Windows host you reach over SSH). You choose the URL, directory, and model with slash commands.</p>
 
-<p><b>Optional cloud AI</b></p>
-<p>The terminal wand can generate a shell command via OpenCode Zen (<code>opencode.ai</code>) or Kilo (<code>api.kilo.ai</code>) <b>only if you paste your own API key and tap generate</b>. Nothing is sent there otherwise. This is disclosed as the F-Droid NonFreeNet anti-feature.</p>
+<p><b>Optional cloud AI (some builds)</b></p>
+<p>Some store builds include a terminal wand that can generate a shell command via OpenCode Zen (<code>opencode.ai</code>) or Kilo (<code>api.kilo.ai</code>) <b>only if you paste your own API key and tap generate</b>. Nothing is sent there otherwise. F-Droid labels that build <b>NonFreeNet</b>. Builds without the wand (e.g. IzzyOnDroid) omit that UI entirely; core SSH/SFTP/Agents features do not need it.</p>
 
 <p>No ads, no analytics, no crash reporters. Source: https://github.com/involvex/pocketshell</p>

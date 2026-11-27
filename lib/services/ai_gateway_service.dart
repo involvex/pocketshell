@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
+import '../constants/cloud_ai.dart';
 import '../models/ai_provider.dart';
 
 class AiGatewayException implements Exception {
@@ -113,10 +114,19 @@ class AiGatewayService {
     return provider == AiProvider.opencodeZen ? _opencodeDio : _kiloDio;
   }
 
+  static void _ensureCloudAiEnabled() {
+    if (!kCloudAiEnabled) {
+      throw AiGatewayException(
+        'Cloud AI is disabled in this build (--dart-define=CLOUD_AI=false)',
+      );
+    }
+  }
+
   static Future<List<String>> fetchModels({
     required AiProvider provider,
     required String apiKey,
   }) async {
+    _ensureCloudAiEnabled();
     if (apiKey.trim().isEmpty) {
       throw AiGatewayException('API key is required for the selected provider');
     }
@@ -189,6 +199,7 @@ class AiGatewayService {
     String? terminalContext,
     CancelToken? cancelToken,
   }) async* {
+    _ensureCloudAiEnabled();
     if (apiKey.trim().isEmpty) {
       throw AiGatewayException('API key is required for the selected provider');
     }

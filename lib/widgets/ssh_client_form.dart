@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import '../providers/ssh_provider.dart';
+import '../utils/error_redaction.dart';
 
 class SSHClientForm extends StatefulWidget {
   const SSHClientForm({super.key});
@@ -86,7 +87,10 @@ class _SSHClientFormState extends State<SSHClientForm> {
         );
       } catch (e) {
         messenger.showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(redactErrorForDisplay(e)),
+            backgroundColor: Colors.red,
+          ),
         );
       }
       if (mounted) {

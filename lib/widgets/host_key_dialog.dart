@@ -44,15 +44,15 @@ Future<bool> showUnknownHostKeyDialog(
               // ignore: unawaited_futures
               Clipboard.setData(ClipboardData(text: prompt.fingerprint));
             },
-            child: const Text('Copy'),
+            child: const Text('Copy fingerprint'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Reject'),
+            child: const Text('Reject host key'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Trust'),
+            child: const Text('Trust host key'),
           ),
         ],
       );
@@ -106,7 +106,7 @@ Future<void> showHostKeyChangedWarning(
         actions: <Widget>[
           ElevatedButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Understood'),
+            child: const Text('Understood — connection blocked'),
           ),
         ],
       );

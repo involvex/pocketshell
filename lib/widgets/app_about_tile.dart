@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:ssh_app/constants/app_metadata.dart';
+import 'package:ssh_app/constants/cloud_ai.dart';
 import 'package:ssh_app/screens/privacy_screen.dart';
 
 /// Settings About section: app name, licenses, privacy, source.
@@ -41,7 +42,9 @@ class _AppAboutTileState extends State<AppAboutTile> {
             leading: const Icon(Icons.policy_outlined),
             title: const Text('Privacy'),
             subtitle: const Text(
-              'No analytics. Optional AI uses your API key only when you tap the wand.',
+              kCloudAiEnabled
+                  ? 'No analytics. Optional AI uses your API key only when you tap the wand.'
+                  : 'No analytics. Cloud AI wand disabled in this build.',
             ),
             onTap: () {
               Navigator.of(context).push(

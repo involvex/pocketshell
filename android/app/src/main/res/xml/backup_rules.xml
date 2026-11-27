@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <!-- Secrets live in EncryptedSharedPreferences / Keystore. Do not send
-         Flutter SharedPreferences (profiles, known_hosts, caches) to cloud
-         backup. Use in-app encrypted export instead. -->
+    <!-- allowBackup=false in the manifest; these excludes stay as defense in
+         depth if that flag is ever flipped. Secrets live in Keystore-backed
+         EncryptedSharedPreferences (FlutterSecureStorage). Profiles/known_hosts
+         also use SharedPreferences — never cloud-back them up. -->
     <exclude domain="sharedpref" path="." />
+    <exclude domain="sharedpref" path="FlutterSecureStorage" />
 </full-backup-content>

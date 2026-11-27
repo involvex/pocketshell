@@ -52,8 +52,14 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // R8 strips unused Flutter deferred-components Play Core stubs
+            // (com.google.android.play.core.*) that F-Droid's APK scanner rejects.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             vcsInfo.include = false
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
@@ -87,4 +93,11 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// Flutter's embedding transitively pulls Google Play Core for unused deferred
+// components (com.google.android.play.core.*). F-Droid's APK scanner rejects
+// those proprietary classes; this app does not use deferred components.
+configurations.configureEach {
+    exclude(group = "com.google.android.play")
 }

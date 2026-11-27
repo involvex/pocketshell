@@ -32,6 +32,9 @@ import '../services/share_clone_handler.dart';
 import '../services/share_intent_service.dart';
 import '../services/share_upload_handler.dart';
 import '../services/widget_launch_handler.dart';
+import '../constants/agents.dart';
+import '../constants/cloud_ai.dart';
+import '../utils/error_redaction.dart';
 import '../utils/terminal_clipboard.dart';
 import '../utils/terminal_style_builder.dart';
 import '../utils/terminal_themes.dart';
@@ -66,7 +69,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late AppTab _selectedTab = widget.initialTab;
+  late AppTab _selectedTab = _resolveInitialTab(widget.initialTab);
   bool _isFullScreen = false;
   bool _agentsChatOpen = false;
   bool _accessoryVisible = true;
@@ -177,11 +180,19 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  static AppTab _resolveInitialTab(AppTab tab) {
+    if (!kAgentsEnabled && tab == AppTab.agents) {
+      return AppTab.client;
+    }
+    return tab;
+  }
+
   void _selectTab(AppTab tab) {
     if (!mounted) {
       return;
     }
-    setState(() => _selectedTab = tab);
+    final AppTab resolved = _resolveInitialTab(tab);
+    setState(() => _selectedTab = resolved);
   }
 
   void _onWidgetClicked(Uri? uri) {
@@ -277,7 +288,10 @@ class _HomeScreenState extends State<HomeScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text(redactErrorForDisplay(e)),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       } finally {
@@ -522,11 +536,11 @@ class _HomeScreenState extends State<HomeScreen> {
     return actions;
   }
 
-  static const List<AppTab> _tabs = <AppTab>[
-    AppTab.client,
-    AppTab.agents,
-    AppTab.logs,
-  ];
+  static List<AppTab> get _tabs => <AppTab>[
+        AppTab.client,
+        if (kAgentsEnabled) AppTab.agents,
+        AppTab.logs,
+      ];
 
   bool _isMobilePlatform() {
     if (kIsWeb) return false;
@@ -553,8 +567,9 @@ class _HomeScreenState extends State<HomeScreen> {
           selector: (_, ssh) => ssh.sessions.any((s) => s.isConnected),
           builder: (context, anyConnected, child) {
             final ssh = context.read<SSHProvider>();
+            final List<AppTab> tabs = _tabs;
             final navIndex =
-                _tabs.indexOf(_selectedTab).clamp(0, _tabs.length - 1);
+                tabs.indexOf(_selectedTab).clamp(0, tabs.length - 1);
 
             // Automatically exit full screen if no sessions are connected
             if (_isFullScreen && !anyConnected) {
@@ -563,8 +578,9 @@ class _HomeScreenState extends State<HomeScreen> {
               });
             }
 
-            final shouldDelegateAgentsBack =
-                _selectedTab == AppTab.agents && _agentsChatOpen;
+            final shouldDelegateAgentsBack = kAgentsEnabled &&
+                _selectedTab == AppTab.agents &&
+                _agentsChatOpen;
 
             return PopScope(
               canPop: !shouldDelegateAgentsBack,
@@ -586,10 +602,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           selectedIndex: navIndex,
                           onDestinationSelected: (index) {
                             setState(() {
-                              _selectedTab = _tabs[index];
+                              _selectedTab = tabs[index];
                             });
                           },
-                          destinations: _tabs.map((tab) {
+                          destinations: tabs.map((tab) {
                             return switch (tab) {
                               AppTab.client => const NavigationDestination(
                                   icon: Icon(Icons.computer),
@@ -614,20 +630,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         const KeyboardShortcutBar(),
                       Expanded(
                         child: IndexedStack(
-                          index: _selectedTab.index,
+                          index: navIndex,
                           children: <Widget>[
                             ClientTab(
                               isFullScreen: _isFullScreen,
                               accessoryVisible: _accessoryVisible,
                             ),
-                            AgentsTab(
-                              key: _agentsTabKey,
-                              onChatOpenChanged: (open) {
-                                if (_agentsChatOpen != open) {
-                                  setState(() => _agentsChatOpen = open);
-                                }
-                              },
-                            ),
+                            if (kAgentsEnabled)
+                              AgentsTab(
+                                key: _agentsTabKey,
+                                onChatOpenChanged: (open) {
+                                  if (_agentsChatOpen != open) {
+                                    setState(() => _agentsChatOpen = open);
+                                  }
+                                },
+                              ),
                             const LogViewer(),
                           ],
                         ),
@@ -865,7 +882,8 @@ class _ClientTabState extends State<ClientTab> {
                   ),
                   onClose: () => setState(() => _searchVisible = false),
                 ),
-              if (_aiOverlayVisible &&
+              if (kCloudAiEnabled &&
+                  _aiOverlayVisible &&
                   ssh.activeSession != null &&
                   ssh.activeSession!.isConnected)
                 AiCommandOverlay(
@@ -1096,8 +1114,9 @@ class _ClientTabState extends State<ClientTab> {
                             ssh.activeSessionId!,
                             settings.sendMouseTaps,
                           ),
-                    onAiGenerate: () =>
-                        setState(() => _aiOverlayVisible = true),
+                    onAiGenerate: kCloudAiEnabled
+                        ? () => setState(() => _aiOverlayVisible = true)
+                        : null,
                   ),
                 ),
             ],
@@ -1114,14 +1133,14 @@ class _AccessoryArea extends StatelessWidget {
   const _AccessoryArea({
     required this.theme,
     required this.ssh,
-    required this.onAiGenerate,
+    this.onAiGenerate,
     this.terminal,
     this.controller,
   });
 
   final ThemeData theme;
   final SSHProvider ssh;
-  final VoidCallback onAiGenerate;
+  final VoidCallback? onAiGenerate;
   final Terminal? terminal;
   final TerminalController? controller;
 

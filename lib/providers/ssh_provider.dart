@@ -21,6 +21,7 @@ import '../utils/jump_host_utils.dart';
 import '../utils/prefs_secret_audit.dart';
 import '../utils/session_manager.dart';
 import '../utils/ssh_auth_utils.dart';
+import '../utils/error_redaction.dart';
 import '../utils/startup_command_log.dart';
 import '../utils/terminal_context.dart';
 import '../utils/terminal_enter_mapping.dart';
@@ -479,9 +480,12 @@ class SSHProvider extends ChangeNotifier {
         }
       }
     } catch (e) {
-      addLog('Connection failed for ${profile.host}:${profile.port} — $e');
+      final String safeError = redactErrorForDisplay(e);
+      addLog(
+        'Connection failed for ${profile.host}:${profile.port} — $safeError',
+      );
       entry.isConnected = false;
-      entry.lastError = e.toString();
+      entry.lastError = safeError;
       await entry.closeForwards();
       entry.client?.close();
       entry.jumpClient?.close();
@@ -845,7 +849,9 @@ class SSHProvider extends ChangeNotifier {
         await reconnectSession(entry.id);
         return;
       } catch (e) {
-        addLog('Reconnect failed for ${entry.name}: $e');
+        addLog(
+          'Reconnect failed for ${entry.name}: ${redactErrorForDisplay(e)}',
+        );
       }
     }
     if (!entry.isConnected && entry.shouldReconnectOnResume) {

@@ -1,27 +1,21 @@
-# Draft F-Droid metadata for gitlab.com/fdroid/fdroiddata (RFP).
-# Not consumed by this repo's CI.
-#
-# v1.4.1 does **not** include Fastlane/screenshots. File the RFP against
-# v1.4.2 (or newer than v1.4.1). Flutter pin: .github/flutter-version
-# and pubspec environment.flutter.
-#
-# ABI split: android/app/build.gradle.kts sets
-# versionCode * 10 + {armeabi-v7a=1, arm64-v8a=2, x86_64=3}. pubspec
-# 1.4.2+16 therefore ships as 161 / 162 / 163.
-
+AntiFeatures:
+  NonFreeNet:
+    en-US: Optional terminal AI wand calls opencode.ai and api.kilo.ai only when the
+      user pastes an API key and taps generate. Self-hosted OpenCode on the SSH profile
+      is not NonFreeNet.
 Categories:
-  - Remote Access
   - Connectivity
   - Internet
+  - Remote Access
   - Security
 License: MIT
 AuthorName: involvex
-Name: PocketShell
 WebSite: https://github.com/involvex/pocketshell
 SourceCode: https://github.com/involvex/pocketshell
 IssueTracker: https://github.com/involvex/pocketshell/issues
 Changelog: https://github.com/involvex/pocketshell/blob/HEAD/CHANGELOG.md
 
+Name: PocketShell
 AutoName: PocketShell
 
 RepoType: git
@@ -41,14 +35,25 @@ Builds:
       - linux
       - web
       - packages/home_widget/ios
-      - packages/home_widget/pub
-      - packages/home_widget/android/gradle
     prebuild:
       - flutterVersion=$(tr -d '[:space:]' < .github/flutter-version)
       - '[[ $flutterVersion ]]'
       - git -C $$flutter$$ checkout -f $flutterVersion
       - export PUB_CACHE=$(pwd)/.pub-cache
-      - sed -i 's/-Xmx8G/-Xmx2G/;s/-XX:MaxMetaspaceSize=4G/-XX:MaxMetaspaceSize=512m/;s/org.gradle.daemon=true/org.gradle.daemon=false/;s/org.gradle.parallel=true/org.gradle.parallel=false/' android/gradle.properties
+      - sed -i 
+        's/-Xmx8G/-Xmx2G/;s/-XX:MaxMetaspaceSize=4G/-XX:MaxMetaspaceSize=512m/;s/org.gradle.daemon=true/org.gradle.daemon=false/;s/org.gradle.parallel=true/org.gradle.parallel=false/'
+        android/gradle.properties
+      - sed -i '/foojay-resolver/d' android/settings.gradle.kts
+      - sed -i 
+        '$a\distributionSha256Sum=a1bb7e9651ef09e4cd9a62d471564e0ee23b5757e5f21fd7358d7cfc21018fdf'
+        android/gradle/wrapper/gradle-wrapper.properties
+      - sed -i -e 's/isMinifyEnabled = false/isMinifyEnabled = true/' -e 's/isShrinkResources
+        = false/isShrinkResources = true/' android/app/build.gradle.kts
+      - printf '%s\n' '-dontwarn com.google.android.play.**' > android/app/proguard-rules.pro
+      - sed -i '/isShrinkResources = true/a\            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"),
+        "proguard-rules.pro")' android/app/build.gradle.kts
+      - sed -i -e '$a\' -e 'configurations.configureEach { exclude(group = "com.google.android.play")
+        }' android/app/build.gradle.kts
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter --version
       - $$flutter$$/bin/flutter pub get --enforce-lockfile
@@ -74,14 +79,25 @@ Builds:
       - linux
       - web
       - packages/home_widget/ios
-      - packages/home_widget/pub
-      - packages/home_widget/android/gradle
     prebuild:
       - flutterVersion=$(tr -d '[:space:]' < .github/flutter-version)
       - '[[ $flutterVersion ]]'
       - git -C $$flutter$$ checkout -f $flutterVersion
       - export PUB_CACHE=$(pwd)/.pub-cache
-      - sed -i 's/-Xmx8G/-Xmx2G/;s/-XX:MaxMetaspaceSize=4G/-XX:MaxMetaspaceSize=512m/;s/org.gradle.daemon=true/org.gradle.daemon=false/;s/org.gradle.parallel=true/org.gradle.parallel=false/' android/gradle.properties
+      - sed -i 
+        's/-Xmx8G/-Xmx2G/;s/-XX:MaxMetaspaceSize=4G/-XX:MaxMetaspaceSize=512m/;s/org.gradle.daemon=true/org.gradle.daemon=false/;s/org.gradle.parallel=true/org.gradle.parallel=false/'
+        android/gradle.properties
+      - sed -i '/foojay-resolver/d' android/settings.gradle.kts
+      - sed -i 
+        '$a\distributionSha256Sum=a1bb7e9651ef09e4cd9a62d471564e0ee23b5757e5f21fd7358d7cfc21018fdf'
+        android/gradle/wrapper/gradle-wrapper.properties
+      - sed -i -e 's/isMinifyEnabled = false/isMinifyEnabled = true/' -e 's/isShrinkResources
+        = false/isShrinkResources = true/' android/app/build.gradle.kts
+      - printf '%s\n' '-dontwarn com.google.android.play.**' > android/app/proguard-rules.pro
+      - sed -i '/isShrinkResources = true/a\            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"),
+        "proguard-rules.pro")' android/app/build.gradle.kts
+      - sed -i -e '$a\' -e 'configurations.configureEach { exclude(group = "com.google.android.play")
+        }' android/app/build.gradle.kts
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter --version
       - $$flutter$$/bin/flutter pub get --enforce-lockfile
@@ -107,14 +123,25 @@ Builds:
       - linux
       - web
       - packages/home_widget/ios
-      - packages/home_widget/pub
-      - packages/home_widget/android/gradle
     prebuild:
       - flutterVersion=$(tr -d '[:space:]' < .github/flutter-version)
       - '[[ $flutterVersion ]]'
       - git -C $$flutter$$ checkout -f $flutterVersion
       - export PUB_CACHE=$(pwd)/.pub-cache
-      - sed -i 's/-Xmx8G/-Xmx2G/;s/-XX:MaxMetaspaceSize=4G/-XX:MaxMetaspaceSize=512m/;s/org.gradle.daemon=true/org.gradle.daemon=false/;s/org.gradle.parallel=true/org.gradle.parallel=false/' android/gradle.properties
+      - sed -i 
+        's/-Xmx8G/-Xmx2G/;s/-XX:MaxMetaspaceSize=4G/-XX:MaxMetaspaceSize=512m/;s/org.gradle.daemon=true/org.gradle.daemon=false/;s/org.gradle.parallel=true/org.gradle.parallel=false/'
+        android/gradle.properties
+      - sed -i '/foojay-resolver/d' android/settings.gradle.kts
+      - sed -i 
+        '$a\distributionSha256Sum=a1bb7e9651ef09e4cd9a62d471564e0ee23b5757e5f21fd7358d7cfc21018fdf'
+        android/gradle/wrapper/gradle-wrapper.properties
+      - sed -i -e 's/isMinifyEnabled = false/isMinifyEnabled = true/' -e 's/isShrinkResources
+        = false/isShrinkResources = true/' android/app/build.gradle.kts
+      - printf '%s\n' '-dontwarn com.google.android.play.**' > android/app/proguard-rules.pro
+      - sed -i '/isShrinkResources = true/a\            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"),
+        "proguard-rules.pro")' android/app/build.gradle.kts
+      - sed -i -e '$a\' -e 'configurations.configureEach { exclude(group = "com.google.android.play")
+        }' android/app/build.gradle.kts
       - $$flutter$$/bin/flutter config --no-analytics
       - $$flutter$$/bin/flutter --version
       - $$flutter$$/bin/flutter pub get --enforce-lockfile
@@ -127,27 +154,34 @@ Builds:
       - $$flutter$$/bin/flutter build apk --release --split-per-abi --target-platform="android-x64"
     ndk: 28.2.13676358
 
-AntiFeatures:
-  NonFreeNet:
-    en-US: Optional terminal AI wand calls opencode.ai and api.kilo.ai only when the user pastes an API key and taps generate. Self-hosted OpenCode on the SSH profile is not NonFreeNet.
-
 MaintainerNotes: |
   First listing tag is v1.4.2 (newer than v1.4.1, which has no Fastlane).
+  Build these APKs from commit v1.4.2 even if main is ahead.
   Flutter SDK pin is `.github/flutter-version`
   (3.47.9, tag on flutter/flutter) and pubspec `environment.flutter`.
-  Gradle 9.8.2-all.zip is in gradle-transparency-log
-  (sha256 a1bb7e9651ef09e4cd9a62d471564e0ee23b5757e5f21fd7358d7cfc21018fdf).
-  Prebuild lowers the Flutter template heap and turns off the Gradle
+  On v1.4.2 the wrapper is Gradle 9.8.2-all.zip; prebuild sets distributionSha256Sum
+  (sha256 a1bb7e9651ef09e4cd9a62d471564e0ee23b5757e5f21fd7358d7cfc21018fdf)
+  with AGP 9.5.1. Later main may use Gradle 9.9.2 / AGP 9.5.2; both
+  Gradle zips are in gradle-transparency-log
+  (9.9.2-all sha256 1ac85e9cbc2b091ad04e6c6d0f486f0a2a2fabd78f9f8719a0d5bcc0ce1b345b).
+  Prebuild strips foojay-resolver and enables R8 minify, excludes com.google.android.play (Flutter deferred-components Play Core), then lowers the Flutter template heap and turns off the Gradle
   daemon/parallel flags so the buildserver does not OOM. ABI split uses
   versionCode*10+ABI (see android/app/build.gradle.kts). Vendored
   `packages/home_widget` is BSD-3 (AGP 9 Kotlin plugin patch; see
   packages/home_widget/PATCH.md). Nested plugin Gradle wrapper is
   removed from the tree. Bundled fonts are OFL (`assets/fonts/OFL.txt`).
-  Optional AI wand is NonFreeNet. Privacy policy is PRIVACY.md
+  Optional AI wand is NonFreeNet. Cold start / splash do not open
+  opencode.ai or api.kilo.ai; empty API key fails before Dio.
+  Privacy policy is PRIVACY.md
   (https://github.com/involvex/pocketshell/blob/HEAD/PRIVACY.md).
+  android:allowBackup=false; backup/data-extraction rules exclude
+  SharedPreferences (incl. FlutterSecureStorage).
+  RFP: https://gitlab.com/fdroid/rfp/-/work_items/4880
   ndk 28.2.13676358 is Flutter 3.47.9's flutter.ndkVersion; bump it
   when .github/flutter-version moves. Local split APKs pass
   `zipalign -c -P 16` and 64-bit .so LOAD p_align is 16KiB or 64KiB.
+  Local R8 arm64 release APK dex has no com.google.android.play / gms /
+  firebase strings (fork CI check apk also clean).
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
